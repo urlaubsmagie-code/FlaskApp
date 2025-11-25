@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wohnungs-Rangliste - Nach Sternen</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+
+        .header-section {
+            background: linear-gradient(135deg, #904E55 0%, #580f1b 100%);
+            color: white;
+            padding: 60px 0;
+            margin-bottom: 40px;
+        }
+
+        .ranking-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+        }
+
+        .ranking-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+        }
+
+        .ranking-position {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #904E55 0%, #580f1b 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .gold-medal {
+            background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%) !important;
+        }
+
+        .silver-medal {
+            background: linear-gradient(135deg, #C0C0C0 0%, #A8A8A8 100%) !important;
+        }
+
+        .bronze-medal {
+            background: linear-gradient(135deg, #CD7F32 0%, #B8860B 100%) !important;
+        }
+
+        .apartment-name {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-left: 65px;
+            color: #333;
+        }
+
+        .rating-display {
+            display: flex;
+            align-items: center;
+            margin-top: 15px;
+            margin-left: 65px;
+        }
+
+        .avg-rating {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #722F37;
+            margin-right: 15px;
+        }
+
+        .rating-stars {
+            color: #ffc107;
+            font-size: 1.5rem;
+        }
+
+        .review-count {
+            color: #666;
+            margin-left: 15px;
+        }
+
+        .rating-distribution {
+            margin-top: 20px;
+            margin-left: 65px;
+        }
+
+        .rating-bar {
+            background-color: #e9ecef;
+            height: 25px;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .rating-bar-fill {
+            background-color: #ffc107;
+            height: 100%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            padding-left: 10px;
+            color: white;
+            font-weight: bold;
+            font-size: 0.85rem;
+        }
+
+        .stats-badge {
+            display: inline-block;
+            background: #f8f9fa;
+            padding: 8px 15px;
+            border-radius: 20px;
+            margin: 5px;
+            font-size: 0.9rem;
+        }
+
+        .nav-buttons {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 1000;
+        }
+
+        .nav-btn {
+            background: white;
+            border: none;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            margin-left: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .nav-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .apartment-url {
+            margin-left: 65px;
+            margin-top: 10px;
+        }
+
+        .apartment-url a {
+            color: #722F37;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .apartment-url a:hover {
+            text-decoration: underline;
+        }
+
+        .group-card {
+            background: white;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .group-card:hover {
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .group-header {
+            padding: 25px 30px;
+            background: linear-gradient(135deg, #904E55 0%, #580f1b 100%);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.3s ease;
+        }
+
+        .group-header:hover {
+            background: linear-gradient(135deg, #722F37 0%, #4a0d16 100%);
+        }
+
+        .group-title {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .group-prefix {
+            font-size: 3rem;
+            font-weight: bold;
+            background: white;
+            color: #722F37;
+            width: 80px;
+            height: 80px;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .group-info {
+            flex: 1;
+        }
+
+        .group-stats {
+            display: flex;
+            gap: 30px;
+            align-items: center;
+        }
+
+        .group-stat {
+            text-align: center;
+        }
+
+        .group-stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .group-stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .group-chevron {
+            font-size: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+
+        .group-chevron.expanded {
+            transform: rotate(180deg);
+        }
+
+        .group-body {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease;
+        }
+
+        .group-body.expanded {
+            max-height: 5000px;
+        }
+
+        .apartment-item {
+            padding: 20px 30px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            transition: background 0.2s ease;
+        }
+
+        .apartment-item:last-child {
+            border-bottom: none;
+        }
+
+        .apartment-item:hover {
+            background: #f8f9fa;
+        }
+
+        .apt-rank {
+            width: 40px;
+            height: 40px;
+            background: #722F37;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .apt-info {
+            flex: 1;
+        }
+
+        .apt-name {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .apt-rating-compact {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .apt-rating-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #722F37;
+        }
+
+        .apt-stars-compact {
+            color: #ffc107;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Header Section -->
+    <div class="header-section">
+        <div class="container">
+            <div class="text-center">
+                <h1 class="display-3 mb-3">
+                    <i class="fas fa-trophy me-3"></i>
+                    Wohnungs-Rangliste
+                </h1>
+                <p class="lead mb-2">Rangfolge basierend auf Sternebewertungen</p>
+                <p class="h5">
+                    <i class="fas fa-calendar-week me-2"></i>
+                    <strong>Daten werden wöchentlich aktualisiert</strong> - Aktualisierung jeden Montag um 00:00 Uhr
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Global Statistics -->
+    {% if global_stats %}
+    <div class="container mb-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="card shadow-sm" style="background: white; border-radius: 15px; padding: 30px;">
+                    <h3 class="text-center mb-4">
+                        <i class="fas fa-chart-line me-2"></i>
+                        Globale Statistiken
+                    </h3>
+
+                    <div class="row text-center">
+                        <div class="col-md-3 mb-3">
+                            <div class="stat-box">
+                                <div class="stat-number" style="font-size: 2.5rem; font-weight: bold; color: #722F37;">
+                                    {{ global_stats.total_reviews }}</div>
+                                <div class="stat-label" style="color: #666;">Bewertungen (diese Woche)</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="stat-box">
+                                <div class="stat-number" style="font-size: 2.5rem; font-weight: bold; color: #722F37;">
+                                    {{ global_stats.average_rating }}</div>
+                                <div class="stat-label" style="color: #666;">Durchschnitt (diese Woche)</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="stat-box">
+                                <div class="stat-number" style="font-size: 2.5rem; font-weight: bold; color: #ffc107;">
+                                    {{ global_stats.five_star_total }}</div>
+                                <div class="stat-label" style="color: #666;">5-Sterne (diese Woche)</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="stat-box">
+                                <div class="stat-number" style="font-size: 2.5rem; font-weight: bold; color: #722F37;">
+                                    {{ total_apartments }}</div>
+                                <div class="stat-label" style="color: #666;">Wohnungen mit neuen Bewertungen</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Top Performers por tipo de estrella -->
+                    <div class="row mt-4">
+                        {% if global_stats.most_5_stars %}
+                        <div class="col-md-6 col-lg-4 mb-3">
+                            <div class="alert alert-success text-center" style="border-left: 5px solid #ffc107;">
+                                <i class="fas fa-star" style="color: #ffc107; font-size: 1.5rem;"></i>
+                                <div class="mt-2"><strong>Meiste 5-Sterne</strong></div>
+                                <div style="font-size: 0.9rem; color: #666;">{{ global_stats.most_5_stars.name }}</div>
+                                <span class="badge bg-warning text-dark mt-2">
+                                    {{ global_stats.most_5_stars.rating_distribution[5] }} × 5⭐
+                                </span>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        {% if global_stats.most_4_stars %}
+                        <div class="col-md-6 col-lg-4 mb-3">
+                            <div class="alert alert-info text-center" style="border-left: 5px solid #17a2b8;">
+                                <i class="fas fa-star" style="color: #17a2b8; font-size: 1.5rem;"></i>
+                                <div class="mt-2"><strong>Meiste 4-Sterne</strong></div>
+                                <div style="font-size: 0.9rem; color: #666;">{{ global_stats.most_4_stars.name }}</div>
+                                <span class="badge bg-info mt-2">
+                                    {{ global_stats.most_4_stars.rating_distribution[4] }} × 4⭐
+                                </span>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        {% if global_stats.most_3_stars %}
+                        <div class="col-md-6 col-lg-4 mb-3">
+                            <div class="alert alert-secondary text-center" style="border-left: 5px solid #6c757d;">
+                                <i class="fas fa-star" style="color: #6c757d; font-size: 1.5rem;"></i>
+                                <div class="mt-2"><strong>Meiste 3-Sterne</strong></div>
+                                <div style="font-size: 0.9rem; color: #666;">{{ global_stats.most_3_stars.name }}</div>
+                                <span class="badge bg-secondary mt-2">
+                                    {{ global_stats.most_3_stars.rating_distribution[3] }} × 3⭐
+                                </span>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="container">
+        {% if groups %}
+        <!-- Grupos de apartamentos colapsables -->
+        {% for group in groups %}
+        <div class="group-card">
+            <div class="group-header" onclick="toggleGroup('group-{{ loop.index }}')">
+                <div class="group-title">
+                    <div class="group-prefix">{{ group.prefix }}</div>
+                    <div class="group-info">
+                        <h3 style="margin: 0; font-size: 1.8rem;">Wohnungen {{ group.prefix }}</h3>
+                        <div style="opacity: 0.9; margin-top: 5px;">{{ group.count }} Wohnung(en)</div>
+                    </div>
+                </div>
+
+                <div class="group-stats">
+                    <div class="group-stat">
+                        <div class="group-stat-value">{{ group.average_rating }}</div>
+                        <div class="group-stat-label">Ø Bewertung</div>
+                    </div>
+                    <div class="group-stat">
+                        <div class="group-stat-value">{{ group.total_reviews }}</div>
+                        <div class="group-stat-label">Bewertungen</div>
+                    </div>
+                    <div class="group-chevron" id="chevron-group-{{ loop.index }}">
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="group-body" id="group-{{ loop.index }}">
+                {% for apartment in group.apartments %}
+                <div class="apartment-item">
+                    <div class="apt-rank">{{ loop.index }}</div>
+
+                    <div class="apt-info">
+                        <div class="apt-name">{{ apartment.name }}</div>
+                        <div class="apt-rating-compact">
+                            <div class="apt-rating-value">{{ apartment.average_rating }}</div>
+                            <div class="apt-stars-compact">
+                                {% for i in range(1, 6) %}
+                                {% if i <= apartment.average_rating %} <i class="fas fa-star"></i>
+                                    {% elif i - 0.5 <= apartment.average_rating %} <i class="fas fa-star-half-alt"></i>
+                                        {% else %}
+                                        <i class="far fa-star"></i>
+                                        {% endif %}
+                                        {% endfor %}
+                            </div>
+                            <span style="color: #999; font-size: 0.9rem;">
+                                ({{ apartment.total_reviews }} Bewertungen)
+                            </span>
+                        </div>
+                    </div>
+
+                    <div style="text-align: right;">
+                        <div style="margin-bottom: 5px;">
+                            <span class="badge bg-warning text-dark">
+                                {{ apartment.five_star_count }} × 5⭐
+                            </span>
+                        </div>
+                        <div>
+                            <span class="badge bg-info">
+                                {{ apartment.five_star_percentage }}% perfekt
+                            </span>
+                        </div>
+                    </div>
+
+                    {% if apartment.url %}
+                    <div>
+                        <a href="{{ apartment.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-external-link-alt"></i>
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="alert alert-info text-center">
+            <i class="fas fa-info-circle me-2"></i>
+            Aktuell sind keine Wohnungen mit Bewertungen verfügbar.
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Navigation Buttons -->
+    <div class="nav-buttons">
+        <button class="nav-btn" onclick="location.href='/analytics'" title="Analytics">
+            <i class="fas fa-chart-line fa-lg" style="color: #722F37;"></i>
+        </button>
+        <button class="nav-btn" onclick="location.href='/reviews'" title="Bewertungen ansehen">
+            <i class="fas fa-comments fa-lg" style="color: #722F37;"></i>
+        </button>
+        <button class="nav-btn" onclick="location.href='/'" title="Diashow">
+            <i class="fas fa-tv fa-lg" style="color: #722F37;"></i>
+        </button>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        function toggleGroup(groupId) {
+            const body = document.getElementById(groupId);
+            const chevron = document.getElementById('chevron-' + groupId);
+
+            if (body.classList.contains('expanded')) {
+                body.classList.remove('expanded');
+                chevron.classList.remove('expanded');
+            } else {
+                body.classList.add('expanded');
+                chevron.classList.add('expanded');
+            }
+        }
+    </script>
+</body>
+
+</html>

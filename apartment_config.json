@@ -1,0 +1,244 @@
+{
+    "apartments": {
+        "609172560881241855": {
+            "code": "UT",
+            "name": "UT - Ferienwohnung",
+            "description": "Apartamento UT en Sebnitz"
+        },
+        "940339949730055972": {
+            "code": "F3",
+            "name": "F3 - Ferienwohnung",
+            "description": "Apartamento F3 en Sebnitz"
+        },
+        "649153494847068923": {
+            "code": "H4",
+            "name": "H4 - Ferienwohnung",
+            "description": "Apartamento H4 en Sebnitz"
+        },
+        "1400686172947505650": {
+            "code": "L7",
+            "name": "L7 - Ferienwohnung",
+            "description": "Apartamento L7 en Sebnitz"
+        },
+        "1400553304457299600": {
+            "code": "L4",
+            "name": "L4 - Ferienwohnung",
+            "description": "Apartamento L4 en Sebnitz"
+        },
+        "623764180368706654": {
+            "code": "H5",
+            "name": "H5 - Ferienwohnung",
+            "description": "Apartamento H5 en Sebnitz"
+        },
+        "53213498": {
+            "code": "R2",
+            "name": "R2 - Ferienwohnung",
+            "description": "Apartamento R2 en Sebnitz"
+        },
+        "978296040019088348": {
+            "code": "HW2B",
+            "name": "HW2B - Ferienwohnung",
+            "description": "Apartamento HW2B en Sebnitz"
+        },
+        "1234047782495519188": {
+            "code": "B7",
+            "name": "B7 - Ferienwohnung",
+            "description": "Apartamento B7 en Sebnitz"
+        },
+        "1192577221925368063": {
+            "code": "B8",
+            "name": "B8 - Ferienwohnung",
+            "description": "Apartamento B8 en Sebnitz"
+        },
+        "1117325665633761027": {
+            "code": "B3",
+            "name": "B3 - Ferienwohnung",
+            "description": "Apartamento B3 en Sebnitz"
+        },
+        "1086740196036624350": {
+            "code": "HW1B",
+            "name": "HW1B - Ferienwohnung",
+            "description": "Apartamento HW1B en Sebnitz"
+        },
+        "1115927896352466530": {
+            "code": "B1",
+            "name": "B1 - Ferienwohnung",
+            "description": "Apartamento B1 en Sebnitz"
+        },
+        "1086704295178791370": {
+            "code": "H2",
+            "name": "H2 - Ferienwohnung",
+            "description": "Apartamento H2 en Sebnitz"
+        },
+        "1086254381830942280": {
+            "code": "HW3B",
+            "name": "HW3B - Ferienwohnung",
+            "description": "Apartamento HW3B en Sebnitz"
+        },
+        "1084714536578087959": {
+            "code": "UO3",
+            "name": "UO3 - Ferienwohnung",
+            "description": "Apartamento UO3 en Sebnitz"
+        },
+        "1075934362566482474": {
+            "code": "ZI2",
+            "name": "ZI2 - Ferienwohnung",
+            "description": "Apartamento ZI2 en Sebnitz"
+        },
+        "1017948205748585910": {
+            "code": "L8",
+            "name": "L8 - Ferienwohnung",
+            "description": "Apartamento L8 en Sebnitz"
+        },
+        "1015289627772010369": {
+            "code": "L6",
+            "name": "L6 - Ferienwohnung",
+            "description": "Apartamento L6 en Sebnitz"
+        },
+        "1015251077590567237": {
+            "code": "L5",
+            "name": "L5 - Ferienwohnung",
+            "description": "Apartamento L5 en Sebnitz"
+        },
+        "1013703015432494927": {
+            "code": "W4",
+            "name": "W4 - Ferienwohnung",
+            "description": "Apartamento W4 en Sebnitz"
+        },
+        "978070304262743292": {
+            "code": "F4",
+            "name": "F4 - Ferienwohnung",
+            "description": "Apartamento F4 en Sebnitz"
+        },
+        "930516325391043836": {
+            "code": "F1",
+            "name": "F1 - Ferienwohnung",
+            "description": "Apartamento F1 en Sebnitz"
+        },
+        "863189441921549381": {
+            "code": "HW2",
+            "name": "HW2 - Ferienwohnung",
+            "description": "Apartamento HW2 en Sebnitz"
+        },
+        "628058692756552966": {
+            "code": "H6",
+            "name": "H6 - Ferienwohnung",
+            "description": "Apartamento H6 en Sebnitz"
+        },
+        "608542931074344396": {
+            "code": "UO1",
+            "name": "UO1 - Ferienwohnung",
+            "description": "Apartamento UO1 en Sebnitz"
+        },
+        "606355177074778177": {
+            "code": "W3",
+            "name": "W3 - Ferienwohnung",
+            "description": "Apartamento W3 en Sebnitz"
+        },
+        "605776327027186134": {
+            "code": "FAMZI",
+            "name": "FAMZI - Ferienwohnung",
+            "description": "Apartamento FAMZI en Sebnitz"
+        },
+        "52516668": {
+            "code": "R1",
+            "name": "R1 - Ferienwohnung",
+            "description": "Apartamento R1 en Sebnitz"
+        },
+        "1116870560177253155": {
+            "code": "B2",
+            "name": "B2 - Ferienwohnung",
+            "description": "Apartamento B2 en Sebnitz"
+        },
+        "1018794394545297732": {
+            "code": "HW1",
+            "name": "HW1 - Ferienwohnung",
+            "description": "Apartamento HW1 en Sebnitz"
+        },
+        "618595100423444684": {
+            "code": "R3",
+            "name": "R3 - Ferienwohnung",
+            "description": "Apartamento R3 en Sebnitz"
+        },
+        "1262986403695976977": {
+            "code": "S2",
+            "name": "S2 - Ferienwohnung",
+            "description": "Apartamento S2 en Sebnitz"
+        },
+        "1262897033775851757": {
+            "code": "HW4B",
+            "name": "HW4B - Ferienwohnung",
+            "description": "Apartamento HW4B en Sebnitz"
+        },
+        "1262842711427107306": {
+            "code": "fO",
+            "name": "fO - Ferienwohnung",
+            "description": "Apartamento fO en Sebnitz"
+        },
+        "1086815255956233349": {
+            "code": "S3",
+            "name": "S3 - Ferienwohnung",
+            "description": "Apartamento S3 en Sebnitz"
+        },
+        "1262363357740087161": {
+            "code": "ZI1",
+            "name": "ZI1 - Ferienwohnung",
+            "description": "Apartamento ZI1 en Sebnitz"
+        },
+        "1262792970209710657": {
+            "code": "W2",
+            "name": "W2 - Ferienwohnung",
+            "description": "Apartamento W2 en Sebnitz"
+        },
+        "1262898891754516292": {
+            "code": "W5",
+            "name": "W5 - Ferienwohnung",
+            "description": "Apartamento W5 en Sebnitz"
+        },
+        "1263568439469285894": {
+            "code": "B6",
+            "name": "B6 - Ferienwohnung",
+            "description": "Apartamento B6 en Sebnitz"
+        },
+        "1263665955205447166": {
+            "code": "HW3",
+            "name": "HW3 - Ferienwohnung",
+            "description": "Apartamento HW3 en Sebnitz"
+        },
+        "1264408905915626460": {
+            "code": "B5",
+            "name": "B5 - Ferienwohnung",
+            "description": "Apartamento B5 en Sebnitz"
+        },
+        "50811734": {
+            "code": "H1",
+            "name": "H1 - Ferienwohnung",
+            "description": "Apartamento H1 en Sebnitz"
+        },
+        "858114269646172631": {
+            "code": "L1",
+            "name": "L1 - Ferienwohnung",
+            "description": "Apartamento L1 en Sebnitz"
+        },
+        "933775634493143720": {
+            "code": "F2",
+            "name": "F2 - Ferienwohnung",
+            "description": "Apartamento F2 en Sebnitz"
+        },
+        "960598313742984703": {
+            "code": "S1",
+            "name": "S1 - Ferienwohnung",
+            "description": "Apartamento S1 en Sebnitz"
+        }
+    },
+    "default_apartment": {
+        "code": "UNK",
+        "name": "Unbekanntes Apartment",
+        "description": "Apartamento no identificado"
+    },
+    "general_info": {
+        "location": "Sebnitz, Sächsische Schweiz",
+        "host": "Anna-Lena",
+        "title": "Ferienwohnungen - Sächsische Schweiz"
+    }
+}

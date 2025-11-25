@@ -1,0 +1,304 @@
+[
+  {
+    "code": "UNKNOWN",
+    "hotel_id": 13298314,
+    "hotel_id_from_url": "13298314",
+    "url": "https://www.booking.com/hotel/de/w6-gemutliche-wohnung-in-lichtenhain.de.html (W6)",
+    "review_count": 61,
+    "avg_rating": 8.38,
+    "room_types": [
+      "One-Bedroom Apartment",
+      "Single Room",
+      "Two-Bedroom Apartment"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "Zi2",
+    "hotel_id": 11558797,
+    "hotel_id_from_url": "11558797",
+    "url": "https://www.booking.com/hotel/de/urlaubsmagie-flussblickwohnung-mit-whirl-pool-amp-sauna-zi2.de.html",
+    "review_count": 5,
+    "avg_rating": 8.0,
+    "room_types": [
+      "One-Bedroom Apartment"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "H2",
+    "hotel_id": 8542044,
+    "hotel_id_from_url": "8542044",
+    "url": "https://www.booking.com/hotel/de/helle-gemutliche-wohnung-mit-terrasse-und-pool-h2.de.html",
+    "review_count": 5,
+    "avg_rating": 7.4,
+    "room_types": [
+      "Single Room"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "HW3B",
+    "hotel_id": 12209855,
+    "hotel_id_from_url": "12209855",
+    "url": "https://www.booking.com/hotel/de/hw3b-urlaubsmagie-grosses-wohnzimmer-amp-2-schlafzimmer.de.html",
+    "review_count": 5,
+    "avg_rating": 7.6,
+    "room_types": [
+      "Two-Bedroom Apartment"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "F0",
+    "hotel_id": 12249141,
+    "hotel_id_from_url": "12249141",
+    "url": "https://www.booking.com/hotel/de/f0-urlaubsmagie-kleine-voll-ausgestattete-wohnung-mit-gemeinschaftsgarten-pool-a.de.html",
+    "review_count": 5,
+    "avg_rating": 9.2,
+    "room_types": [
+      "One-Bedroom Apartment"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "S2",
+    "hotel_id": 10649329,
+    "hotel_id_from_url": "10649329",
+    "url": "https://www.booking.com/hotel/de/50m-bis-zum-wanderweg-25min-fussweg-bis-zum-lichtenhainer-wasserfall-b2.de.html",
+    "review_count": 5,
+    "avg_rating": 8.0,
+    "room_types": [
+      "Single Room"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "H1",
+    "hotel_id": 8541308,
+    "hotel_id_from_url": "8541308",
+    "url": "https://www.booking.com/hotel/de/gemutliche-wohnung-fur-2-mit-pool-und-terrasse-h1.de.html",
+    "review_count": 5,
+    "avg_rating": 7.2,
+    "room_types": [
+      "Single Room"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "H6",
+    "hotel_id": 8542367,
+    "hotel_id_from_url": "8542367",
+    "url": "https://www.booking.com/hotel/de/sommerparadies-mit-terrasse-garten-pool-h6.de.html",
+    "review_count": 5,
+    "avg_rating": 7.6,
+    "room_types": [
+      "Single Room"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "HW2B",
+    "hotel_id": 10758425,
+    "hotel_id_from_url": "10758425",
+    "url": "https://www.booking.com/hotel/de/wohlfuhlwohnung-mit-gemeinschaftsgarten-mit-pool-terrasse-amp-sauna-hw2b.de.html",
+    "review_count": 5,
+    "avg_rating": 9.0,
+    "room_types": [
+      "Single Room"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "B6",
+    "hotel_id": 12412050,
+    "hotel_id_from_url": "12412050",
+    "url": "https://www.booking.com/hotel/de/b6-urlaubsmagie-inmitten-der-sachsischen-schweiz-mit-balkon-mit-ausblick-auf-die.de.html",
+    "review_count": 5,
+    "avg_rating": 8.8,
+    "room_types": [
+      "One-Bedroom Apartment"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "Zi1",
+    "hotel_id": 8535194,
+    "hotel_id_from_url": "8535194",
+    "url": "https://www.booking.com/hotel/de/idyllische-erholung-sauna-garten-pool-amp-fluss-zi1.de.html",
+    "review_count": 5,
+    "avg_rating": 7.0,
+    "room_types": [
+      "Single Room"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "UT",
+    "hotel_id": 11557943,
+    "hotel_id_from_url": "11557943",
+    "url": "https://www.booking.com/hotel/de/urlaubsmagie-urlaubstraum-mit-whirl-pool-amp-sauna-ut.de.html",
+    "review_count": 5,
+    "avg_rating": 7.4,
+    "room_types": [
+      "Two-Bedroom Apartment"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "HW1B",
+    "hotel_id": 12217644,
+    "hotel_id_from_url": "12217644",
+    "url": "https://www.booking.com/hotel/de/hw1b-urlaubsmagie-gemeinschaftsgarten-mit-pool-sauna-amp-terrasse.de.html",
+    "review_count": 5,
+    "avg_rating": 7.8,
+    "room_types": [
+      "Two-Bedroom Apartment"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "HW1",
+    "hotel_id": 10056636,
+    "hotel_id_from_url": "10056636",
+    "url": "https://www.booking.com/hotel/de/gemutliche-grosse-wohnung-mit-pool-garten-amp-terrasse-hw1.de.html",
+    "review_count": 5,
+    "avg_rating": 8.0,
+    "room_types": [
+      "Single Room"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "S1",
+    "hotel_id": 10649298,
+    "hotel_id_from_url": "10649298",
+    "url": "https://www.booking.com/hotel/de/mitten-in-der-sachsischen-schweiz-gemutliche-wohnung-fur-bis-zu-4p-b1.de.html",
+    "review_count": 5,
+    "avg_rating": 7.8,
+    "room_types": [
+      "Single Room"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "UO0",
+    "hotel_id": 13130996,
+    "hotel_id_from_url": "13130996",
+    "url": "https://www.booking.com/hotel/de/uo0-urlaubsmagie-gemutliche-wohnung-fur-bis-zu-6p.de.html",
+    "review_count": 5,
+    "avg_rating": 9.4,
+    "room_types": [
+      "Two-Bedroom Apartment"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "HW2",
+    "hotel_id": 9870792,
+    "hotel_id_from_url": "9870792",
+    "url": "https://www.booking.com/hotel/de/grosse-helle-wohnung-mit-garten-pool-amp-sauna-hw2.de.html",
+    "review_count": 5,
+    "avg_rating": 7.4,
+    "room_types": [
+      "Single Room"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "W2",
+    "hotel_id": 12941184,
+    "hotel_id_from_url": "12941184",
+    "url": "https://www.booking.com/hotel/de/w2-urlaubsmagie-im-herzen-des-elbsandsteingebirges.de.html",
+    "review_count": 5,
+    "avg_rating": 9.0,
+    "room_types": [
+      "One-Bedroom Apartment"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "HW4B",
+    "hotel_id": 11623852,
+    "hotel_id_from_url": "11623852",
+    "url": "https://www.booking.com/hotel/de/urlaubsmagie-zentral-mit-gemeinschaftsgarten-pool-sauna-amp-whirlpool-hw4b.de.html",
+    "review_count": 5,
+    "avg_rating": 8.4,
+    "room_types": [
+      "Two-Bedroom Apartment"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "S3",
+    "hotel_id": 10649367,
+    "hotel_id_from_url": "10649367",
+    "url": "https://www.booking.com/hotel/de/fusslaufig-ins-kirnitzschtal-b3.de.html",
+    "review_count": 5,
+    "avg_rating": 8.8,
+    "room_types": [
+      "Single Room"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "UO3",
+    "hotel_id": 10057058,
+    "hotel_id_from_url": "10057058",
+    "url": "https://www.booking.com/hotel/de/gemutliche-urlaubsoase-mit-garten-grill-pool-amp-sauna-uo3.de.html",
+    "review_count": 5,
+    "avg_rating": 7.6,
+    "room_types": [
+      "Single Room"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "FAMZI",
+    "hotel_id": 8539276,
+    "hotel_id_from_url": "8539276",
+    "url": "https://www.booking.com/hotel/de/familienwohnung-fur-3-mit-sauna-pool-terrasse-famzi.de.html",
+    "review_count": 5,
+    "avg_rating": 8.0,
+    "room_types": [
+      "Single Room"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "UO",
+    "hotel_id": 8539982,
+    "hotel_id_from_url": "8539982",
+    "url": "https://www.booking.com/hotel/de/gemutliche-urlaubsoase-mit-pool-sauna-terrasse-uo.de.html",
+    "review_count": 5,
+    "avg_rating": 8.0,
+    "room_types": [
+      "Single Room"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "F1",
+    "hotel_id": 10404036,
+    "hotel_id_from_url": "10404036",
+    "url": "https://www.booking.com/hotel/de/helle-wohnung-mit-gemeinschaftsgarten-pool-und-sauna-g1.de.html",
+    "review_count": 5,
+    "avg_rating": 7.2,
+    "room_types": [
+      "Single Room"
+    ],
+    "total_reviews_analyzed": 180
+  },
+  {
+    "code": "L7",
+    "hotel_id": 13986842,
+    "hotel_id_from_url": "13986842",
+    "url": "https://www.booking.com/hotel/de/l7-urlaubsmagie-kleine-wohnung-am-wanderweg.de.html",
+    "review_count": 4,
+    "avg_rating": 8.0,
+    "room_types": [
+      "One-Bedroom Apartment"
+    ],
+    "total_reviews_analyzed": 180
+  }
+]

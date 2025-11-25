@@ -1,0 +1,544 @@
+/* ====================================== */
+/* Gästebewertungen Slideshow - HW3B CSS */
+/* ====================================== */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background: linear-gradient(135deg, #904E55 0%, #580f1b 100%);
+    color: white;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ====================================== */
+/* SLIDESHOW CONTAINER */
+/* ====================================== */
+
+.slideshow-container {
+    width: 100%;
+    max-width: 1500px;
+    height: 10vh;
+    position: relative;
+}
+
+.slide {
+    display: none;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 20px;
+    padding: 60px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    color: #733;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+.slide.active {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    animation: slideIn 1s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(100px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* ====================================== */
+/* SLIDE HEADER */
+/* ====================================== */
+
+.slide-header {
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.reviewer-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+}
+
+.reviewer-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    margin-right: 20px;
+    object-fit: cover;
+    border: 4px solid #722F37;
+}
+
+.reviewer-avatar-placeholder {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    margin-right: 20px;
+    background: linear-gradient(135deg, #904E55 0%, #580f1b 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 4px solid #722F37;
+    flex-shrink: 0;
+}
+
+.reviewer-avatar-placeholder span {
+    font-size: 2rem;
+    font-weight: 700;
+    color: white;
+    text-transform: uppercase;
+}
+
+.reviewer-details h2 {
+    font-size: 1.5rem;
+    font-weight: 30;
+    color: #333;
+    margin-bottom: 1px;
+}
+
+.reviewer-location {
+    font-size: 1.2rem;
+    color: #666;
+}
+
+/* ====================================== */
+/* PLATFORM BADGE */
+/* ====================================== */
+
+.platform-badge {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.platform-badge.airbnb {
+    background: linear-gradient(135deg, #FF5A5F 0%, #E31C23 100%);
+    color: white;
+}
+
+.platform-badge.booking {
+    background: linear-gradient(135deg, #003580 0%, #00509E 100%);
+    color: white;
+}
+
+/* ====================================== */
+/* RATING SECTION */
+/* ====================================== */
+
+.rating-section {
+    text-align: center;
+    margin-bottom: 4px;
+}
+
+.rating-stars {
+    font-size: 0.2rem;
+    color: #ffc107;
+    margin-bottom: 2px;
+}
+
+.rating-text {
+    font-size: 1.5rem;
+    color: #666;
+}
+
+/* ====================================== */
+/* REVIEW CONTENT */
+/* ====================================== */
+
+.review-content {
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    margin: 4px 10px;
+    padding: 10px 20px;
+}
+
+.review-text {
+    font-size: 0.1rem;
+    line-height: 1.4;
+    color: #444;
+    max-width: 100%;
+    font-weight: 400;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    transition: font-size 0.3s ease;
+}
+
+.review-date {
+    text-align: center;
+    font-size: 1rem;
+    color: #777;
+    margin-bottom: 20px;
+    font-weight: 500;
+}
+
+/* ====================================== */
+/* APARTMENT INFO */
+/* ====================================== */
+
+.apartment-info {
+    background: linear-gradient(135deg, #904E55 0%, #580f1b 100%);
+    color: white;
+    padding: 20px;
+    border-radius: 15px;
+    text-align: center;
+    margin-top: 15px;
+    border: 3px solid #fff;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.apartment-name {
+    font-size: 2.2rem;
+    font-weight: 700;
+    margin-bottom: 5px;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.apartment-details {
+    font-size: 1.1rem;
+    opacity: 0.95;
+    font-weight: 500;
+}
+
+.apartment-id {
+    font-size: 0.9rem;
+    opacity: 0.7;
+    font-weight: 300;
+    margin-left: 10px;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 2px 8px;
+    border-radius: 10px;
+    display: inline-block;
+}
+
+/* ====================================== */
+/* STAY INFO (Booking) */
+/* ====================================== */
+
+.stay-info {
+    background: rgba(0, 53, 128, 0.05);
+    border-left: 4px solid #003580;
+    padding: 15px 20px;
+    border-radius: 8px;
+    margin-top: 15px;
+    margin-bottom: 15px;
+}
+
+.stay-info-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #003580;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+}
+
+.stay-info-title i {
+    margin-right: 8px;
+}
+
+.stay-info-content {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    font-size: 0.95rem;
+    color: #333;
+}
+
+.stay-dates,
+.room-info,
+.traveler-type {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 200px;
+    padding: 8px 0;
+}
+
+.stay-dates i,
+.room-info i,
+.traveler-type i {
+    margin-right: 8px;
+    color: #003580;
+    font-size: 0.9rem;
+    min-width: 16px;
+}
+
+/* ====================================== */
+/* PROGRESS BAR */
+/* ====================================== */
+
+.progress-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 4px;
+    background: #722F37;
+    border-radius: 0 0 20px 20px;
+    transition: width 0.1s linear;
+}
+
+/* ====================================== */
+/* SLIDE COUNTER */
+/* ====================================== */
+
+.slide-counter {
+    position: absolute;
+    top: 30px;
+    right: 30px;
+    background: rgba(114, 47, 55, 0.9);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 25px;
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+/* ====================================== */
+/* LOADING SCREEN */
+/* ====================================== */
+
+.loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #904E55 0%, #580f1b 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.loading-content {
+    text-align: center;
+    color: white;
+}
+
+.loading-spinner {
+    width: 60px;
+    height: 60px;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top: 4px solid white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* ====================================== */
+/* RESPONSIVE DESIGN */
+/* ====================================== */
+
+/* Pantallas pequeñas - móvil/tablet */
+@media (max-width: 768px) {
+    .slideshow-container {
+        width: 95%;
+        height: 85vh;
+    }
+
+    .slide {
+        padding: 30px;
+    }
+
+    .reviewer-details h2 {
+        font-size: 1.8rem;
+    }
+
+    .reviewer-avatar {
+        width: 60px;
+        height: 60px;
+    }
+
+    .rating-stars {
+        font-size: 2rem;
+    }
+
+    .review-text {
+        font-size: 1.1rem;
+        line-height: 1.35;
+    }
+
+    .apartment-name {
+        font-size: 1.8rem;
+    }
+
+    .apartment-details {
+        font-size: 1rem;
+    }
+
+    .slide-counter {
+        top: 15px;
+        right: 15px;
+        padding: 8px 15px;
+        font-size: 0.9rem;
+    }
+
+    .stay-info-content {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .stay-dates,
+    .room-info,
+    .traveler-type {
+        min-width: auto;
+    }
+}
+
+/* Pantallas medianas - laptop */
+@media (min-width: 769px) and (max-width: 1399px) {
+    .slideshow-container {
+        width: 90%;
+        height: 82vh;
+    }
+
+    .slide {
+        padding: 45px;
+    }
+
+    .reviewer-details h2 {
+        font-size: 2.2rem;
+    }
+
+    .reviewer-avatar {
+        width: 70px;
+        height: 70px;
+    }
+
+    .rating-stars {
+        font-size: 2.5rem;
+    }
+
+    .review-text {
+        font-size: 1.25rem;
+        line-height: 1.4;
+    }
+
+    .apartment-name {
+        font-size: 2rem;
+    }
+
+    .apartment-details {
+        font-size: 1.05rem;
+    }
+
+    .stay-info-title {
+        font-size: 1.1rem;
+    }
+
+    .stay-info-content {
+        font-size: 1rem;
+    }
+}
+
+/* Pantallas grandes - TV/monitor */
+@media (min-width: 1400px) {
+    .slideshow-container {
+        width: 85%;
+        height: 80vh;
+        max-width: 1400px;
+    }
+
+    .slide {
+        padding: 60px;
+    }
+
+    .reviewer-details h2 {
+        font-size: 2.8rem;
+    }
+
+    .reviewer-avatar {
+        width: 90px;
+        height: 90px;
+    }
+
+    .rating-stars {
+        font-size: 3.5rem;
+    }
+
+    .review-text {
+        font-size: 1.5rem;
+        line-height: 1.4;
+    }
+
+    .apartment-name {
+        font-size: 2.8rem;
+    }
+
+    .apartment-details {
+        font-size: 1.3rem;
+    }
+
+    .review-date {
+        font-size: 1.15rem;
+    }
+
+    .stay-info-title {
+        font-size: 1.2rem;
+    }
+
+    .stay-info-content {
+        font-size: 1.1rem;
+        gap: 20px;
+    }
+}
+
+/* ====================================== */
+/* PERSONALIZACIÓN FÁCIL - EDITA AQUÍ */
+/* ====================================== */
+
+/* Para cambiar colores principales */
+:root {
+    --color-primary: #722F37;
+    --color-secondary: #580f1b;
+    --color-accent: #ffc107;
+    --color-text: #333;
+    --color-text-light: #666;
+}
+
+/* Para cambiar tiempo de transición de las animaciones */
+.slide.active {
+    /* Cambia el tiempo de la animación de entrada (1s = 1 segundo) */
+    animation: slideIn 1s ease-out;
+}
+
+.review-text {
+    /* Cambia el tiempo de transición del texto (0.3s = 0.3 segundos) */
+    transition: font-size 0.3s ease;
+}

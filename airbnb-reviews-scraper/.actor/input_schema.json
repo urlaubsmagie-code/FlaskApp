@@ -1,0 +1,43 @@
+{
+    "title": "Airbnb Reviews Scraper Input",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "listingUrls": {
+            "title": "Listing URLs",
+            "type": "array",
+            "description": "List of Airbnb listing URLs to scrape reviews from. Example: https://www.airbnb.com/rooms/12345678",
+            "editor": "stringList",
+            "prefill": [
+                "https://www.airbnb.com/rooms/12345678"
+            ],
+            "example": [
+                "https://www.airbnb.com/rooms/12345678",
+                "https://www.airbnb.com/rooms/87654321"
+            ]
+        },
+        "maxReviewsPerListing": {
+            "title": "Maximum Reviews per Listing",
+            "type": "integer",
+            "description": "Maximum number of reviews to scrape per listing",
+            "editor": "number",
+            "default": 100,
+            "minimum": 1,
+            "maximum": 1000,
+            "example": 100
+        },
+        "proxyConfiguration": {
+            "title": "Proxy Configuration",
+            "type": "object",
+            "description": "Proxy settings for the crawler. Use Apify Proxy for best results.",
+            "editor": "proxy",
+            "default": {
+                "useApifyProxy": true
+            },
+            "prefill": {
+                "useApifyProxy": true
+            }
+        }
+    },
+    "required": ["listingUrls"]
+}

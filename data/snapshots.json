@@ -1,0 +1,761 @@
+[
+  {
+    "date": "2025-11-04",
+    "week": "2025-W44",
+    "timestamp": "2025-11-04T12:57:56.956215",
+    "apartments": [
+      {
+        "apartment_id": "1400686172947505650",
+        "apartment_name": "L7",
+        "average_rating": 4.92,
+        "total_reviews": 13,
+        "total_stars": 64,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 1,
+          "5": 12
+        },
+        "five_star_count": 12,
+        "five_star_percentage": 92.3
+      },
+      {
+        "apartment_id": "1192577221925368063",
+        "apartment_name": "B8",
+        "average_rating": 4.92,
+        "total_reviews": 50,
+        "total_stars": 246,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 4,
+          "5": 46
+        },
+        "five_star_count": 46,
+        "five_star_percentage": 92.0
+      },
+      {
+        "apartment_id": "1262898891754516292",
+        "apartment_name": "W5",
+        "average_rating": 4.89,
+        "total_reviews": 9,
+        "total_stars": 44,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 1,
+          "5": 8
+        },
+        "five_star_count": 8,
+        "five_star_percentage": 88.9
+      },
+      {
+        "apartment_id": "1116870560177253155",
+        "apartment_name": "B2",
+        "average_rating": 4.83,
+        "total_reviews": 35,
+        "total_stars": 169,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 6,
+          "5": 29
+        },
+        "five_star_count": 29,
+        "five_star_percentage": 82.9
+      },
+      {
+        "apartment_id": "1015251077590567237",
+        "apartment_name": "L5",
+        "average_rating": 4.83,
+        "total_reviews": 36,
+        "total_stars": 174,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 6,
+          "5": 30
+        },
+        "five_star_count": 30,
+        "five_star_percentage": 83.3
+      },
+      {
+        "apartment_id": "1015289627772010369",
+        "apartment_name": "L6",
+        "average_rating": 4.83,
+        "total_reviews": 46,
+        "total_stars": 222,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 8,
+          "5": 38
+        },
+        "five_star_count": 38,
+        "five_star_percentage": 82.6
+      },
+      {
+        "apartment_id": "1400553304457299600",
+        "apartment_name": "L4",
+        "average_rating": 4.81,
+        "total_reviews": 16,
+        "total_stars": 77,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 3,
+          "5": 13
+        },
+        "five_star_count": 13,
+        "five_star_percentage": 81.2
+      },
+      {
+        "apartment_id": "1086254381830942280",
+        "apartment_name": "HW3B",
+        "average_rating": 4.81,
+        "total_reviews": 31,
+        "total_stars": 149,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 6,
+          "5": 25
+        },
+        "five_star_count": 25,
+        "five_star_percentage": 80.6
+      },
+      {
+        "apartment_id": "1294142559492486330",
+        "apartment_name": "Wohnung 129414...",
+        "average_rating": 4.79,
+        "total_reviews": 19,
+        "total_stars": 91,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 4,
+          "5": 15
+        },
+        "five_star_count": 15,
+        "five_star_percentage": 78.9
+      },
+      {
+        "apartment_id": "1234047782495519188",
+        "apartment_name": "B7",
+        "average_rating": 4.79,
+        "total_reviews": 48,
+        "total_stars": 230,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 2,
+          "4": 6,
+          "5": 40
+        },
+        "five_star_count": 40,
+        "five_star_percentage": 83.3
+      },
+      {
+        "apartment_id": "1017948205748585910",
+        "apartment_name": "L8",
+        "average_rating": 4.78,
+        "total_reviews": 50,
+        "total_stars": 239,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 11,
+          "5": 39
+        },
+        "five_star_count": 39,
+        "five_star_percentage": 78.0
+      },
+      {
+        "apartment_id": "930516325391043836",
+        "apartment_name": "F1",
+        "average_rating": 4.78,
+        "total_reviews": 50,
+        "total_stars": 239,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 11,
+          "5": 39
+        },
+        "five_star_count": 39,
+        "five_star_percentage": 78.0
+      },
+      {
+        "apartment_id": "1018794394545297732",
+        "apartment_name": "HW1",
+        "average_rating": 4.77,
+        "total_reviews": 44,
+        "total_stars": 210,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 1,
+          "4": 8,
+          "5": 35
+        },
+        "five_star_count": 35,
+        "five_star_percentage": 79.5
+      },
+      {
+        "apartment_id": "863189441921549381",
+        "apartment_name": "HW2",
+        "average_rating": 4.76,
+        "total_reviews": 50,
+        "total_stars": 238,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 1,
+          "4": 10,
+          "5": 39
+        },
+        "five_star_count": 39,
+        "five_star_percentage": 78.0
+      },
+      {
+        "apartment_id": "608542931074344396",
+        "apartment_name": "UO1",
+        "average_rating": 4.74,
+        "total_reviews": 50,
+        "total_stars": 237,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 13,
+          "5": 37
+        },
+        "five_star_count": 37,
+        "five_star_percentage": 74.0
+      },
+      {
+        "apartment_id": "618595100423444684",
+        "apartment_name": "R3",
+        "average_rating": 4.74,
+        "total_reviews": 50,
+        "total_stars": 237,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 1,
+          "4": 11,
+          "5": 38
+        },
+        "five_star_count": 38,
+        "five_star_percentage": 76.0
+      },
+      {
+        "apartment_id": "1115927896352466530",
+        "apartment_name": "B1",
+        "average_rating": 4.71,
+        "total_reviews": 49,
+        "total_stars": 231,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 14,
+          "5": 35
+        },
+        "five_star_count": 35,
+        "five_star_percentage": 71.4
+      },
+      {
+        "apartment_id": "1084714536578087959",
+        "apartment_name": "UO3",
+        "average_rating": 4.71,
+        "total_reviews": 45,
+        "total_stars": 212,
+        "rating_distribution": {
+          "1": 0,
+          "2": 1,
+          "3": 0,
+          "4": 10,
+          "5": 34
+        },
+        "five_star_count": 34,
+        "five_star_percentage": 75.6
+      },
+      {
+        "apartment_id": "1263568439469285894",
+        "apartment_name": "B6",
+        "average_rating": 4.7,
+        "total_reviews": 46,
+        "total_stars": 216,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 2,
+          "4": 10,
+          "5": 34
+        },
+        "five_star_count": 34,
+        "five_star_percentage": 73.9
+      },
+      {
+        "apartment_id": "858114269646172631",
+        "apartment_name": "L1",
+        "average_rating": 4.69,
+        "total_reviews": 32,
+        "total_stars": 150,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 2,
+          "4": 6,
+          "5": 24
+        },
+        "five_star_count": 24,
+        "five_star_percentage": 75.0
+      },
+      {
+        "apartment_id": "1086704295178791370",
+        "apartment_name": "H2",
+        "average_rating": 4.68,
+        "total_reviews": 34,
+        "total_stars": 159,
+        "rating_distribution": {
+          "1": 0,
+          "2": 1,
+          "3": 1,
+          "4": 6,
+          "5": 26
+        },
+        "five_star_count": 26,
+        "five_star_percentage": 76.5
+      },
+      {
+        "apartment_id": "1075934362566482474",
+        "apartment_name": "ZI2",
+        "average_rating": 4.68,
+        "total_reviews": 50,
+        "total_stars": 234,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 2,
+          "4": 12,
+          "5": 36
+        },
+        "five_star_count": 36,
+        "five_star_percentage": 72.0
+      },
+      {
+        "apartment_id": "940339949730055972",
+        "apartment_name": "F3",
+        "average_rating": 4.68,
+        "total_reviews": 50,
+        "total_stars": 234,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 3,
+          "4": 10,
+          "5": 37
+        },
+        "five_star_count": 37,
+        "five_star_percentage": 74.0
+      },
+      {
+        "apartment_id": "628058692756552966",
+        "apartment_name": "H6",
+        "average_rating": 4.68,
+        "total_reviews": 50,
+        "total_stars": 234,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 3,
+          "4": 10,
+          "5": 37
+        },
+        "five_star_count": 37,
+        "five_star_percentage": 74.0
+      },
+      {
+        "apartment_id": "960598313742984703",
+        "apartment_name": "S1",
+        "average_rating": 4.68,
+        "total_reviews": 50,
+        "total_stars": 234,
+        "rating_distribution": {
+          "1": 0,
+          "2": 1,
+          "3": 0,
+          "4": 13,
+          "5": 36
+        },
+        "five_star_count": 36,
+        "five_star_percentage": 72.0
+      },
+      {
+        "apartment_id": "1262792970209710657",
+        "apartment_name": "W2",
+        "average_rating": 4.67,
+        "total_reviews": 21,
+        "total_stars": 98,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 1,
+          "4": 5,
+          "5": 15
+        },
+        "five_star_count": 15,
+        "five_star_percentage": 71.4
+      },
+      {
+        "apartment_id": "623764180368706654",
+        "apartment_name": "H5",
+        "average_rating": 4.66,
+        "total_reviews": 50,
+        "total_stars": 233,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 3,
+          "4": 11,
+          "5": 36
+        },
+        "five_star_count": 36,
+        "five_star_percentage": 72.0
+      },
+      {
+        "apartment_id": "1262986403695976977",
+        "apartment_name": "S2",
+        "average_rating": 4.66,
+        "total_reviews": 35,
+        "total_stars": 163,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 1,
+          "4": 10,
+          "5": 24
+        },
+        "five_star_count": 24,
+        "five_star_percentage": 68.6
+      },
+      {
+        "apartment_id": "978070304262743292",
+        "apartment_name": "F4",
+        "average_rating": 4.66,
+        "total_reviews": 38,
+        "total_stars": 177,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 2,
+          "4": 9,
+          "5": 27
+        },
+        "five_star_count": 27,
+        "five_star_percentage": 71.1
+      },
+      {
+        "apartment_id": "933775634493143720",
+        "apartment_name": "F2",
+        "average_rating": 4.66,
+        "total_reviews": 50,
+        "total_stars": 233,
+        "rating_distribution": {
+          "1": 0,
+          "2": 1,
+          "3": 1,
+          "4": 12,
+          "5": 36
+        },
+        "five_star_count": 36,
+        "five_star_percentage": 72.0
+      },
+      {
+        "apartment_id": "1117325665633761027",
+        "apartment_name": "B3",
+        "average_rating": 4.64,
+        "total_reviews": 22,
+        "total_stars": 102,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 1,
+          "4": 6,
+          "5": 15
+        },
+        "five_star_count": 15,
+        "five_star_percentage": 68.2
+      },
+      {
+        "apartment_id": "1086740196036624350",
+        "apartment_name": "HW1B",
+        "average_rating": 4.64,
+        "total_reviews": 33,
+        "total_stars": 153,
+        "rating_distribution": {
+          "1": 1,
+          "2": 0,
+          "3": 0,
+          "4": 8,
+          "5": 24
+        },
+        "five_star_count": 24,
+        "five_star_percentage": 72.7
+      },
+      {
+        "apartment_id": "605776327027186134",
+        "apartment_name": "FAMZI",
+        "average_rating": 4.62,
+        "total_reviews": 50,
+        "total_stars": 231,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 4,
+          "4": 11,
+          "5": 35
+        },
+        "five_star_count": 35,
+        "five_star_percentage": 70.0
+      },
+      {
+        "apartment_id": "649153494847068923",
+        "apartment_name": "H4",
+        "average_rating": 4.6,
+        "total_reviews": 50,
+        "total_stars": 230,
+        "rating_distribution": {
+          "1": 0,
+          "2": 1,
+          "3": 2,
+          "4": 13,
+          "5": 34
+        },
+        "five_star_count": 34,
+        "five_star_percentage": 68.0
+      },
+      {
+        "apartment_id": "1013703015432494927",
+        "apartment_name": "W4",
+        "average_rating": 4.57,
+        "total_reviews": 23,
+        "total_stars": 105,
+        "rating_distribution": {
+          "1": 0,
+          "2": 1,
+          "3": 1,
+          "4": 5,
+          "5": 16
+        },
+        "five_star_count": 16,
+        "five_star_percentage": 69.6
+      },
+      {
+        "apartment_id": "53213498",
+        "apartment_name": "R2",
+        "average_rating": 4.56,
+        "total_reviews": 50,
+        "total_stars": 228,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 6,
+          "4": 10,
+          "5": 34
+        },
+        "five_star_count": 34,
+        "five_star_percentage": 68.0
+      },
+      {
+        "apartment_id": "1264408905915626460",
+        "apartment_name": "B5",
+        "average_rating": 4.56,
+        "total_reviews": 39,
+        "total_stars": 178,
+        "rating_distribution": {
+          "1": 0,
+          "2": 1,
+          "3": 2,
+          "4": 10,
+          "5": 26
+        },
+        "five_star_count": 26,
+        "five_star_percentage": 66.7
+      },
+      {
+        "apartment_id": "1262842711427107306",
+        "apartment_name": "fO",
+        "average_rating": 4.53,
+        "total_reviews": 43,
+        "total_stars": 195,
+        "rating_distribution": {
+          "1": 1,
+          "2": 1,
+          "3": 3,
+          "4": 7,
+          "5": 31
+        },
+        "five_star_count": 31,
+        "five_star_percentage": 72.1
+      },
+      {
+        "apartment_id": "609172560881241855",
+        "apartment_name": "UT",
+        "average_rating": 4.52,
+        "total_reviews": 50,
+        "total_stars": 226,
+        "rating_distribution": {
+          "1": 1,
+          "2": 1,
+          "3": 2,
+          "4": 13,
+          "5": 33
+        },
+        "five_star_count": 33,
+        "five_star_percentage": 66.0
+      },
+      {
+        "apartment_id": "1262897033775851757",
+        "apartment_name": "HW4B",
+        "average_rating": 4.5,
+        "total_reviews": 12,
+        "total_stars": 54,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 6,
+          "5": 6
+        },
+        "five_star_count": 6,
+        "five_star_percentage": 50.0
+      },
+      {
+        "apartment_id": "606355177074778177",
+        "apartment_name": "W3",
+        "average_rating": 4.48,
+        "total_reviews": 50,
+        "total_stars": 224,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 8,
+          "4": 10,
+          "5": 32
+        },
+        "five_star_count": 32,
+        "five_star_percentage": 64.0
+      },
+      {
+        "apartment_id": "52516668",
+        "apartment_name": "R1",
+        "average_rating": 4.48,
+        "total_reviews": 50,
+        "total_stars": 224,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 3,
+          "4": 20,
+          "5": 27
+        },
+        "five_star_count": 27,
+        "five_star_percentage": 54.0
+      },
+      {
+        "apartment_id": "1262363357740087161",
+        "apartment_name": "ZI1",
+        "average_rating": 4.44,
+        "total_reviews": 27,
+        "total_stars": 120,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 3,
+          "4": 9,
+          "5": 15
+        },
+        "five_star_count": 15,
+        "five_star_percentage": 55.6
+      },
+      {
+        "apartment_id": "978296040019088348",
+        "apartment_name": "HW2B",
+        "average_rating": 4.32,
+        "total_reviews": 22,
+        "total_stars": 95,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 4,
+          "4": 7,
+          "5": 11
+        },
+        "five_star_count": 11,
+        "five_star_percentage": 50.0
+      },
+      {
+        "apartment_id": "50811734",
+        "apartment_name": "H1",
+        "average_rating": 4.32,
+        "total_reviews": 50,
+        "total_stars": 216,
+        "rating_distribution": {
+          "1": 0,
+          "2": 1,
+          "3": 6,
+          "4": 19,
+          "5": 24
+        },
+        "five_star_count": 24,
+        "five_star_percentage": 48.0
+      },
+      {
+        "apartment_id": "1086815255956233349",
+        "apartment_name": "S3",
+        "average_rating": 4.31,
+        "total_reviews": 36,
+        "total_stars": 155,
+        "rating_distribution": {
+          "1": 0,
+          "2": 2,
+          "3": 4,
+          "4": 11,
+          "5": 19
+        },
+        "five_star_count": 19,
+        "five_star_percentage": 52.8
+      },
+      {
+        "apartment_id": "1263665955205447166",
+        "apartment_name": "HW3",
+        "average_rating": 4.0,
+        "total_reviews": 1,
+        "total_stars": 4,
+        "rating_distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 1,
+          "5": 0
+        },
+        "five_star_count": 0,
+        "five_star_percentage": 0.0
+      }
+    ]
+  }
+]

@@ -1,0 +1,57 @@
+{
+    "actorSpecification": 1,
+    "name": "airbnb-reviews-scraper",
+    "title": "Airbnb Reviews Scraper",
+    "description": "Scrapes reviews from Airbnb listings using Crawlee and Cheerio",
+    "version": "1.0.0",
+    "meta": {
+        "templateId": "javascript-crawlee-cheerio"
+    },
+    "input": "./input_schema.json",
+    "dockerfile": "./Dockerfile",
+    "readme": "./README.md",
+    "storages": {
+        "dataset": {
+            "actorSpecification": 1,
+            "views": {
+                "overview": {
+                    "title": "Reviews Overview",
+                    "transformation": {
+                        "fields": [
+                            "listingTitle",
+                            "reviewerName",
+                            "reviewDate",
+                            "reviewText",
+                            "rating"
+                        ]
+                    },
+                    "display": {
+                        "component": "table",
+                        "properties": {
+                            "listingTitle": {
+                                "label": "Listing",
+                                "format": "text"
+                            },
+                            "reviewerName": {
+                                "label": "Reviewer",
+                                "format": "text"
+                            },
+                            "reviewDate": {
+                                "label": "Date",
+                                "format": "text"
+                            },
+                            "reviewText": {
+                                "label": "Review",
+                                "format": "text"
+                            },
+                            "rating": {
+                                "label": "Rating",
+                                "format": "text"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

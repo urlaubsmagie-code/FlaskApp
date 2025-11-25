@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics - Wohnungs-Statistiken</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #904E55 0%, #580f1b 100%);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header-section {
+            color: white;
+            padding: 20px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .chart-container {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .chart-wrapper {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            width: 95%;
+            height: 90%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        canvas {
+            flex: 1;
+        }
+
+        .nav-buttons {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 1000;
+        }
+
+        .nav-btn {
+            background: white;
+            border: none;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            margin-left: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .nav-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .table-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .apartment-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            margin: 2px;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Header Section -->
+    <div class="header-section">
+        <h2>
+            <i class="fas fa-chart-line me-2"></i>
+            Entwicklung der Durchschnittsbewertungen
+        </h2>
+        {% if snapshots %}
+        <small style="opacity: 0.9;">Stand: {{ snapshots[-1]['date'] }} | {{ snapshots|length }} Snapshot(s)</small>
+        {% endif %}
+    </div>
+
+    {% if has_data %}
+    <div class="chart-container">
+        <div class="chart-wrapper">
+            <canvas id="ratingsChart"></canvas>
+        </div>
+    </div>
+    {% else %}
+    <div class="chart-container">
+        <div class="alert alert-warning">
+            <h4><i class="fas fa-exclamation-triangle me-2"></i>Keine Daten verfügbar</h4>
+            <p>Erstellen Sie den ersten Snapshot mit: <code>python create_snapshot.py</code></p>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Navigation Buttons -->
+    <div class="nav-buttons">
+        <button class="nav-btn" onclick="location.href='/rankings'" title="Rankings">
+            <i class="fas fa-trophy fa-lg" style="color: #722F37;"></i>
+        </button>
+        <button class="nav-btn" onclick="location.href='/reviews'" title="Bewertungen">
+            <i class="fas fa-comments fa-lg" style="color: #722F37;"></i>
+        </button>
+        <button class="nav-btn" onclick="location.href='/'" title="Diashow">
+            <i class="fas fa-tv fa-lg" style="color: #722F37;"></i>
+        </button>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    {% if has_data and apartments_data %}
+    <script>
+        // Datos de apartamentos desde el backend
+        const apartmentsData = {{ apartments_data | tojson | safe }};
+
+        // Preparar datos para gráfico de ratings
+        const ratingsData = {
+            labels: [],
+            datasets: []
+        };
+
+        // Colores para cada apartamento
+        const colors = [
+            '#722F37', '#904E55', '#580f1b', '#A65E65', '#D68C93',
+            '#722F37', '#904E55', '#580f1b', '#A65E65', '#D68C93',
+            '#722F37', '#904E55', '#580f1b', '#A65E65', '#D68C93'
+        ];
+
+        let colorIndex = 0;
+
+        // Crear datasets para cada apartamento
+        for (const [aptId, data] of Object.entries(apartmentsData)) {
+            if (data.dates.length > 0) {
+                // Usar las fechas del primer apartamento como labels
+                if (ratingsData.labels.length === 0) {
+                    ratingsData.labels = data.dates;
+                }
+
+                ratingsData.datasets.push({
+                    label: data.name,
+                    data: data.ratings,
+                    borderColor: colors[colorIndex % colors.length],
+                    backgroundColor: colors[colorIndex % colors.length] + '20',
+                    tension: 0.4,
+                    borderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                });
+
+                colorIndex++;
+            }
+        }
+
+        // Crear gráfico de ratings
+        const ratingsCtx = document.getElementById('ratingsChart').getContext('2d');
+        new Chart(ratingsCtx, {
+            type: 'line',
+            data: ratingsData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            usePointStyle: true,
+                            padding: 15,
+                            font: {
+                                size: 14
+                            }
+                        }
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        titleFont: {
+                            size: 14
+                        },
+                        bodyFont: {
+                            size: 13
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        min: 4.5,
+                        max: 5.0,
+                        ticks: {
+                            stepSize: 0.1,
+                            font: {
+                                size: 13
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Durchschnittsbewertung',
+                            font: {
+                                size: 14,
+                                weight: 'bold'
+                            }
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            font: {
+                                size: 13
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Datum',
+                            font: {
+                                size: 14,
+                                weight: 'bold'
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+    {% endif %}
+</body>
+
+</html>

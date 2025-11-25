@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gästebewertungen Slideshow</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/slideshow.css') }}">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .loading-content {
+            text-align: center;
+            color: white;
+        }
+        
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .slideshow-container {
+            width: 85%;
+            height: 80vh;
+            position: relative;
+        }
+        
+        .slide {
+            display: none;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 60px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            color: #333;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        
+        .slide.active {
+            display: flex;
+            animation: slideIn 1s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(100px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .slide-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .reviewer-info {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+        
+        .reviewer-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            margin-right: 20px;
+            object-fit: cover;
+            border: 4px solid #667eea;
+        }
+        
+        .reviewer-avatar-placeholder {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            margin-right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 4px solid #667eea;
+            flex-shrink: 0;
+        }
+        
+        .reviewer-avatar-placeholder span {
+            font-size: 2rem;
+            font-weight: 700;
+            color: white;
+            text-transform: uppercase;
+        }
+        
+        .reviewer-details h2 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .reviewer-location {
+            font-size: 1.1rem;
+            color: #666;
+        }
+        
+        .platform-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            margin: 10px 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .platform-badge.airbnb {
+            background: linear-gradient(135deg, #FF5A5F 0%, #E31C23 100%);
+            color: white;
+        }
+        
+        .platform-badge.booking {
+            background: linear-gradient(135deg, #003580 0%, #00509E 100%);
+            color: white;
+        }
+        
+        .rating-section {
+            text-align: center;
+            margin: 10px 0;
+        }
+        
+        .rating-stars {
+            font-size: 3rem;
+            color: #ffc107;
+            margin-bottom: 5px;
+        }
+        
+        .rating-text {
+            font-size: 1.3rem;
+            color: #666;
+        }
+        
+        .review-content {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            margin: 20px 10px;
+            padding: 20px;
+        }
+        
+        .review-text {
+            font-size: 1.4rem;
+            line-height: 1.5;
+            color: #444;
+            max-width: 100%;
+        }
+        
+        .review-date {
+            text-align: center;
+            font-size: 1rem;
+            color: #777;
+            margin-bottom: 15px;
+            font-weight: 500;
+        }
+        
+        .stay-info {
+            background: rgba(0, 53, 128, 0.05);
+            border-left: 4px solid #003580;
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 0.95rem;
+            color: #333;
+        }
+        
+        .stay-info-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #003580;
+            margin-bottom: 8px;
+        }
+        
+        .apartment-info {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            border: 3px solid #fff;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        
+        .apartment-name {
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        }
+        
+        .apartment-details {
+            font-size: 1.1rem;
+            opacity: 0.95;
+            font-weight: 500;
+        }
+        
+        .progress-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 4px;
+            background: #667eea;
+            border-radius: 0 0 20px 20px;
+            transition: width 0.1s linear;
+        }
+        
+        .slide-counter {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            background: rgba(102, 126, 234, 0.9);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-screen" id="loadingScreen">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <h2>Lade Gästebewertungen...</h2>
+        </div>
+    </div>
+
+    <div class="slideshow-container" id="slideshowContainer" style="display: none;">
+        {% for review in reviews %}
+        <div class="slide" data-review-id="{{ review.id }}">
+            <div class="slide-counter">
+                <span id="current-slide">{{ loop.index }}</span> / <span id="total-slides">{{ reviews|length }}</span>
+            </div>
+            
+            <div class="slide-header">
+                <div class="reviewer-info">
+                    {% if review.reviewer_picture %}
+                    <img src="{{ review.reviewer_picture }}" alt="{{ review.reviewer_name }}" class="reviewer-avatar" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                    <div class="reviewer-avatar-placeholder" style="display:none;">
+                        <span>{{ review.reviewer_name[0] if review.reviewer_name else 'G' }}</span>
+                    </div>
+                    {% else %}
+                    <div class="reviewer-avatar-placeholder">
+                        <span>{{ review.reviewer_name[0] if review.reviewer_name else 'G' }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="reviewer-details">
+                        <h2>{{ review.reviewer_name or 'Gast' }}</h2>
+                        {% if review.reviewer_location %}
+                        <div class="reviewer-location">{{ review.reviewer_location }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="platform-badge {{ 'airbnb' if review.platform_code == 'AB' else 'booking' }}">
+                    {{ review.platform_code }}
+                </div>
+                
+                <div class="rating-section">
+                    <div class="rating-stars">
+                        {% if review.platform_code == 'AB' %}
+                            {% for i in range(1, 6) %}
+                                {% if i <= review.rating %}<i class="fas fa-star"></i>{% else %}<i class="far fa-star"></i>{% endif %}
+                            {% endfor %}
+                        {% else %}
+                            {% set stars_rating = (review.rating / 2) | round %}
+                            {% for i in range(1, 6) %}
+                                {% if i <= stars_rating %}<i class="fas fa-star"></i>{% else %}<i class="far fa-star"></i>{% endif %}
+                            {% endfor %}
+                        {% endif %}
+                    </div>
+                    <div class="rating-text">{{ review.rating }}/{{ review.max_rating }}</div>
+                </div>
+            </div>
+            
+            <div class="review-content">
+                <div class="review-text">{{ review.text|safe }}</div>
+            </div>
+            
+            {% if review.date %}
+            <div class="review-date">
+                <i class="fas fa-calendar-alt"></i> {{ review.date }}
+            </div>
+            {% endif %}
+            
+            {% if review.stay_info and review.platform_code == 'BK' %}
+            <div class="stay-info">
+                <div class="stay-info-title">Aufenthalt Details</div>
+                {% if review.stay_info.check_in and review.stay_info.check_out %}
+                <div>{{ review.stay_info.check_in }} bis {{ review.stay_info.check_out }}
+                {% if review.stay_info.number_of_nights %} ({{ review.stay_info.number_of_nights }} Nächte){% endif %}</div>
+                {% endif %}
+                {% if review.stay_info.room_info %}<div>{{ review.stay_info.room_info }}</div>{% endif %}
+            </div>
+            {% endif %}
+            
+            <div class="apartment-info">
+                <div class="apartment-name">
+                    <i class="fas fa-bed"></i> {{ review.apartment_name }}
+                </div>
+                <div class="apartment-details">
+                    Sebnitz, Sächsische Schweiz • Gastgeber: {{ review.host_name }}
+                </div>
+            </div>
+            
+            <div class="progress-bar" id="progressBar{{ loop.index }}"></div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/slideshow.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+{
+  "snapshots": [
+    {
+      "id": 1,
+      "filename": "dataset_001_2025-11-05_102644.json",
+      "created_at": "2025-11-05T10:26:44.640960",
+      "total_reviews": 1836,
+      "apartments_count": 49,
+      "hash": "91319c3a7031f1a5e36975c7c6dd11db"
+    },
+    {
+      "id": 2,
+      "filename": "dataset_002_2025-11-05_132536.json",
+      "created_at": "2025-11-05T13:25:36.620592",
+      "total_reviews": 27,
+      "apartments_count": 21,
+      "hash": "4253f2d57ebffd86eaa660b96c0cc521"
+    },
+    {
+      "id": 3,
+      "filename": "dataset_003_2025-11-10_103157.json",
+      "created_at": "2025-11-10T10:31:57.645331",
+      "total_reviews": 22,
+      "apartments_count": 18,
+      "hash": "bab4e3e9750c46ec6b698c3ec5bb8399"
+    },
+    {
+      "id": 4,
+      "filename": "dataset_004_2025-11-17_074447.json",
+      "created_at": "2025-11-17T07:44:47.903312",
+      "total_reviews": 34,
+      "apartments_count": 22,
+      "hash": "62e56b6b5422a448eafb6ae3a597585f"
+    },
+    {
+      "id": 5,
+      "filename": "dataset_005_2025-11-24_102312.json",
+      "created_at": "2025-11-24T10:23:12.028775",
+      "total_reviews": 42,
+      "apartments_count": 26,
+      "hash": "74211fb759737b256258d2202be8960c"
+    }
+  ]
+}

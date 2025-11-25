@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gästebewertungen</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #904E55 0%, #580f1b 100%);
+            color: white;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            width: 90%;
+            height: 90vh;
+            position: relative;
+        }
+
+        .slide {
+            display: none;
+            background: white;
+            color: #333;
+            height: 100%;
+            padding: 50px;
+            border-radius: 15px;
+            position: relative;
+            overflow: hidden;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .slide.active {
+            display: flex;
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        /* HEADER */
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .reviewer-info {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+
+        .avatar {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            margin-right: 15px;
+            object-fit: cover;
+            border: 3px solid #722F37;
+            background: #f0f0f0;
+        }
+
+        .avatar-placeholder {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            margin-right: 15px;
+            background: linear-gradient(135deg, #904E55 0%, #580f1b 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 3px solid #722F37;
+            flex-shrink: 0;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+        }
+
+        .reviewer-details h2 {
+            font-size: 22px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .reviewer-location {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 8px 14px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 11px;
+            margin: 8px 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: white;
+        }
+
+        .badge-ab {
+            background: linear-gradient(135deg, #FF5A5F 0%, #E31C23 100%);
+        }
+
+        .badge-bk {
+            background: linear-gradient(135deg, #003580 0%, #00509E 100%);
+        }
+
+        .rating-section {
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        .stars {
+            font-size: 24px;
+            color: #ffc107;
+            letter-spacing: 3px;
+        }
+
+        .rating-text {
+            font-size: 16px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        /* CONTENT */
+        .content {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-size: 18px;
+            line-height: 1.6;
+            color: #444;
+            padding: 20px;
+            min-height: 150px;
+        }
+
+        .review-text {
+            max-width: 100%;
+            word-wrap: break-word;
+        }
+
+        /* FOOTER */
+        .footer {
+            text-align: center;
+            color: #666;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+
+        .stay-info {
+            background: rgba(0, 53, 128, 0.05);
+            border-left: 3px solid #003580;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-size: 12px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .apt-info {
+            background: linear-gradient(135deg, #904E55 0%, #580f1b 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .counter {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            background: rgba(114, 47, 55, 0.9);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .progress-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            background: #722F37;
+            border-radius: 0 0 15px 0;
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        {% for review in reviews %}
+        <div class="slide" id="slide{{ loop.index0 }}">
+            <div class="counter">
+                <span id="num{{ loop.index0 }}">{{ loop.index }}</span> / {{ reviews|length }}
+            </div>
+
+            <!-- HEADER -->
+            <div class="header">
+                <div class="reviewer-info">
+                    {% if review.reviewer_picture %}
+                    <img src="{{ review.reviewer_picture }}" alt="{{ review.reviewer_name }}" class="avatar"
+                        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                    <div class="avatar-placeholder" style="display:none;">
+                        {{ review.reviewer_name[0] if review.reviewer_name else 'G' }}
+                    </div>
+                    {% else %}
+                    <div class="avatar-placeholder">
+                        {{ review.reviewer_name[0] if review.reviewer_name else 'G' }}
+                    </div>
+                    {% endif %}
+
+                    <div class="reviewer-details">
+                        <h2>{{ review.reviewer_name or 'Gast' }}</h2>
+                        {% if review.reviewer_location %}
+                        <div class="reviewer-location">{{ review.reviewer_location }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="badge {% if review.platform_code == 'AB' %}badge-ab{% else %}badge-bk{% endif %}">
+                    {{ review.platform_code }}
+                </div>
+
+                <div class="rating-section">
+                    <div class="stars">
+                        {% if review.platform_code == 'AB' %}
+                        {% for i in range(1, 6) %}
+                        {% if i <= review.rating %}<i class="fas fa-star"></i>{% else %}<i class="far fa-star"></i>{%
+                            endif %}
+                            {% endfor %}
+                            {% else %}
+                            {% set stars_rating = (review.rating / 2) | round %}
+                            {% for i in range(1, 6) %}
+                            {% if i <= stars_rating %}<i class="fas fa-star"></i>{% else %}<i class="far fa-star"></i>{%
+                                endif %}
+                                {% endfor %}
+                                {% endif %}
+                    </div>
+                    <div class="rating-text">{{ review.rating }}/{{ review.max_rating }}</div>
+                </div>
+            </div>
+
+            <!-- CONTENT -->
+            <div class="content">
+                <div class="review-text">{{ review.text|safe }}</div>
+            </div>
+
+            <!-- FOOTER -->
+            <div class="footer">
+                {% if review.date %}
+                <div><i class="fas fa-calendar-alt"></i> {{ review.date }}</div>
+                {% endif %}
+
+                {% if review.stay_info and review.platform_code == 'BK' %}
+                <div class="stay-info">
+                    <i class="fas fa-suitcase"></i>
+                    {% if review.stay_info.check_in %}
+                    {{ review.stay_info.check_in }} - {{ review.stay_info.check_out }}
+                    {% if review.stay_info.number_of_nights %} ({{ review.stay_info.number_of_nights }}N){% endif %}
+                    {% endif %}
+                    {% if review.stay_info.room_info %} • {{ review.stay_info.room_info }}{% endif %}
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="apt-info">
+                <i class="fas fa-bed"></i> {{ review.apartment_name }}
+            </div>
+
+            <div class="progress-bar" id="bar{{ loop.index0 }}"></div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <script>
+        let current = 0;
+        let slides = document.querySelectorAll('.slide');
+        let speed = 30000;
+        let timer = null;
+        let progress = null;
+
+        function show(n) {
+            slides.forEach(s => s.classList.remove('active'));
+            if (slides[n]) {
+                slides[n].classList.add('active');
+                startProgress(n);
+            }
+        }
+
+        function next() {
+            current = (current + 1) % slides.length;
+            show(current);
+        }
+
+        function startProgress(n) {
+            if (progress) clearInterval(progress);
+            let bar = document.getElementById('bar' + n);
+            if (!bar) return;
+
+            let w = 0;
+            bar.style.width = '0%';
+            progress = setInterval(() => {
+                w += 100 / (speed / 50);
+                if (w >= 100) {
+                    bar.style.width = '100%';
+                    clearInterval(progress);
+                } else {
+                    bar.style.width = w + '%';
+                }
+            }, 50);
+        }
+
+        if (slides.length > 0) {
+            show(0);
+            timer = setInterval(next, speed);
+        }
+    </script>
+</body>
+
+</html>
