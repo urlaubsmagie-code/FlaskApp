@@ -1150,15 +1150,47 @@ def api_apartment_issues():
         with open(general_reviews_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
-        # Extraer la estructura de wohnungen del JSON
-        # El JSON tiene estructura: [{"index": 0, "message": {"role": "assistant", "content": {"wohnungen": [...]}}...}]
+        # Load history reviews from HRFinal.json
+        hrfinal_path = os.path.join(os.path.dirname(__file__), 'HRFinal.json')
+        history_wohnungen = []
+        if os.path.exists(hrfinal_path):
+            with open(hrfinal_path, 'r', encoding='utf-8') as f:
+                hist_data = json.load(f)
+            if isinstance(hist_data, list) and len(hist_data) > 0:
+                history_wohnungen = hist_data[0].get('message', {}).get('content', {}).get('wohnungen', [])
+        
+        # Extract recents from general data
+        recents_wohnungen = []
         if isinstance(data, list) and len(data) > 0:
-            content = data[0].get('message', {}).get('content', {})
-            wohnungen = content.get('wohnungen', [])
-            return jsonify({'wohnungen': wohnungen})
+            recents_wohnungen = data[0].get('message', {}).get('content', {}).get('wohnungen', [])
         
-        return jsonify({'wohnungen': []})
+        # Merge history and recents for general view
+        merged = {}
+        for apt in history_wohnungen:
+            merged[apt.get('wohnung')] = {
+                'wohnung': apt.get('wohnung'),
+                'probleme': apt.get('probleme', []).copy()
+            }
+        for apt in recents_wohnungen:
+            key = apt.get('wohnung')
+            if key in merged:
+                # Merge problems, avoid duplicates based on description
+                existing = merged[key]['probleme']
+                for prob in apt.get('probleme', []):
+                    if not any(p.get('beschreibung') == prob.get('beschreibung') for p in existing):
+                        existing.append(prob)
+            else:
+                merged[key] = {
+                    'wohnung': apt.get('wohnung'),
+                    'probleme': apt.get('probleme', []).copy()
+                }
+        general_wohnungen = list(merged.values())
         
+        return jsonify({
+            'history': history_wohnungen,
+            'recents': recents_wohnungen,
+            'general': general_wohnungen
+        })
     except Exception as e:
         print(f"❌ Error al cargar problemas de apartamentos: {e}")
         import traceback
@@ -1166,6 +1198,288 @@ def api_apartment_issues():
         return jsonify({
             'error': str(e),
             'wohnungen': []
+        }), 500
+
+@app.route('/api/apartment-reviews/<apartment_code>')
+def api_apartment_reviews(apartment_code):
+    """API endpoint para obtener reviews detalladas de un apartamento específico"""
+    try:
+        data_folder = os.path.join(os.path.dirname(__file__), 'data', 'DataProblemListing')
+        
+        # Map special apartment codes to their file names
+        code_mapping = {
+            'FZ': 'FAMZI',
+            # Add more mappings here if needed
+        }
+        
+        # Use mapped code if it exists, otherwise use original
+        file_code = code_mapping.get(apartment_code, apartment_code)
+        
+        # Try both Airbnb and Booking files
+        reviews = []
+        
+        # Load Airbnb reviews
+        airbnb_file = os.path.join(data_folder, f'Airbnb{file_code}.json')
+        if os.path.exists(airbnb_file):
+            with open(airbnb_file, 'r', encoding='utf-8') as f:
+                airbnb_data = json.load(f)
+                for review in airbnb_data:
+                    reviews.append({
+                        'id': str(review.get('reviewId', '')),
+                        'name': review.get('reviewerName', ''),
+                        'date': review.get('reviewDate', ''),
+                        'text': review.get('reviewText', ''),
+                        'rating': review.get('rating', 0),
+                        'source': 'Airbnb'
+                    })
+        
+        # Load Booking reviews
+        booking_file = os.path.join(data_folder, f'Booking{file_code}.json')
+        if os.path.exists(booking_file):
+            with open(booking_file, 'r', encoding='utf-8') as f:
+                booking_data = json.load(f)
+                for review in booking_data:
+                    # Combine liked and disliked text
+                    liked = review.get('likedText', '') or ''
+                    disliked = review.get('dislikedText', '') or ''
+                    full_text = ''
+                    if liked:
+                        full_text += f"👍 {liked}"
+                    if disliked:
+                        if full_text:
+                            full_text += " | "
+                        full_text += f"👎 {disliked}"
+                    
+                    reviews.append({
+                        'id': '',  # Booking doesn't have review IDs
+                        'name': review.get('userName', ''),
+                        'date': review.get('reviewDate', ''),
+                        'text': full_text or review.get('reviewTitle', ''),
+                        'rating': review.get('rating', 0),
+                        'source': 'Booking'
+                    })
+        
+        return jsonify({
+            'apartment': apartment_code,
+            'reviews': reviews
+        })
+        
+    except Exception as e:
+        print(f"❌ Error al cargar reviews del apartamento {apartment_code}: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'reviews': []
+        }), 500
+
+@app.route('/api/current-reviews')
+def api_current_reviews():
+    """API endpoint para obtener reviews actuales desde DatasetScr y DatasetScrBooking"""
+    try:
+        dataset_folder = r'C:\Users\admin\n8n-docker\files'
+        
+        reviews = []
+        
+        # Load Airbnb reviews from DatasetScr.json
+        airbnb_file = os.path.join(dataset_folder, 'DatasetScr.json')
+        if os.path.exists(airbnb_file):
+            with open(airbnb_file, 'r', encoding='utf-8') as f:
+                airbnb_data = json.load(f)
+                for review in airbnb_data:
+                    reviews.append({
+                        'id': str(review.get('reviewId', '')),
+                        'name': review.get('reviewerName', ''),
+                        'date': review.get('reviewDate', ''),
+                        'text': review.get('reviewText', ''),
+                        'rating': review.get('rating', 0),
+                        'source': 'Airbnb'
+                    })
+        
+        # Load Booking reviews from DatasetScrBooking.json
+        booking_file = os.path.join(dataset_folder, 'DatasetScrBooking.json')
+        if os.path.exists(booking_file):
+            with open(booking_file, 'r', encoding='utf-8') as f:
+                booking_data = json.load(f)
+                for review in booking_data:
+                    # Combine liked and disliked text
+                    liked = review.get('likedText', '') or ''
+                    disliked = review.get('dislikedText', '') or ''
+                    full_text = ''
+                    if liked:
+                        full_text += f"👍 {liked}"
+                    if disliked:
+                        if full_text:
+                            full_text += " | "
+                        full_text += f"👎 {disliked}"
+                    
+                    reviews.append({
+                        'id': review.get('id', ''),
+                        'name': review.get('userName', ''),
+                        'date': review.get('reviewDate', ''),
+                        'text': full_text or review.get('reviewTitle', ''),
+                        'rating': review.get('rating', 0),
+                        'source': 'Booking'
+                    })
+        
+        return jsonify({
+            'reviews': reviews,
+            'total': len(reviews)
+        })
+        
+    except Exception as e:
+        print(f"❌ Error al cargar reviews actuales: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'reviews': []
+        }), 500
+
+@app.route('/api/backup-dates')
+def api_backup_dates():
+    """API endpoint para listar fechas de backup disponibles"""
+    try:
+        backup_folder = os.path.join(os.path.dirname(__file__), 'data', 'BackupIssues')
+        
+        if not os.path.exists(backup_folder):
+            return jsonify({'dates': []})
+        
+        # Find all GeneralReviews backup files
+        files = os.listdir(backup_folder)
+        backup_dates = set()
+        
+        for filename in files:
+            # Extract date from filename (e.g., GeneralReviews021225.json -> 021225)
+            if filename.startswith('GeneralReviews') and filename.endswith('.json'):
+                date_part = filename.replace('GeneralReviews', '').replace('.json', '')
+                if len(date_part) == 6 and date_part.isdigit():
+                    backup_dates.add(date_part)
+        
+        # Sort dates (most recent first)
+        sorted_dates = sorted(list(backup_dates), reverse=True)
+        
+        # Convert to readable format
+        date_list = []
+        for date_str in sorted_dates:
+            try:
+                from datetime import datetime
+                day = date_str[0:2]
+                month = date_str[2:4]
+                year = '20' + date_str[4:6]
+                date_obj = datetime.strptime(f"{day}{month}{year}", "%d%m%Y")
+                date_list.append({
+                    'date_key': date_str,
+                    'date_formatted': date_obj.strftime('%d.%m.%Y'),
+                    'date_iso': date_obj.strftime('%Y-%m-%d')
+                })
+            except:
+                continue
+        
+        return jsonify({'dates': date_list})
+        
+    except Exception as e:
+        print(f"❌ Error al listar fechas de backup: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e), 'dates': []}), 500
+
+@app.route('/api/backup-data/<date_key>')
+def api_backup_data(date_key):
+    """API endpoint para obtener datos de backup de una fecha específica"""
+    try:
+        backup_folder = os.path.join(os.path.dirname(__file__), 'data', 'BackupIssues')
+        
+        # Load GeneralReviews backup for this date
+        general_file = os.path.join(backup_folder, f'GeneralReviews{date_key}.json')
+        
+        if not os.path.exists(general_file):
+            return jsonify({'error': 'Backup no encontrado', 'wohnungen': []}), 404
+        
+        with open(general_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        # Extract wohnungen from backup
+        backup_wohnungen = []
+        if isinstance(data, list) and len(data) > 0:
+            backup_wohnungen = data[0].get('message', {}).get('content', {}).get('wohnungen', [])
+        
+        return jsonify({
+            'date_key': date_key,
+            'wohnungen': backup_wohnungen
+        })
+        
+    except Exception as e:
+        print(f"❌ Error al cargar backup {date_key}: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'wohnungen': []
+        }), 500
+
+@app.route('/api/backup-reviews/<date_key>')
+def api_backup_reviews(date_key):
+    """API endpoint para obtener reviews de backup de una fecha específica"""
+    try:
+        backup_folder = os.path.join(os.path.dirname(__file__), 'data', 'BackupIssues')
+        
+        reviews = []
+        
+        # Load Airbnb reviews from DatasetScr backup
+        airbnb_file = os.path.join(backup_folder, f'DatasetScr{date_key}.json')
+        if os.path.exists(airbnb_file):
+            with open(airbnb_file, 'r', encoding='utf-8') as f:
+                airbnb_data = json.load(f)
+                for review in airbnb_data:
+                    reviews.append({
+                        'id': str(review.get('reviewId', '')),
+                        'name': review.get('reviewerName', ''),
+                        'date': review.get('reviewDate', ''),
+                        'text': review.get('reviewText', ''),
+                        'rating': review.get('rating', 0),
+                        'source': 'Airbnb'
+                    })
+        
+        # Load Booking reviews from DatasetScrBooking backup
+        booking_file = os.path.join(backup_folder, f'DatasetScrBooking{date_key}.json')
+        if os.path.exists(booking_file):
+            with open(booking_file, 'r', encoding='utf-8') as f:
+                booking_data = json.load(f)
+                for review in booking_data:
+                    # Combine liked and disliked text
+                    liked = review.get('likedText', '') or ''
+                    disliked = review.get('dislikedText', '') or ''
+                    full_text = ''
+                    if liked:
+                        full_text += f"👍 {liked}"
+                    if disliked:
+                        if full_text:
+                            full_text += " | "
+                        full_text += f"👎 {disliked}"
+                    
+                    reviews.append({
+                        'id': review.get('id', ''),
+                        'name': review.get('userName', ''),
+                        'date': review.get('reviewDate', ''),
+                        'text': full_text or review.get('reviewTitle', ''),
+                        'rating': review.get('rating', 0),
+                        'source': 'Booking'
+                    })
+        
+        return jsonify({
+            'date_key': date_key,
+            'reviews': reviews,
+            'total': len(reviews)
+        })
+        
+    except Exception as e:
+        print(f"❌ Error al cargar reviews de backup {date_key}: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'reviews': []
         }), 500
 
 @app.route('/api/snapshots')

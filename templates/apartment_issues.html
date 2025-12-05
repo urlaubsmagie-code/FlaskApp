@@ -310,6 +310,189 @@
             padding: 4px 8px;
             border-radius: 4px;
             font-size: 0.75rem;
+            gap: 10px;
+        }
+
+        .apartment-code {
+            background: #722F37;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+
+        .problem-count {
+            background: #f0f0f0;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .problem-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .problem-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+
+        .problem-item:hover {
+            background: #f0f0f0;
+            border-color: #722F37;
+        }
+
+        .problem-item.completed {
+            background: #e8f5e9;
+            opacity: 0.7;
+        }
+
+        .problem-item.completed .problem-description {
+            text-decoration: line-through;
+            color: #999;
+        }
+
+        .problem-checkbox {
+            flex-shrink: 0;
+            width: 24px;
+            height: 24px;
+            margin-top: 2px;
+            cursor: pointer;
+            accent-color: #722F37;
+        }
+
+        .problem-content {
+            flex: 1;
+        }
+
+        .problem-description {
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .problem-mentions {
+            font-size: 0.85rem;
+            color: #999;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .mentions-badge {
+            background: #722F37;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: bold;
+        }
+
+        .delete-btn {
+            flex-shrink: 0;
+            background: none;
+            border: none;
+            color: #ccc;
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 0;
+            transition: color 0.3s ease;
+        }
+
+        .delete-btn:hover {
+            color: #e74c3c;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-state i {
+            font-size: 4rem;
+            color: #ddd;
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .completed-message {
+            text-align: center;
+            color: #27ae60;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .btn-custom {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .btn-reset {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-reset:hover {
+            background: #c0392b;
+        }
+
+        .btn-export {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-export:hover {
+            background: #2980b9;
+        }
+
+        @media (max-width: 768px) {
+            .container-main {
+                padding: 15px;
+            }
+
+            .header-stats {
+                gap: 15px;
+            }
+
+            .stat-number {
+                font-size: 1.5rem;
+            }
+
+            .apartment-header {
+                flex-wrap: wrap;
+            }
+
+            .problem-item {
+                flex-wrap: wrap;
+            }
+        }
+
+        .badge-severity {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
             font-weight: bold;
             text-transform: uppercase;
         }
@@ -353,6 +536,91 @@
             100% {
                 transform: rotate(360deg);
             }
+        }
+
+        .reviewers-dropdown {
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border: 2px solid #722F37;
+            border-radius: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .reviewers-dropdown.loading {
+            text-align: center;
+            padding: 20px;
+            color: #999;
+        }
+
+        .reviewer-item {
+            padding: 10px;
+            margin-bottom: 8px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 3px solid #722F37;
+            transition: all 0.2s ease;
+        }
+
+        .reviewer-item:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+
+        .reviewer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .reviewer-name {
+            font-weight: bold;
+            color: #722F37;
+        }
+
+        .reviewer-date {
+            font-size: 0.85rem;
+            color: #999;
+        }
+
+        .reviewer-source {
+            display: inline-block;
+            padding: 2px 6px;
+            font-size: 0.75rem;
+            border-radius: 4px;
+            background: #722F37;
+            color: white;
+            margin-left: 8px;
+        }
+
+        .reviewer-text {
+            font-size: 0.9rem;
+            color: #555;
+            line-height: 1.4;
+            margin-top: 5px;
+        }
+
+        .show-reviewers-btn {
+            background: none;
+            border: 1px solid #722F37;
+            color: #722F37;
+            padding: 4px 10px;
+            border-radius: 5px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-top: 5px;
+        }
+
+        .show-reviewers-btn:hover {
+            background: #722F37;
+            color: white;
+        }
+
+        .show-reviewers-btn i {
+            margin-right: 5px;
         }
     </style>
 </head>
@@ -407,10 +675,34 @@
             </div>
         </div>
 
+        <!-- Source Selection -->
+        <div class="filter-section mb-3">
+            <label class="mb-3" style="display: block; font-weight: bold; color: #333;">Datenquelle:</label>
+            <div class="filter-tabs source-tabs">
+                <button class="filter-btn active" data-source="recents">
+                    <i class="fas fa-clock me-2"></i>Aktuell (Neu)
+                </button>
+                <button class="filter-btn" data-source="history">
+                    <i class="fas fa-history me-2"></i>Historie (Archiv)
+                </button>
+                <button class="filter-btn" data-source="backup">
+                    <i class="fas fa-database me-2"></i>General Backup
+                </button>
+            </div>
+        </div>
+
+        <!-- Backup Date Selector (only visible when backup is selected) -->
+        <div id="backupDateSelector" class="filter-section mb-3" style="display: none;">
+            <label class="mb-3" style="display: block; font-weight: bold; color: #333;">Backup-Datum auswählen:</label>
+            <select id="backupDateSelect" class="form-select" style="max-width: 300px;">
+                <option value="">Lade Backups...</option>
+            </select>
+        </div>
+
         <!-- Filter Section -->
         <div class="filter-section">
-            <label class="mb-3" style="display: block; font-weight: bold; color: #333;">Anzeige filtern:</label>
-            <div class="filter-tabs">
+            <label class="mb-3" style="display: block; font-weight: bold; color: #333;">Status filtern:</label>
+            <div class="filter-tabs status-tabs">
                 <button class="filter-btn active" data-filter="all">
                     <i class="fas fa-list me-2"></i>Alle
                 </button>
@@ -442,49 +734,165 @@
 
     <script>
         const STORAGE_KEY = 'apartment_issues_completed';
-        let allData = [];
+        let fullData = { history: [], recents: [], backup: [] };
+        let backupDates = [];
+        let currentBackupDate = null;
+        let currentSource = 'recents';
         let currentFilter = 'all';
 
         // Load data on page load
         document.addEventListener('DOMContentLoaded', async () => {
-            await loadData();
             loadCompletedState();
-            renderContent();
             setupEventListeners();
+            await loadData();
+            await loadBackupDates();
         });
 
         async function loadData() {
             try {
                 const response = await fetch('/api/apartment-issues');
                 const data = await response.json();
-                allData = data.wohnungen || [];
+
+                console.log('API Response:', data);
+                console.log('History count:', data.history?.length);
+                console.log('Recents count:', data.recents?.length);
+                console.log('General count:', data.general?.length);
+
+                if (data.error) throw new Error(data.error);
+
+                // Handle legacy format if API returns old structure
+                if (data.wohnungen) {
+                    fullData = { history: [], recents: data.wohnungen };
+                } else {
+                    fullData = data;
+                }
+
+                console.log('fullData:', fullData);
                 updateStats();
+                renderContent();
             } catch (error) {
                 console.error('Error loading data:', error);
                 document.getElementById('contentArea').innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-exclamation-circle"></i>
                         <h5>Fehler beim Laden der Daten</h5>
-                        <p>Die Daten konnten nicht geladen werden. Bitte versuchen Sie es später erneut.</p>
+                        <p>${error.message || 'Die Daten konnten nicht geladen werden. Bitte versuchen Sie später erneut.'}</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function loadBackupDates() {
+            try {
+                const response = await fetch('/api/backup-dates');
+                const data = await response.json();
+                backupDates = data.dates || [];
+                
+                const select = document.getElementById('backupDateSelect');
+                
+                if (backupDates.length === 0) {
+                    select.innerHTML = '<option value="">Keine Backups verfügbar</option>';
+                } else {
+                    select.innerHTML = backupDates.map(date => 
+                        `<option value="${date.date_key}">${date.date_formatted}</option>`
+                    ).join('');
+                    
+                    // Auto-select first (most recent) backup
+                    if (backupDates.length > 0) {
+                        currentBackupDate = backupDates[0].date_key;
+                        select.value = currentBackupDate;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading backup dates:', error);
+            }
+        }
+
+        async function loadBackupData(dateKey) {
+            try {
+                const response = await fetch(`/api/backup-data/${dateKey}`);
+                const data = await response.json();
+                
+                if (data.error) throw new Error(data.error);
+                
+                fullData.backup = data.wohnungen || [];
+                currentBackupDate = dateKey;
+                
+                updateStats();
+                renderContent();
+            } catch (error) {
+                console.error('Error loading backup data:', error);
+                document.getElementById('contentArea').innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <h5>Fehler beim Laden des Backups</h5>
+                        <p>${error.message}</p>
                     </div>
                 `;
             }
         }
 
         function updateStats() {
-            const completed = getCompletedIssues().length;
-            const total = allData.reduce((sum, apt) => sum + apt.probleme.length, 0);
+            const currentData = fullData[currentSource] || [];
+            const completedIds = getCompletedIssues();
 
-            document.getElementById('totalApartments').textContent = allData.length;
-            document.getElementById('totalProblems').textContent = total;
-            document.getElementById('completedCount').textContent = completed;
+            // Count completed issues ONLY for the current view
+            let completedCount = 0;
+            let totalProblems = 0;
+
+            currentData.forEach(apt => {
+                if (apt.probleme && Array.isArray(apt.probleme)) {
+                    apt.probleme.forEach(prob => {
+                        totalProblems++;
+                        const issueId = getIssueId(apt.wohnung, prob.beschreibung);
+                        if (completedIds.includes(issueId)) {
+                            completedCount++;
+                        }
+                    });
+                }
+            });
+
+            document.getElementById('totalApartments').textContent = currentData.length;
+            document.getElementById('totalProblems').textContent = totalProblems;
+            document.getElementById('completedCount').textContent = completedCount;
         }
 
         function setupEventListeners() {
+            // Source buttons
+            document.querySelectorAll('.source-tabs .filter-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    document.querySelectorAll('.source-tabs .filter-btn').forEach(b => b.classList.remove('active'));
+                    e.target.closest('.filter-btn').classList.add('active');
+                    currentSource = e.target.closest('.filter-btn').dataset.source;
+                    
+                    // Show/hide backup date selector
+                    const backupSelector = document.getElementById('backupDateSelector');
+                    if (currentSource === 'backup') {
+                        backupSelector.style.display = 'block';
+                        // Load backup data if date is selected
+                        if (currentBackupDate) {
+                            await loadBackupData(currentBackupDate);
+                        }
+                    } else {
+                        backupSelector.style.display = 'none';
+                        updateStats();
+                        renderContent();
+                    }
+                });
+            });
+
+            // Backup date selector
+            document.getElementById('backupDateSelect').addEventListener('change', async (e) => {
+                const dateKey = e.target.value;
+                if (dateKey && currentSource === 'backup') {
+                    await loadBackupData(dateKey);
+                }
+            });
+
             // Filter buttons
-            document.querySelectorAll('.filter-btn').forEach(btn => {
+            document.querySelectorAll('.status-tabs .filter-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
-                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.status-tabs .filter-btn').forEach(b => b.classList.remove('active'));
                     e.target.closest('.filter-btn').classList.add('active');
                     currentFilter = e.target.closest('.filter-btn').dataset.filter;
                     renderContent();
@@ -500,8 +908,9 @@
 
         function renderContent() {
             const contentArea = document.getElementById('contentArea');
+            const currentData = fullData[currentSource] || [];
 
-            if (allData.length === 0) {
+            if (currentData.length === 0) {
                 contentArea.innerHTML = `
                     <div class="loading">
                         <div class="spinner"></div>
@@ -515,7 +924,9 @@
             const completed = getCompletedIssues();
             let visibleSections = 0;
 
-            allData.forEach(apartment => {
+            currentData.forEach(apartment => {
+                if (!apartment.probleme || !Array.isArray(apartment.probleme)) return;
+                
                 const filteredProblems = apartment.probleme.filter(problem => {
                     const issueId = getIssueId(apartment.wohnung, problem.beschreibung);
                     const isCompleted = completed.includes(issueId);
@@ -541,23 +952,46 @@
                 `;
 
                 html += `<div class="problem-list">`;
-                filteredProblems.forEach(problem => {
+                filteredProblems.forEach((problem, problemIndex) => {
                     const issueId = getIssueId(apartmentCode, problem.beschreibung);
                     const isCompleted = completed.includes(issueId);
-                    const severity = getSeverity(problem.erwähnungen);
+                    const erwähnungen = problem.erwähnungen || 0;
+                    const severity = getSeverity(erwähnungen);
+                    
+                    // Normalize id/ids to always be an array
+                    let reviewIds = [];
+                    if (problem.id) {
+                        reviewIds = Array.isArray(problem.id) ? problem.id : [problem.id];
+                    } else if (problem.ids) {
+                        reviewIds = Array.isArray(problem.ids) ? problem.ids : [problem.ids];
+                    }
+                    
+                    const hasReviewers = (reviewIds.length > 0) || (problem.names && problem.names.length > 0);
+                    const dropdownId = `dropdown-${apartmentCode}-${problemIndex}`;
 
                     html += `
                         <div class="problem-item ${isCompleted ? 'completed' : ''}" data-issue-id="${issueId}">
                             <input type="checkbox" class="problem-checkbox" ${isCompleted ? 'checked' : ''} 
                                    onchange="toggleIssue('${issueId}')">
-                            <div class="problem-content">
+                            <div class="problem-content" style="flex: 1;">
                                 <div class="problem-description">${escapeHtml(problem.beschreibung)}</div>
                                 <div class="problem-mentions">
                                     <i class="fas fa-megaphone"></i>
-                                    <span class="mentions-badge">${problem.erwähnungen}</span>
+                                    <span class="mentions-badge">${erwähnungen}</span>
                                     <span>Erwähnungen</span>
                                     <span class="badge-severity badge-${severity}">${getSeverityLabel(severity)}</span>
                                 </div>
+                                ${hasReviewers ? `
+                                    <button class="show-reviewers-btn" 
+                                            data-apartment="${apartmentCode}" 
+                                            data-dropdown="${dropdownId}"
+                                            data-source="${currentSource}"
+                                            data-ids="${utf8ToBase64(JSON.stringify(reviewIds))}"
+                                            data-names="${utf8ToBase64(JSON.stringify(problem.names || []))}">
+                                        <i class="fas fa-users"></i>Rezensenten anzeigen
+                                    </button>
+                                    <div id="${dropdownId}" class="reviewers-dropdown" style="display: none;"></div>
+                                ` : ''}
                             </div>
                             <button class="delete-btn" onclick="deleteIssue('${issueId}')">
                                 <i class="fas fa-times"></i>
@@ -579,6 +1013,24 @@
             }
 
             contentArea.innerHTML = html;
+            
+            // Add event listeners to all "show reviewers" buttons
+            document.querySelectorAll('.show-reviewers-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const apartmentCode = this.dataset.apartment;
+                    const dropdownId = this.dataset.dropdown;
+                    const source = this.dataset.source;
+                    
+                    // Decode base64 encoded JSON
+                    const idsJson = base64ToUtf8(this.dataset.ids);
+                    const namesJson = base64ToUtf8(this.dataset.names);
+                    
+                    const ids = idsJson ? JSON.parse(idsJson) : [];
+                    const names = namesJson ? JSON.parse(namesJson) : [];
+                    
+                    toggleReviewers(apartmentCode, dropdownId, ids, names, source);
+                });
+            });
         }
 
         function toggleIssue(issueId) {
@@ -619,8 +1071,9 @@
         }
 
         function exportData() {
+            const currentData = fullData[currentSource] || [];
             const completed = getCompletedIssues();
-            const exportData = allData.map(apt => ({
+            const exportData = currentData.map(apt => ({
                 wohnung: apt.wohnung,
                 probleme: apt.probleme.map(p => ({
                     beschreibung: p.beschreibung,
@@ -634,7 +1087,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `wohnungsprobleme_${new Date().toISOString().split('T')[0]}.json`;
+            a.download = `wohnungsprobleme_${currentSource}_${new Date().toISOString().split('T')[0]}.json`;
             a.click();
             URL.revokeObjectURL(url);
         }
@@ -653,8 +1106,38 @@
             getCompletedIssues();
         }
 
+        // UTF-8 safe base64 encoding
+        function utf8ToBase64(str) {
+            try {
+                return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => {
+                    return String.fromCharCode('0x' + p1);
+                }));
+            } catch (e) {
+                // Fallback: just use a simple hash if encoding fails
+                let hash = 0;
+                for (let i = 0; i < str.length; i++) {
+                    const char = str.charCodeAt(i);
+                    hash = ((hash << 5) - hash) + char;
+                    hash = hash & hash;
+                }
+                return Math.abs(hash).toString(36);
+            }
+        }
+
+        // UTF-8 safe base64 decoding
+        function base64ToUtf8(str) {
+            try {
+                return decodeURIComponent(atob(str).split('').map(c => {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+            } catch (e) {
+                console.error('Error decoding base64:', e);
+                return '';
+            }
+        }
+
         function getIssueId(apartment, description) {
-            return `${apartment}_${btoa(description)}`;
+            return `${apartment}_${utf8ToBase64(description)}`;
         }
 
         function getSeverity(mentions) {
@@ -676,6 +1159,145 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        async function toggleReviewers(apartmentCode, dropdownId, ids, names, source) {
+            const dropdown = document.getElementById(dropdownId);
+            
+            console.log('toggleReviewers called:', { apartmentCode, dropdownId, ids, names, source });
+            
+            // Toggle visibility
+            if (dropdown.style.display !== 'none') {
+                dropdown.style.display = 'none';
+                return;
+            }
+            
+            // Show loading state
+            dropdown.style.display = 'block';
+            dropdown.className = 'reviewers-dropdown loading';
+            dropdown.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Lade Rezensenten...';
+            
+            try {
+                // Choose endpoint based on source
+                let apiUrl;
+                if (source === 'recents') {
+                    apiUrl = '/api/current-reviews';
+                } else if (source === 'backup') {
+                    // Use backup reviews with date
+                    apiUrl = `/api/backup-reviews/${currentBackupDate}`;
+                } else {
+                    // history
+                    apiUrl = `/api/apartment-reviews/${apartmentCode}`;
+                }
+                console.log('Fetching from:', apiUrl);
+                
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+                
+                console.log('API response:', data);
+                console.log('Total reviews:', data.reviews?.length);
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Filter reviews based on ids or names
+                let matchingReviews = [];
+                
+                if (ids && ids.length > 0) {
+                    // Filter by review IDs (Airbnb)
+                    // Convert both to strings for comparison to handle large numbers
+                    const idsAsStrings = ids.map(id => String(id));
+                    console.log('Looking for IDs:', idsAsStrings);
+                    console.log('Available review IDs:', data.reviews.map(r => String(r.id)));
+                    
+                    matchingReviews = data.reviews.filter(review => 
+                        idsAsStrings.includes(String(review.id))
+                    );
+                    console.log('Matched by IDs:', matchingReviews.length);
+                }
+                
+                if (names && names.length > 0) {
+                    // Filter by reviewer names (both Airbnb and Booking)
+                    console.log('Looking for names:', names);
+                    console.log('Available names:', data.reviews.map(r => r.name));
+                    
+                    // Check exact matches
+                    const nameMatches = data.reviews.filter(review => {
+                        const match = names.includes(review.name);
+                        if (!match && names.length < 5) {
+                            // Log mismatches for debugging
+                            console.log(`No match: "${review.name}" not in`, names);
+                        }
+                        return match;
+                    });
+                    console.log('Matched by names:', nameMatches.length);
+                    
+                    if (nameMatches.length === 0 && names.length > 0) {
+                        console.warn('NO MATCHES FOUND! Checking for similar names...');
+                        names.forEach(searchName => {
+                            const similar = data.reviews.filter(r => 
+                                r.name.toLowerCase().includes(searchName.toLowerCase()) ||
+                                searchName.toLowerCase().includes(r.name.toLowerCase())
+                            );
+                            if (similar.length > 0) {
+                                console.log(`Similar matches for "${searchName}":`, similar.map(r => r.name));
+                            }
+                        });
+                    }
+                    
+                    // Merge with existing matches, avoid duplicates
+                    nameMatches.forEach(review => {
+                        if (!matchingReviews.find(r => r.id === review.id && r.name === review.name)) {
+                            matchingReviews.push(review);
+                        }
+                    });
+                }
+                
+                console.log('Total matching reviews:', matchingReviews.length);
+                
+                // Display results
+                dropdown.className = 'reviewers-dropdown';
+                
+                if (matchingReviews.length === 0) {
+                    dropdown.innerHTML = '<p style="color: #999; text-align: center;">Keine Rezensionen gefunden</p>';
+                } else {
+                    let html = '';
+                    matchingReviews.forEach(review => {
+                        const date = new Date(review.date).toLocaleDateString('de-DE', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                        });
+                        
+                        // Remove HTML tags from review text (handle null/undefined)
+                        const reviewText = review.text || '';
+                        const cleanText = reviewText.replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '');
+                        const displayText = cleanText || '(Kein Kommentartext verfügbar)';
+                        
+                        const reviewerName = review.name || 'Unbekannt';
+                        
+                        html += `
+                            <div class="reviewer-item">
+                                <div class="reviewer-header">
+                                    <div>
+                                        <span class="reviewer-name">${escapeHtml(reviewerName)}</span>
+                                        <span class="reviewer-source">${review.source}</span>
+                                    </div>
+                                    <span class="reviewer-date">${date}</span>
+                                </div>
+                                <div class="reviewer-text">${escapeHtml(displayText)}</div>
+                            </div>
+                        `;
+                    });
+                    dropdown.innerHTML = html;
+                }
+                
+            } catch (error) {
+                console.error('Error loading reviewers:', error);
+                dropdown.className = 'reviewers-dropdown';
+                dropdown.innerHTML = `<p style="color: #e74c3c; text-align: center;">Fehler beim Laden: ${error.message}</p>`;
+            }
         }
     </script>
 </body>
