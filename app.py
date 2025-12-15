@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 import locale
 import hashlib
 import shutil
+from deep_translator import GoogleTranslator
+from deep_translator.exceptions import TranslationNotFound, NotValidPayload
 
 app = Flask(__name__)
 
@@ -34,6 +36,9 @@ EXCLUDED_APARTMENT_IDS = {
     '50587278',
     '814427016412775340'
 }
+
+# Cache de traducciones para evitar llamadas repetidas
+translation_cache = {}
 
 def load_id_mapping():
     """Cargar mapeo de IDs desde ID.txt (para Airbnb)"""
@@ -493,6 +498,56 @@ def translate_room_info(room_info):
     
     return result
 
+def translate_to_german(text, source_lang='auto'):
+    """Traducir texto al alemán si no está en alemán
+    
+    Args:
+        text: Texto a traducir
+        source_lang: Código de idioma fuente ('auto' para detección automática)
+    
+    Returns:
+        Tupla (texto_traducido, fue_traducido, idioma_original)
+    """
+    if not text or not isinstance(text, str) or len(text.strip()) < 3:
+        return text, False, 'unknown'
+    
+    # Limpiar HTML tags para mejor detección de idioma
+    text_clean = re.sub(r'<[^>]+>', '', text).strip()
+    
+    # Verificar cache primero
+    cache_key = hashlib.md5(text_clean.encode('utf-8')).hexdigest()
+    if cache_key in translation_cache:
+        cached = translation_cache[cache_key]
+        return cached['translated_text'], cached['was_translated'], cached['source_lang']
+    
+    try:
+        # Intentar traducir usando Google Translator
+        # deep-translator detecta automáticamente si es necesario traducir
+        translator = GoogleTranslator(source='auto', target='de')
+        translated_text = translator.translate(text_clean)
+        
+        # Si el texto traducido es igual al original, probablemente ya era alemán
+        was_translated = translated_text != text_clean
+        source_lang = 'de' if not was_translated else 'auto'
+        
+        # Guardar en cache
+        translation_cache[cache_key] = {
+            'translated_text': translated_text,
+            'was_translated': was_translated,
+            'source_lang': source_lang
+        }
+        
+        return translated_text, was_translated, source_lang
+        
+    except (TranslationNotFound, NotValidPayload) as e:
+        # Si no se puede traducir, retornar texto original
+        print(f"⚠️  No se pudo traducir: {e}")
+        return text, False, 'unknown'
+    except Exception as e:
+        # Si falla la traducción, retornar texto original
+        print(f"⚠️  Error traduciendo texto: {e}")
+        return text, False, 'error'
+
 def load_reviews():
     """Cargar y procesar las reseñas desde DatasetScr.json (Airbnb) y DatasetScrBooking.json (Booking)"""
     processed_reviews = []
@@ -623,14 +678,29 @@ def load_reviews():
                     room_info = review.get('roomInfo', '')
                     traveler_type = review.get('travelerType', '')
                     
-                    # Combinar textos de review con manejo de null
+                    # Combinar textos de review con manejo de null y traducción automática
                     review_parts = []
+                    
+                    # Traducir review_title si existe y no es alemán
                     if review_title:
-                        review_parts.append(f"<b>{review_title}</b>")
+                        title_translated, title_was_translated, title_lang = translate_to_german(review_title)
+                        review_parts.append(f"<b>{title_translated}</b>")
+                        if title_was_translated:
+                            print(f"   🌐 Título traducido de {title_lang} a DE")
+                    
+                    # Traducir liked_text si existe y no es alemán
                     if liked_text:
-                        review_parts.append(f"👍 {liked_text}")
+                        liked_translated, liked_was_translated, liked_lang = translate_to_german(liked_text)
+                        review_parts.append(f"👍 {liked_translated}")
+                        if liked_was_translated:
+                            print(f"   🌐 Texto positivo traducido de {liked_lang} a DE")
+                    
+                    # Traducir disliked_text si existe y no es alemán
                     if disliked_text:
-                        review_parts.append(f"👎 {disliked_text}")
+                        disliked_translated, disliked_was_translated, disliked_lang = translate_to_german(disliked_text)
+                        review_parts.append(f"👎 {disliked_translated}")
+                        if disliked_was_translated:
+                            print(f"   🌐 Texto negativo traducido de {disliked_lang} a DE")
                     
                     # Si no hay texto de review, usar información de la estadía
                     if not review_parts:
@@ -1516,6 +1586,276 @@ def api_create_snapshot():
             return jsonify({'error': 'No se pudo crear el snapshot'}), 500
             
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/analytics-weekly')
+def api_analytics_weekly():
+    """API endpoint para analytics semanal usando BackupIssues"""
+    try:
+        backup_folder = os.path.join(os.path.dirname(__file__), 'data', 'BackupIssues')
+        
+        if not os.path.exists(backup_folder):
+            return jsonify({'error': 'BackupIssues folder not found', 'backups': []}), 404
+        
+        # Buscar todas las fechas de backup (desde DatasetScr)
+        files = os.listdir(backup_folder)
+        backup_dates = set()
+        
+        for filename in files:
+            if filename.startswith('DatasetScr') and filename.endswith('.json') and not filename.startswith('DatasetScrBooking'):
+                # Extraer fecha: DatasetScr021225.json -> 021225
+                date_part = filename.replace('DatasetScr', '').replace('.json', '')
+                if len(date_part) == 6 and date_part.isdigit():
+                    backup_dates.add(date_part)
+        
+        if not backup_dates:
+            return jsonify({'error': 'No backups available', 'backups': []}), 404
+        
+        # Ordenar fechas (más antiguo primero para timeline)
+        sorted_dates = sorted(list(backup_dates))
+        
+        # Procesar cada backup
+        processed_backups = []
+        all_apartments = {}
+        
+        for date_key in sorted_dates:
+            # Convertir fecha DDMMYY a formato legible
+            try:
+                from datetime import datetime
+                day = date_key[0:2]
+                month = date_key[2:4]
+                year = '20' + date_key[4:6]
+                date_obj = datetime.strptime(f"{day}{month}{year}", "%d%m%Y")
+                date_formatted = date_obj.strftime('%Y-%m-%d')
+            except:
+                continue
+            
+            # Leer archivos de este backup
+            airbnb_file = os.path.join(backup_folder, f'DatasetScr{date_key}.json')
+            booking_file = os.path.join(backup_folder, f'DatasetScrBooking{date_key}.json')
+            
+            apartment_stats = {}
+            
+            # Procesar Airbnb
+            if os.path.exists(airbnb_file):
+                with open(airbnb_file, 'r', encoding='utf-8') as f:
+                    airbnb_reviews = json.load(f)
+                
+                for review in airbnb_reviews:
+                    listing_url = review.get('listingUrl', '')
+                    apartment_id = extract_apartment_id_from_url(listing_url)
+                    
+                    if not apartment_id or apartment_id in EXCLUDED_APARTMENT_IDS:
+                        continue
+                    
+                    apt_code = get_apartment_name_from_url(listing_url)
+                    rating = review.get('rating', 0)
+                    
+                    if apt_code not in apartment_stats:
+                        apartment_stats[apt_code] = {'airbnb_ratings': [], 'booking_ratings': []}
+                    
+                    if rating > 0:
+                        apartment_stats[apt_code]['airbnb_ratings'].append(rating)
+            
+            # Procesar Booking
+            if os.path.exists(booking_file):
+                with open(booking_file, 'r', encoding='utf-8') as f:
+                    booking_reviews = json.load(f)
+                
+                for review in booking_reviews:
+                    booking_url = review.get('startUrl', '')
+                    apt_code = get_apartment_code_from_booking_url(booking_url)
+                    
+                    if not apt_code:
+                        continue
+                    
+                    rating = review.get('rating', 0)
+                    
+                    if apt_code not in apartment_stats:
+                        apartment_stats[apt_code] = {'airbnb_ratings': [], 'booking_ratings': []}
+                    
+                    if rating > 0:
+                        apartment_stats[apt_code]['booking_ratings'].append(rating)
+            
+            # Calcular promedios combinados (normalizar Booking a escala 5)
+            apartments_list = []
+            for apt_code, stats in apartment_stats.items():
+                airbnb_ratings = stats['airbnb_ratings']
+                booking_ratings = stats['booking_ratings']
+                
+                # Normalizar Booking de 10 a 5
+                all_ratings_normalized = airbnb_ratings + [r / 2 for r in booking_ratings]
+                
+                if all_ratings_normalized:
+                    avg_rating = sum(all_ratings_normalized) / len(all_ratings_normalized)
+                    apartments_list.append({
+                        'code': apt_code,
+                        'average_rating': round(avg_rating, 2),
+                        'total_reviews': len(all_ratings_normalized)
+                    })
+                    
+                    # Registrar apartamento
+                    if apt_code not in all_apartments:
+                        all_apartments[apt_code] = {'dates': [], 'ratings': []}
+                    
+                    all_apartments[apt_code]['dates'].append(date_formatted)
+                    all_apartments[apt_code]['ratings'].append(round(avg_rating, 2))
+            
+            processed_backups.append({
+                'date': date_formatted,
+                'date_key': date_key,
+                'apartments': apartments_list
+            })
+        
+        # Preparar timeline
+        timeline = []
+        for apt_code, data in all_apartments.items():
+            timeline.append({
+                'code': apt_code,
+                'dates': data['dates'],
+                'ratings': data['ratings']
+            })
+        
+        # Calcular tendencias
+        trends = []
+        for apt_code, data in all_apartments.items():
+            if len(data['ratings']) >= 2:
+                first_rating = data['ratings'][0]
+                last_rating = data['ratings'][-1]
+                change = last_rating - first_rating
+                change_pct = (change / first_rating) * 100 if first_rating > 0 else 0
+                
+                trends.append({
+                    'code': apt_code,
+                    'first_rating': round(first_rating, 2),
+                    'last_rating': round(last_rating, 2),
+                    'change': round(change, 2),
+                    'change_percentage': round(change_pct, 1),
+                    'trend': 'up' if change > 0 else ('down' if change < 0 else 'stable')
+                })
+        
+        # Ordenar trends por cambio (descendente)
+        trends.sort(key=lambda x: x['change'], reverse=True)
+        
+        return jsonify({
+            'timeline': timeline,
+            'trends': trends,
+            'backup_count': len(processed_backups),
+            'date_range': {
+                'start': processed_backups[0]['date'] if processed_backups else None,
+                'end': processed_backups[-1]['date'] if processed_backups else None
+            }
+        })
+        
+    except Exception as e:
+        print(f"❌ Error en api_analytics_weekly: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/analytics-general')
+def api_analytics_general():
+    """API endpoint para analytics usando datos históricos de DataProblemListing"""
+    try:
+        data_folder = os.path.join(os.path.dirname(__file__), 'data', 'DataProblemListing')
+        
+        if not os.path.exists(data_folder):
+            return jsonify({'error': 'DataProblemListing folder not found'}), 404
+        
+        # Diccionario para almacenar stats por apartamento
+        apartments = {}
+        
+        # Leer todos los archivos JSON
+        for filename in os.listdir(data_folder):
+            if not filename.endswith('.json'):
+                continue
+            
+            # Determinar fuente (Airbnb o Booking) y código de apartamento
+            if filename.startswith('Airbnb'):
+                source = 'Airbnb'
+                apt_code = filename.replace('Airbnb', '').replace('.json', '')
+            elif filename.startswith('Booking'):
+                source = 'Booking'
+                apt_code = filename.replace('Booking', '').replace('.json', '')
+            else:
+                continue
+            
+            # Leer archivo
+            file_path = os.path.join(data_folder, filename)
+            with open(file_path, 'r', encoding='utf-8') as f:
+                reviews = json.load(f)
+            
+            # Inicializar apartamento si no existe
+            if apt_code not in apartments:
+                apartments[apt_code] = {
+                    'code': apt_code,
+                    'airbnb': {'reviews': [], 'ratings': [], 'dates': []},
+                    'booking': {'reviews': [], 'ratings': [], 'dates': []}
+                }
+            
+            # Procesar reviews
+            for review in reviews:
+                if source == 'Airbnb':
+                    rating = review.get('rating', 0)
+                    date = review.get('reviewDate', '')
+                    if rating > 0:
+                        apartments[apt_code]['airbnb']['reviews'].append(review)
+                        apartments[apt_code]['airbnb']['ratings'].append(rating)
+                        apartments[apt_code]['airbnb']['dates'].append(date)
+                else:  # Booking
+                    rating = review.get('rating', 0)
+                    date = review.get('reviewDate', '')
+                    if rating > 0:
+                        apartments[apt_code]['booking']['reviews'].append(review)
+                        apartments[apt_code]['booking']['ratings'].append(rating)
+                        apartments[apt_code]['booking']['dates'].append(date)
+        
+        # Calcular estadísticas por apartamento
+        result = []
+        for apt_code, data in apartments.items():
+            airbnb_ratings = data['airbnb']['ratings']
+            booking_ratings = data['booking']['ratings']
+            
+            apt_stats = {
+                'code': apt_code,
+                'airbnb': {
+                    'total_reviews': len(airbnb_ratings),
+                    'average_rating': round(sum(airbnb_ratings) / len(airbnb_ratings), 2) if airbnb_ratings else 0,
+                    'five_star_count': sum(1 for r in airbnb_ratings if r == 5),
+                    'five_star_percentage': round((sum(1 for r in airbnb_ratings if r == 5) / len(airbnb_ratings)) * 100, 1) if airbnb_ratings else 0
+                },
+                'booking': {
+                    'total_reviews': len(booking_ratings),
+                    'average_rating': round(sum(booking_ratings) / len(booking_ratings), 2) if booking_ratings else 0,
+                    'ten_rating_count': sum(1 for r in booking_ratings if r == 10),
+                    'ten_rating_percentage': round((sum(1 for r in booking_ratings if r == 10) / len(booking_ratings)) * 100, 1) if booking_ratings else 0
+                },
+                'combined': {
+                    'total_reviews': len(airbnb_ratings) + len(booking_ratings)
+                }
+            }
+            
+            # Calcular rating combinado (normalizar Booking de 10 a 5)
+            all_ratings_normalized = airbnb_ratings + [r / 2 for r in booking_ratings]
+            if all_ratings_normalized:
+                apt_stats['combined']['average_rating'] = round(sum(all_ratings_normalized) / len(all_ratings_normalized), 2)
+            else:
+                apt_stats['combined']['average_rating'] = 0
+            
+            result.append(apt_stats)
+        
+        # Ordenar por código de apartamento
+        result.sort(key=lambda x: x['code'])
+        
+        return jsonify({
+            'apartments': result,
+            'total_apartments': len(result)
+        })
+        
+    except Exception as e:
+        print(f"❌ Error en api_analytics_general: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

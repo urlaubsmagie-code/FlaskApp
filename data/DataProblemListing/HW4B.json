@@ -1,0 +1,390 @@
+[{
+  "rating": 9,
+  "reviewTitle": "Wir kommen gerne wieder und danke für die Beherbergung.",
+  "likedText": "Die Wohnung ist sehr geräumig , die Betten bequem und das Bad sauber. \nEs gab ein freundliches Hallo und da es sehr regnerisch war verbrachten wir viel Zeit in der Wohnung und fühlten uns wohl",
+  "dislikedText": "Die Küchenschränke und die Küchenutensilien könnten erneuert werden das kennen wir anders in Sebnitz.",
+  "reviewDate": "2025-11-21T21:38:44.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Group",
+  "userName": "Angela"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-09-12T07:32:18.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Group",
+  "userName": "Iris"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": "Die Umgebung",
+  "dislikedText": null,
+  "reviewDate": "2025-08-30T09:08:41.000Z",
+  "numberOfNights": 7,
+  "travelerType": "Family",
+  "userName": "Räsch"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Super Lage und schön eingerichtet",
+  "dislikedText": "Abdeckung Steckdose in der wohnstube.",
+  "reviewDate": "2025-08-24T07:44:22.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Family",
+  "userName": "Sandra"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": "there was no parking space for the car",
+  "reviewDate": "2025-08-20T15:08:48.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Family",
+  "userName": null
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-08-17T16:49:51.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Inna"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-07-29T17:52:22.000Z",
+  "numberOfNights": 6,
+  "travelerType": "Group",
+  "userName": "Lisa"
+},
+{
+  "rating": 10,
+  "reviewTitle": "Ausstattung sehr gut, Sauberkeit sehr gut und Lage gut.",
+  "likedText": "Die Wohnung war sehr gut eingerichtet und die Betten bequem. Leider war die Sofagarnitur durch gesessen. Aber da wir wenig bzw nur zum schlafen da waren hat es kein Einfluss gehabt.",
+  "dislikedText": "Die Parkmöglichkeiten, da zu dem Zeitpunkt auch eine Baustelle in der Straße war, wurde es zusätzlich erschwert einen Parkplatz zu finden.",
+  "reviewDate": "2025-07-19T18:29:43.000Z",
+  "numberOfNights": 6,
+  "travelerType": "Family",
+  "userName": "Tanja"
+},
+{
+  "rating": 7,
+  "reviewTitle": "Fin lejlighed med plads til den store familie",
+  "likedText": "Dejligt med en stue hvor vi alle kunne sidde i sofaen selvom vi var mange",
+  "dislikedText": "Manglende parkering til den lejlighed vi lejede \nDer var til de andre \nJeg har funktionsnedsættelse og lejede specifikt steder hvor der i annonce stod der var parkering udenfor. \nDet var det som sagt ikke \nEj heller opkald til udlejer hjalp. \nJeg måtte derfor parkere på plads målrettet en anden lejlighed",
+  "reviewDate": "2025-07-13T17:25:58.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Family",
+  "userName": "Søndergaard"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Przestronny, czysty, dobrze wyposażony apartament.",
+  "dislikedText": null,
+  "reviewDate": "2025-06-01T20:03:06.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Izabela"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": "Schön eingerichtet, sehr gute Betten",
+  "dislikedText": null,
+  "reviewDate": "2025-05-30T22:42:52.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Annette"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": "Ja",
+  "dislikedText": null,
+  "reviewDate": "2025-05-26T06:04:02.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Family",
+  "userName": "Komila"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-05-09T16:15:01.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Claudia"
+},
+{
+  "rating": 6,
+  "reviewTitle": null,
+  "likedText": "Het was een ruime huis met grote kamers.\nAardige eigenaar.",
+  "dislikedText": "De accommodatie was een flat met vier verdiepingen zonder lift.\nKamers op de vierde verdieping geen eigen parkeerplaats moest eind van de straat parkeren in een richting straat.\nDit zijn zijn niet duidelijk vermeld op de advertentie.\nTuin wat je op foto’s zie is gezamenlijk tuin tegenover de straat.",
+  "reviewDate": "2025-05-08T18:46:27.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Family",
+  "userName": "Birkan"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-04-21T07:46:04.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Family",
+  "userName": "Zuzanna"
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": "Unzureichende Sauberkeit \nKein Parkpatz",
+  "reviewDate": "2025-04-20T17:42:50.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Couple",
+  "userName": "Denise"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-02-21T20:22:19.000Z",
+  "numberOfNights": 7,
+  "travelerType": "Family",
+  "userName": "Jan"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": "Schöne große Wohnung, bequeme Betten, schön hell...",
+  "dislikedText": "Das die Wohnung im 4. Stock ist muss man vorher wissen...",
+  "reviewDate": "2025-02-09T12:24:48.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Family",
+  "userName": "Estrid"
+},
+{
+  "rating": 9,
+  "reviewTitle": "Wenn man mal einige Tage im Elbsandstein laufen will, ist das eine preisgünstige, solide Unterkunft.",
+  "likedText": "Bestes Preis-Leistungsverhältnis im weiten Umfeld. Selbst in Böhmen schaffen sie es nicht mehr, das zu toppen. Noch mal speziellen Dank an die Betreiberin und das Servicepersonal, bezüglich sichergestellltem Handy und das es dann mit der Übergabe so gut geklappt hat.",
+  "dislikedText": "Wermutstropfen: gerade dieser FeWo ist kein eigener Parkplatz zugeordnet. Das kann dort vor Ort wegen einer aktuellen Baustelle zum Problem werden. Wird sich wahrscheinlich ändern.",
+  "reviewDate": "2025-02-06T13:45:24.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Group",
+  "userName": "Klaus-dieter"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Good apartment, clean and spacious, very well equipped kitchen.",
+  "dislikedText": "Nothing",
+  "reviewDate": "2025-01-21T11:39:19.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Family",
+  "userName": "Sergei"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-12-09T16:20:37.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Agnieszka"
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-11-12T13:32:43.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Group",
+  "userName": "Ulrike"
+},
+{
+  "rating": 8,
+  "reviewTitle": "Tolle Wohnung",
+  "likedText": "Ausstattung der Ferienwohnung,  alles super simpel, netter Kontakt und alles sehr gut beschrieben",
+  "dislikedText": "Ein paar kleiner Punkte in Sachen Sauberkeit.",
+  "reviewDate": "2024-10-24T19:32:30.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Group",
+  "userName": "Dorota"
+},
+{
+  "rating": 8,
+  "reviewTitle": "Toller Wanderurlaub mit Familie",
+  "likedText": "Sauber, gute Lage, Sauna zum selber anheizen über die Straße hat Spaß gemacht",
+  "dislikedText": null,
+  "reviewDate": "2024-10-20T07:43:13.000Z",
+  "numberOfNights": 7,
+  "travelerType": "Family",
+  "userName": "Kai-uwe"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": "Die Größe der Wohnung ist super. Die Betten schlafen sich sehr gut. Die Lage zu Einkaufsmöglichkeiten ist auch toll. Gassi gehen mit Hund ein bisschen schwierig, aber machbar.",
+  "dislikedText": "Unsere Wohnung lag im 4.Stock, das wurde leider nicht erwähnt. Da wir eine ältere Dame dabei hatten.",
+  "reviewDate": "2024-10-11T05:09:44.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Group",
+  "userName": "Janine"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-09-23T05:55:04.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Pohl"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": "Größe der Wohnung \nFernsehprogramm Auswahl mega mit netflix amazon prime und Co\nLage super Sebnitz tolle stadt",
+  "dislikedText": null,
+  "reviewDate": "2024-09-13T05:37:44.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Family",
+  "userName": "Alexander"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Es war alles perfekt",
+  "dislikedText": "Nichts",
+  "reviewDate": "2024-08-25T19:20:17.000Z",
+  "numberOfNights": 7,
+  "travelerType": "Family",
+  "userName": "Jasmin"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Es gab ein schönen Ausblick. War sehr toll das man ein whirlpool benutzen könnte. Und das frische Handtücher da waren",
+  "dislikedText": "Das es im vierten Stock war . War etwas anstrengend mit kinder",
+  "reviewDate": "2024-08-06T15:57:14.000Z",
+  "numberOfNights": 6,
+  "travelerType": "Family",
+  "userName": "Benjamin"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": "How comfortable and cozy the whole apartment was arranged.",
+  "dislikedText": "Needed to pay extra costs for the pool etc? So we didnt use the pool.",
+  "reviewDate": "2024-07-28T19:29:00.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Family",
+  "userName": "Shelley"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-07-06T20:17:01.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Sina"
+},
+{
+  "rating": 9,
+  "reviewTitle": "Idealer Ausgangspunkt zum Wandern",
+  "likedText": "Sehr geräumiges, gemütliches Wohnzimmer, großzügige Schlafräume, gut eingerichtete Küche",
+  "dislikedText": null,
+  "reviewDate": "2024-06-28T12:04:52.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Family",
+  "userName": "Manfred"
+},
+{
+  "rating": 6,
+  "reviewTitle": "Schöne Wohnung mit guter Ausstattung, leider trübte die Unsauberkeit das \"Urlaubsvergnügen\"",
+  "likedText": "Die Wohnung an sich war schön und geschmackvoll eingerichtet. Es wurde wert gelegt auf eine schöne Farbgestaltung und eine gute Ausstattung. Die Betten waren bequem und sauber. Es gab viel Informationsmaterial zu Ausflügen und Restaurants.",
+  "dislikedText": "Leider war insgesamt die Wohnung schlecht gereinigt.\r\nEs war offensichtlich das \"Fellnasen\" gestattet sind.\r\nDer Boden war voller (Tier-) Haare, teilweise klebrig und insgesamt wirkte er komplett ungereinigt.\r\nDie Couch war zwar bequem und modern, aber leider voller Tierhaare und Flecken.\r\nIch bin tierlieb, aber das war mir zu unhygienisch.\r\nEine Reinigung wäre dringend nötig.\r\nAuch die Fliesen im Badezimmer hätten mit geringem Zeitaufwand gesäubert werden können, leider wurde das wohl übersehen.",
+  "reviewDate": "2024-06-23T19:30:08.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Family",
+  "userName": "Antje"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": "Top Ausstattung 100%zufrieden",
+  "dislikedText": "Leider konnten wir die Wohnung schlecht finden und es war kein Parkplatz dabei",
+  "reviewDate": "2024-06-04T05:54:39.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Group",
+  "userName": "Simone"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Квартира просто огромная, две спальни, Гостинная, кухня и ванная комната. Все чисто и красиво. Удобные кровати. Рекомендую для больших компаний!",
+  "dislikedText": "Долго искали вход, оказалось что там два подъезда, ключ подходил к двери первого и мы не смогли разобраться что наш номер в другом подъезде. Было поздно и на сообщения не отвечали.",
+  "reviewDate": "2024-06-03T14:57:43.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Family",
+  "userName": "Hanna"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-05-14T18:42:54.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Family",
+  "userName": "Nadine"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-05-12T12:36:33.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Solo traveler",
+  "userName": "Christoph"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-04-30T18:45:50.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Solo traveler",
+  "userName": "Kevin"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Alles vorhanden was man für einen Urlaub braucht. Bequeme Betten. Ein und auschecken einfach gemacht. Wir kommen bestimmt gerne noch einmal wieder.",
+  "dislikedText": null,
+  "reviewDate": "2024-04-28T09:19:08.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Stelling"
+}]

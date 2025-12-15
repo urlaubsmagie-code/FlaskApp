@@ -39,6 +39,38 @@
       "total_reviews": 42,
       "apartments_count": 26,
       "hash": "74211fb759737b256258d2202be8960c"
+    },
+    {
+      "id": 6,
+      "filename": "dataset_006_2025-12-01_103420.json",
+      "created_at": "2025-12-01T10:34:20.211177",
+      "total_reviews": 37,
+      "apartments_count": 25,
+      "hash": "c871d966c3c0507eb480c440ae6a08af"
+    },
+    {
+      "id": 7,
+      "filename": "dataset_007_2025-12-01_103649.json",
+      "created_at": "2025-12-01T10:36:49.300760",
+      "total_reviews": 37,
+      "apartments_count": 25,
+      "hash": "ae30be4a20409221841e35eefa745a3d"
+    },
+    {
+      "id": 8,
+      "filename": "dataset_008_2025-12-08_110100.json",
+      "created_at": "2025-12-08T11:01:00.042215",
+      "total_reviews": 29,
+      "apartments_count": 24,
+      "hash": "64344f35eba6238b98bdde46be6bee99"
+    },
+    {
+      "id": 9,
+      "filename": "dataset_009_2025-12-15_095155.json",
+      "created_at": "2025-12-15T09:51:55.094573",
+      "total_reviews": 27,
+      "apartments_count": 18,
+      "hash": "5a3c07f233f5dbb5785a4618ec761fca"
     }
   ]
 }

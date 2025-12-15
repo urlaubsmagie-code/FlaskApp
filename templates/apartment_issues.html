@@ -784,14 +784,18 @@
 
         async function loadBackupDates() {
             try {
+                console.log('Loading backup dates...');
                 const response = await fetch('/api/backup-dates');
                 const data = await response.json();
                 backupDates = data.dates || [];
+                
+                console.log('Backup dates loaded:', backupDates);
                 
                 const select = document.getElementById('backupDateSelect');
                 
                 if (backupDates.length === 0) {
                     select.innerHTML = '<option value="">Keine Backups verfügbar</option>';
+                    console.log('No backups available');
                 } else {
                     select.innerHTML = backupDates.map(date => 
                         `<option value="${date.date_key}">${date.date_formatted}</option>`
@@ -801,6 +805,7 @@
                     if (backupDates.length > 0) {
                         currentBackupDate = backupDates[0].date_key;
                         select.value = currentBackupDate;
+                        console.log('Current backup date set to:', currentBackupDate);
                     }
                 }
             } catch (error) {
@@ -810,13 +815,18 @@
 
         async function loadBackupData(dateKey) {
             try {
+                console.log('loadBackupData called with dateKey:', dateKey);
                 const response = await fetch(`/api/backup-data/${dateKey}`);
                 const data = await response.json();
+                
+                console.log('Backup data received:', data);
                 
                 if (data.error) throw new Error(data.error);
                 
                 fullData.backup = data.wohnungen || [];
                 currentBackupDate = dateKey;
+                
+                console.log('fullData.backup now has', fullData.backup.length, 'apartments');
                 
                 updateStats();
                 renderContent();
@@ -865,13 +875,19 @@
                     e.target.closest('.filter-btn').classList.add('active');
                     currentSource = e.target.closest('.filter-btn').dataset.source;
                     
+                    console.log('Source changed to:', currentSource);
+                    
                     // Show/hide backup date selector
                     const backupSelector = document.getElementById('backupDateSelector');
                     if (currentSource === 'backup') {
+                        console.log('Showing backup selector. Current backup date:', currentBackupDate);
                         backupSelector.style.display = 'block';
                         // Load backup data if date is selected
                         if (currentBackupDate) {
+                            console.log('Loading backup data for:', currentBackupDate);
                             await loadBackupData(currentBackupDate);
+                        } else {
+                            console.warn('No backup date selected!');
                         }
                     } else {
                         backupSelector.style.display = 'none';
@@ -961,9 +977,22 @@
                     // Normalize id/ids to always be an array
                     let reviewIds = [];
                     if (problem.id) {
-                        reviewIds = Array.isArray(problem.id) ? problem.id : [problem.id];
+                        if (Array.isArray(problem.id)) {
+                            reviewIds = problem.id;
+                        } else if (typeof problem.id === 'string' && problem.id.includes(',')) {
+                            // Handle comma-separated IDs like "ca2b5af6b3fd40ec, 23e9c3e62ab0cbf2"
+                            reviewIds = problem.id.split(',').map(id => id.trim()).filter(id => id);
+                        } else {
+                            reviewIds = [problem.id];
+                        }
                     } else if (problem.ids) {
-                        reviewIds = Array.isArray(problem.ids) ? problem.ids : [problem.ids];
+                        if (Array.isArray(problem.ids)) {
+                            reviewIds = problem.ids;
+                        } else if (typeof problem.ids === 'string' && problem.ids.includes(',')) {
+                            reviewIds = problem.ids.split(',').map(id => id.trim()).filter(id => id);
+                        } else {
+                            reviewIds = [problem.ids];
+                        }
                     }
                     
                     const hasReviewers = (reviewIds.length > 0) || (problem.names && problem.names.length > 0);
