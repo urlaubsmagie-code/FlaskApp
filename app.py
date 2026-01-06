@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 import json
 import os
 import random
@@ -28,6 +28,9 @@ SNAPSHOTS_DIR = os.path.join(os.path.dirname(__file__), 'data', 'snapshots')
 SNAPSHOTS_METADATA_FILE = os.path.join(os.path.dirname(__file__), 'data', 'snapshots_metadata.json')
 LAST_HASH_FILE = os.path.join(os.path.dirname(__file__), 'data', 'last_dataset_hash.txt')
 
+# Configuración de reviews históricas
+HISTORICAL_REVIEWS_DIR = os.path.join(os.path.dirname(__file__), 'data', 'DataProblemListing')
+
 # Máximo de días de antigüedad para mostrar reviews (30 días = 1 mes)
 MAX_REVIEW_AGE_DAYS = 30
 
@@ -39,6 +42,15 @@ EXCLUDED_APARTMENT_IDS = {
 
 # Cache de traducciones para evitar llamadas repetidas
 translation_cache = {}
+
+# Cache de reviews para evitar recargas constantes
+reviews_cache = {
+    'neuen': {'data': None, 'timestamp': None},
+    'allem': {'data': None, 'timestamp': None}
+}
+
+# Tiempo de vida del caché en segundos (5 minutos)
+CACHE_TTL = 300
 
 def load_id_mapping():
     """Cargar mapeo de IDs desde ID.txt (para Airbnb)"""
@@ -130,6 +142,11 @@ def get_apartment_code_from_booking_url(booking_url):
     """Obtener código del apartamento desde URL de Booking usando IDB.txt"""
     if not booking_url:
         return None
+    
+    # Primero, intentar extraer código si está en el formato "URL (CODE)"
+    match = re.search(r'\(([^)]+)\)\s*$', booking_url)
+    if match:
+        return match.group(1)
     
     # Cargar mapeo de IDB.txt
     idb_mapping = load_idb_mapping()
@@ -550,6 +567,18 @@ def translate_to_german(text, source_lang='auto'):
 
 def load_reviews():
     """Cargar y procesar las reseñas desde DatasetScr.json (Airbnb) y DatasetScrBooking.json (Booking)"""
+    # Verificar si hay datos en caché válidos
+    now = datetime.now()
+    if reviews_cache['neuen']['data'] is not None and reviews_cache['neuen']['timestamp'] is not None:
+        elapsed = (now - reviews_cache['neuen']['timestamp']).total_seconds()
+        if elapsed < CACHE_TTL:
+            print(f"\n⚡ Usando reviews en caché (edad: {int(elapsed)}s)")
+            # Crear copia y mezclar aleatoriamente para mantener aleatoriedad
+            cached_reviews = reviews_cache['neuen']['data'].copy()
+            random.shuffle(cached_reviews)
+            return cached_reviews
+    
+    print("\n🔄 Cargando reviews nuevas desde archivos...")
     processed_reviews = []
     apartment_stats = {}
     reviews_filtered_by_apartment = 0
@@ -678,29 +707,20 @@ def load_reviews():
                     room_info = review.get('roomInfo', '')
                     traveler_type = review.get('travelerType', '')
                     
-                    # Combinar textos de review con manejo de null y traducción automática
+                    # Combinar textos de review (sin traducción automática para optimizar velocidad)
                     review_parts = []
                     
-                    # Traducir review_title si existe y no es alemán
+                    # Agregar review_title sin traducción
                     if review_title:
-                        title_translated, title_was_translated, title_lang = translate_to_german(review_title)
-                        review_parts.append(f"<b>{title_translated}</b>")
-                        if title_was_translated:
-                            print(f"   🌐 Título traducido de {title_lang} a DE")
+                        review_parts.append(f"<b>{review_title}</b>")
                     
-                    # Traducir liked_text si existe y no es alemán
+                    # Agregar liked_text sin traducción
                     if liked_text:
-                        liked_translated, liked_was_translated, liked_lang = translate_to_german(liked_text)
-                        review_parts.append(f"👍 {liked_translated}")
-                        if liked_was_translated:
-                            print(f"   🌐 Texto positivo traducido de {liked_lang} a DE")
+                        review_parts.append(f"👍 {liked_text}")
                     
-                    # Traducir disliked_text si existe y no es alemán
+                    # Agregar disliked_text sin traducción
                     if disliked_text:
-                        disliked_translated, disliked_was_translated, disliked_lang = translate_to_german(disliked_text)
-                        review_parts.append(f"👎 {disliked_translated}")
-                        if disliked_was_translated:
-                            print(f"   🌐 Texto negativo traducido de {disliked_lang} a DE")
+                        review_parts.append(f"👎 {disliked_text}")
                     
                     # Si no hay texto de review, usar información de la estadía
                     if not review_parts:
@@ -825,6 +845,11 @@ def load_reviews():
             print(f"   {source_icon} {info['name']}: {info['count']} comentarios")
         print()
         
+        # Guardar en caché
+        reviews_cache['neuen']['data'] = processed_reviews
+        reviews_cache['neuen']['timestamp'] = datetime.now()
+        print("✅ Reviews guardadas en caché\n")
+        
         return processed_reviews
         
     except json.JSONDecodeError as e:
@@ -835,6 +860,319 @@ def load_reviews():
         import traceback
         traceback.print_exc()
         return []
+
+def load_historical_reviews():
+    """Cargar todas las reviews históricas desde data/DataProblemListing (sin filtro de fecha)"""
+    # Verificar si hay datos en caché válidos
+    now = datetime.now()
+    if reviews_cache['allem']['data'] is not None and reviews_cache['allem']['timestamp'] is not None:
+        elapsed = (now - reviews_cache['allem']['timestamp']).total_seconds()
+        if elapsed < CACHE_TTL:
+            print(f"\n⚡ Usando reviews históricas en caché (edad: {int(elapsed)}s)")
+            # Crear copia y mezclar aleatoriamente para mantener aleatoriedad
+            cached_reviews = reviews_cache['allem']['data'].copy()
+            random.shuffle(cached_reviews)
+            return cached_reviews
+    
+    print("\n🔄 Cargando reviews históricas desde archivos...")
+    processed_reviews = []
+    total_airbnb_files = 0
+    total_booking_files = 0
+    total_reviews_airbnb = 0
+    total_reviews_booking = 0
+    
+    try:
+        if not os.path.exists(HISTORICAL_REVIEWS_DIR):
+            print(f"⚠️  Directorio de reviews históricas no encontrado: {HISTORICAL_REVIEWS_DIR}")
+            return []
+        
+        print(f"\n📁 Cargando desde: {HISTORICAL_REVIEWS_DIR}")
+        
+        # Listar todos los archivos JSON
+        all_files = [f for f in os.listdir(HISTORICAL_REVIEWS_DIR) if f.endswith('.json')]
+        
+        for filename in all_files:
+            file_path = os.path.join(HISTORICAL_REVIEWS_DIR, filename)
+            
+            try:
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    reviews_data = json.load(file)
+                
+                if not isinstance(reviews_data, list):
+                    continue
+                
+                # Determinar si es Airbnb o Booking por el nombre del archivo
+                is_airbnb = filename.startswith('Airbnb')
+                is_booking = filename.startswith('Booking')
+                
+                if not is_airbnb and not is_booking:
+                    continue
+                
+                # Extraer código del apartamento del nombre del archivo
+                # Ejemplos: AirbnbB2.json -> B2, BookingF1.json -> F1
+                apartment_code = filename.replace('Airbnb', '').replace('Booking', '').replace('.json', '')
+                
+                if is_airbnb:
+                    total_airbnb_files += 1
+                    # Procesar reviews de Airbnb
+                    for review in reviews_data:
+                        listing_url = review.get('listingUrl', '')
+                        reviewer_name = review.get('reviewerName', 'Anonym')
+                        reviewer_picture = review.get('reviewerProfilePicture', '')
+                        review_date_iso = review.get('reviewDate', '')
+                        review_text = review.get('reviewText', '')
+                        language = review.get('language', 'de')
+                        review_id_num = review.get('reviewId', 0)
+                        rating = review.get('rating', 0)
+                        
+                        # Extraer apartment_id de la URL
+                        apartment_id = extract_apartment_id_from_url(listing_url)
+                        if not apartment_id:
+                            continue
+                        
+                        # Filtrar apartamentos excluidos
+                        if apartment_id in EXCLUDED_APARTMENT_IDS:
+                            continue
+                        
+                        # Convertir fecha ISO a formato legible
+                        date_display = convert_iso_to_display(review_date_iso)
+                        
+                        # Obtener nombre del apartamento (usar código del archivo como fallback)
+                        apartment_name = get_apartment_name_from_url(listing_url)
+                        if apartment_name.startswith('Wohnung'):
+                            apartment_name = apartment_code
+                        
+                        # Generar ID único
+                        review_id = f"airbnb_hist_{review_id_num}_{apartment_id}"
+                        
+                        # Procesar rating (Airbnb usa escala de 5)
+                        if not isinstance(rating, int):
+                            rating = int(rating) if rating else 0
+                        
+                        processed_review = {
+                            'id': review_id,
+                            'text': review_text,
+                            'rating': rating,
+                            'max_rating': 5,
+                            'platform_code': 'AB',
+                            'date': date_display,
+                            'reviewer_name': reviewer_name,
+                            'reviewer_picture': reviewer_picture,
+                            'reviewer_location': '',
+                            'host_name': 'Urlaubsmagie',
+                            'created_at': review_date_iso,
+                            'language': language,
+                            'apartment_id': apartment_id,
+                            'apartment_name': apartment_name,
+                            'apartment_url': listing_url,
+                            'source': 'Airbnb',
+                            'stay_info': None
+                        }
+                        
+                        processed_reviews.append(processed_review)
+                        total_reviews_airbnb += 1
+                
+                elif is_booking:
+                    total_booking_files += 1
+                    # Procesar reviews de Booking
+                    for review in reviews_data:
+                        reviewer_name = review.get('userName', 'Anonym')
+                        review_date_iso = review.get('reviewDate', '')
+                        rating_booking = review.get('rating', 0)
+                        
+                        # Validar que haya rating válido
+                        if not rating_booking or (isinstance(rating_booking, (int, float)) and rating_booking == 0):
+                            continue
+                        
+                        # Construir texto de review de Booking
+                        review_title = review.get('reviewTitle')
+                        liked_text = review.get('likedText')
+                        disliked_text = review.get('dislikedText')
+                        traveler_type = review.get('travelerType', '')
+                        
+                        # Combinar textos de review (sin traducción para optimizar velocidad)
+                        review_parts = []
+                        
+                        if review_title:
+                            review_parts.append(f"<b>{review_title}</b>")
+                        
+                        if liked_text:
+                            review_parts.append(f"👍 {liked_text}")
+                        
+                        if disliked_text:
+                            review_parts.append(f"👎 {disliked_text}")
+                        
+                        # Si no hay texto, crear descripción basada en la estadía
+                        if not review_parts:
+                            traveler_type_de = translate_traveler_type(traveler_type)
+                            if traveler_type_de:
+                                review_parts.append(f"<i>{traveler_type_de}</i>")
+                            else:
+                                review_parts.append(f"Bewertung: <b>{rating_booking}/10</b>")
+                        
+                        review_text = '<br/>'.join(review_parts) if review_parts else f"Bewertung: <b>{rating_booking}/10</b>"
+                        
+                        # Validación final
+                        if not review_text or len(review_text) < 5:
+                            continue
+                        
+                        # Convertir fecha ISO a formato legible
+                        date_display = convert_iso_to_display(review_date_iso)
+                        
+                        # Generar ID único
+                        review_id = f"booking_hist_{apartment_code}_{review_date_iso}"
+                        
+                        # Procesar rating (Booking usa escala de 10)
+                        if isinstance(rating_booking, (int, float)):
+                            rating = int(rating_booking)
+                        else:
+                            rating = 0
+                        
+                        processed_review = {
+                            'id': review_id,
+                            'text': review_text,
+                            'rating': rating,
+                            'max_rating': 10,
+                            'platform_code': 'BK',
+                            'date': date_display,
+                            'reviewer_name': reviewer_name if reviewer_name else 'Anonym',
+                            'reviewer_picture': '',
+                            'reviewer_location': '',
+                            'host_name': 'Urlaubsmagie',
+                            'created_at': review_date_iso,
+                            'language': 'de',
+                            'apartment_id': f"booking_{apartment_code}",
+                            'apartment_name': apartment_code,
+                            'apartment_url': '',
+                            'source': 'Booking',
+                            'stay_info': {
+                                'number_of_nights': review.get('numberOfNights', 0),
+                                'traveler_type': traveler_type
+                            }
+                        }
+                        
+                        processed_reviews.append(processed_review)
+                        total_reviews_booking += 1
+            
+            except Exception as e:
+                print(f"⚠️  Error procesando {filename}: {e}")
+                continue
+        
+        # Ordenar de forma aleatoria
+        random.shuffle(processed_reviews)
+        
+        # Resumen
+        print(f"\n📊 Resumen de reviews históricas:")
+        print(f"   📁 Archivos Airbnb: {total_airbnb_files}")
+        print(f"   📁 Archivos Booking: {total_booking_files}")
+        print(f"   ⭐ Reviews Airbnb: {total_reviews_airbnb}")
+        print(f"   ⭐ Reviews Booking: {total_reviews_booking}")
+        print(f"   📋 Total reviews históricas: {len(processed_reviews)}")
+        
+        # Guardar en caché
+        reviews_cache['allem']['data'] = processed_reviews
+        reviews_cache['allem']['timestamp'] = datetime.now()
+        print("✅ Reviews históricas guardadas en caché\n")
+        
+        return processed_reviews
+        
+    except Exception as e:
+        print(f"❌ Error crítico cargando reviews históricas: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+def load_reviews_for_slideshow():
+    """Cargar reviews CON traducción automática para el slideshow (TV)"""
+    # Verificar si hay datos en caché válidos para slideshow
+    cache_key = 'slideshow'
+    if cache_key not in reviews_cache:
+        reviews_cache[cache_key] = {'data': None, 'timestamp': None}
+    
+    now = datetime.now()
+    if reviews_cache[cache_key]['data'] is not None and reviews_cache[cache_key]['timestamp'] is not None:
+        elapsed = (now - reviews_cache[cache_key]['timestamp']).total_seconds()
+        if elapsed < CACHE_TTL:
+            print(f"\n⚡ Usando reviews slideshow en caché (edad: {int(elapsed)}s)")
+            # Crear copia y mezclar aleatoriamente
+            cached_reviews = reviews_cache[cache_key]['data'].copy()
+            random.shuffle(cached_reviews)
+            return cached_reviews
+    
+    print("\n🔄 Cargando reviews para slideshow (con traducción)...")
+    
+    # Obtener reviews sin traducir del caché neuen
+    base_reviews = load_reviews()
+    
+    # Traducir solo los textos de Booking que no estén en alemán
+    translated_reviews = []
+    for review in base_reviews:
+        review_copy = review.copy()
+        
+        # Si es de Booking y tiene HTML tags, traducir
+        if review_copy['source'] == 'Booking' and '<b>' in review_copy['text']:
+            try:
+                # Extraer y traducir cada parte
+                text_parts = []
+                
+                # Parsear el HTML para obtener los textos
+                import html
+                from html.parser import HTMLParser
+                
+                class TextExtractor(HTMLParser):
+                    def __init__(self):
+                        super().__init__()
+                        self.texts = []
+                        self.in_bold = False
+                    
+                    def handle_starttag(self, tag, attrs):
+                        if tag == 'b':
+                            self.in_bold = True
+                    
+                    def handle_endtag(self, tag):
+                        if tag == 'b':
+                            self.in_bold = False
+                    
+                    def handle_data(self, data):
+                        clean_data = data.strip()
+                        if clean_data and clean_data not in ['👍', '👎']:
+                            self.texts.append((clean_data, self.in_bold))
+                
+                parser = TextExtractor()
+                parser.feed(review_copy['text'])
+                
+                # Traducir cada texto
+                translated_parts = []
+                for text, is_bold in parser.texts:
+                    translated, _, _ = translate_to_german(text)
+                    if is_bold:
+                        translated_parts.append(f"<b>{translated}</b>")
+                    else:
+                        # Detectar si es liked o disliked por el emoji
+                        if '👍' in review_copy['text'] and text in review_copy['text'].split('👍')[1]:
+                            translated_parts.append(f"👍 {translated}")
+                        elif '👎' in review_copy['text'] and text in review_copy['text'].split('👎')[1]:
+                            translated_parts.append(f"👎 {translated}")
+                        else:
+                            translated_parts.append(translated)
+                
+                review_copy['text'] = '<br/>'.join(translated_parts)
+                
+            except Exception as e:
+                print(f"⚠️  Error traduciendo review {review_copy['id']}: {e}")
+                # Mantener texto original si falla
+        
+        translated_reviews.append(review_copy)
+    
+    # Mezclar aleatoriamente
+    random.shuffle(translated_reviews)
+    
+    # Guardar en caché
+    reviews_cache[cache_key]['data'] = translated_reviews
+    reviews_cache[cache_key]['timestamp'] = datetime.now()
+    print(f"✅ {len(translated_reviews)} reviews traducidas y guardadas en caché slideshow\n")
+    
+    return translated_reviews
 
 def get_apartment_info():
     """Información del apartamento basada en el ID"""
@@ -890,7 +1228,7 @@ def get_statistics(reviews):
 @app.route('/')
 def index():
     """Página principal - Presentación automática de reseñas (Slideshow)"""
-    reviews = load_reviews()
+    reviews = load_reviews()  # Cargar sin traducir - se traducirá on-the-fly en el navegador
     apartment_info = get_apartment_info()
     stats = get_statistics(reviews)
     
@@ -902,18 +1240,889 @@ def index():
 
 @app.route('/reviews')
 def reviews_view():
-    """Vista de reseñas con filtros y búsqueda"""
-    reviews = load_reviews()
+    """Vista de reseñas con filtros y búsqueda - Soporta categorías neuen/allem"""
+    # Obtener categoría desde query parameter (default: neuen)
+    category = request.args.get('category', 'neuen').lower()
+    
+    # Cargar reviews según la categoría
+    if category == 'allem':
+        reviews = load_historical_reviews()
+        category_label = 'Allem'
+    else:
+        reviews = load_reviews()
+        category_label = 'Neuen'
+    
     stats = get_statistics(reviews)
     
     return render_template('index.html',
                          reviews=reviews,
                          stats=stats,
-                         total_reviews=len(reviews))
+                         total_reviews=len(reviews),
+                         category=category,
+                         category_label=category_label)
+
+def calculate_apartment_statistics(reviews):
+    """Calcular estadísticas agrupadas por apartamento"""
+    apartment_data = {}
+    
+    for review in reviews:
+        apt_id = review.get('apartment_id', 'unknown')
+        apt_name = review.get('apartment_name', 'Unknown')
+        
+        if apt_id not in apartment_data:
+            apartment_data[apt_id] = {
+                'name': apt_name,
+                'reviews': [],
+                'airbnb_reviews': [],
+                'booking_reviews': []
+            }
+        
+        apartment_data[apt_id]['reviews'].append(review)
+        
+        if review.get('source') == 'Airbnb':
+            apartment_data[apt_id]['airbnb_reviews'].append(review)
+        else:
+            apartment_data[apt_id]['booking_reviews'].append(review)
+    
+    # Calcular estadísticas por cada apartamento
+    result = {}
+    for apt_id, data in apartment_data.items():
+        reviews_list = data['reviews']
+        airbnb_reviews = data['airbnb_reviews']
+        booking_reviews = data['booking_reviews']
+        
+        # Total de reviews
+        total = len(reviews_list)
+        
+        # Rating promedio
+        ratings = [r.get('rating', 0) for r in reviews_list if r.get('rating', 0) > 0]
+        avg_rating = sum(ratings) / len(ratings) if ratings else 0
+        
+        # Distribución por estrellas
+        distribution = {}
+        for star in range(1, 6):
+            distribution[str(star)] = sum(1 for r in reviews_list if r.get('rating') == star)
+        
+        # Promedios por plataforma
+        airbnb_ratings = [r.get('rating', 0) for r in airbnb_reviews if r.get('rating', 0) > 0]
+        booking_ratings = [r.get('rating', 0) for r in booking_reviews if r.get('rating', 0) > 0]
+        
+        airbnb_avg = sum(airbnb_ratings) / len(airbnb_ratings) if airbnb_ratings else 0
+        booking_avg = sum(booking_ratings) / len(booking_ratings) if booking_ratings else 0
+        
+        # Preparar datos serializables para JavaScript
+        all_reviews_data = []
+        for r in reviews_list:
+            all_reviews_data.append({
+                'rating': r.get('rating', 0),
+                'source': r.get('source', ''),
+                'created_at': r.get('created_at', '')
+            })
+        
+        result[apt_id] = {
+            'name': data['name'],
+            'total_reviews': total,
+            'average_rating': avg_rating,
+            'rating_distribution': distribution,
+            'airbnb_count': len(airbnb_reviews),
+            'booking_count': len(booking_reviews),
+            'airbnb_avg': airbnb_avg,
+            'booking_avg': booking_avg,
+            'all_reviews': all_reviews_data  # Para filtros dinámicos en JS
+        }
+    
+    # Ordenar por rating promedio (mejor primero)
+    result = dict(sorted(result.items(), key=lambda x: x[1]['average_rating'], reverse=True))
+    
+    return result
+
+@app.route('/reviews/digital-team')
+def digital_team_view():
+    """Vista especial para el equipo digital"""
+    # Cargar todos los archivos DTAirbnb y DTBooking
+    dt_reviews = load_digital_team_reviews()
+    
+    # Agregar fecha exacta formateada a cada review
+    for review in dt_reviews:
+        if review.get('created_at'):
+            review['exact_date_formatted'] = format_exact_date(review['created_at'])
+    
+    stats = get_statistics(dt_reviews)
+    
+    # Obtener años y meses disponibles para filtros
+    available_dates = get_available_dates_from_reviews(dt_reviews)
+    
+    # Calcular estadísticas por apartamento
+    apartment_stats = calculate_apartment_statistics(dt_reviews)
+    
+    return render_template('digital_team.html',
+                         reviews=dt_reviews,
+                         stats=stats,
+                         total_reviews=len(dt_reviews),
+                         available_years=available_dates['years'],
+                         available_months=available_dates['months'],
+                         apartment_stats=apartment_stats)
+
+def format_exact_date(iso_date_str):
+    """Formatear fecha ISO a formato legible en alemán
+    Ejemplo: 2025-12-28T15:00:55Z -> 28.12.2025 um 15:00 Uhr
+    """
+    try:
+        dt = datetime.fromisoformat(iso_date_str.replace('Z', '+00:00'))
+        return dt.strftime('%d.%m.%Y um %H:%M Uhr')
+    except:
+        return iso_date_str
+
+def load_digital_team_reviews():
+    """Cargar reviews de archivos DTAirbnb y DTBooking"""
+    dt_folder = r"C:\Users\admin\n8n-docker\files"
+    processed_reviews = []
+    
+    # Patrón para encontrar archivos DT: DTAirbnb_DD_MM_YY_HHMMSS.json o DTBooking_DD_MM_YY_HHMMSS.json
+    import glob
+    
+    dt_airbnb_files = glob.glob(os.path.join(dt_folder, "DTAirbnb_*.json"))
+    dt_booking_files = glob.glob(os.path.join(dt_folder, "DTBooking_*.json"))
+    
+    print(f"\n📊 Cargando Digital Team reviews...")
+    print(f"   🎗️  Archivos Airbnb encontrados: {len(dt_airbnb_files)}")
+    print(f"   🏛️  Archivos Booking encontrados: {len(dt_booking_files)}")
+    
+    # Procesar archivos DTAirbnb
+    for file_path in dt_airbnb_files:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                airbnb_data = json.load(f)
+            
+            # Extraer fecha del nombre del archivo: DTAirbnb_06_01_26_113415.json
+            filename = os.path.basename(file_path)
+            file_created_at = parse_dt_filename(filename)
+            
+            for review in airbnb_data:
+                listing_url = review.get('listingUrl', '')
+                apartment_id = extract_apartment_id_from_url(listing_url)
+                
+                # Filtrar apartamentos excluidos
+                if apartment_id in EXCLUDED_APARTMENT_IDS:
+                    continue
+                
+                apartment_name = get_apartment_name_from_url(listing_url) if apartment_id else 'Unknown'
+                
+                review_date_iso = review.get('reviewDate', '')
+                date_display = convert_iso_to_display(review_date_iso)
+                
+                processed_review = {
+                    'id': f"dt_airbnb_{review.get('reviewId', '')}_{file_created_at}",
+                    'text': review.get('reviewText', ''),
+                    'rating': review.get('rating', 0),
+                    'max_rating': 5,
+                    'platform_code': 'AB',
+                    'date': date_display,
+                    'reviewer_name': review.get('reviewerName', 'Anonym'),
+                    'reviewer_picture': review.get('reviewerProfilePicture', ''),
+                    'reviewer_location': '',
+                    'host_name': 'Urlaubsmagie',
+                    'created_at': review_date_iso,
+                    'language': review.get('language', 'de'),
+                    'apartment_id': apartment_id or 'unknown',
+                    'apartment_name': apartment_name,
+                    'apartment_url': listing_url,
+                    'source': 'Airbnb',
+                    'file_created_at': file_created_at,
+                    'stay_info': None
+                }
+                processed_reviews.append(processed_review)
+        except Exception as e:
+            print(f"⚠️  Error procesando {filename}: {e}")
+    
+    # Procesar archivos DTBooking
+    for file_path in dt_booking_files:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                booking_data = json.load(f)
+            
+            filename = os.path.basename(file_path)
+            file_created_at = parse_dt_filename(filename)
+            
+            for review in booking_data:
+                booking_url = review.get('startUrl', '')
+                apartment_code = get_apartment_code_from_booking_url(booking_url)
+                
+                # Limpiar URL removiendo el código entre paréntesis al final
+                booking_url_clean = re.sub(r'\s*\([^)]+\)\s*$', '', booking_url)
+                
+                review_date_iso = review.get('reviewDate', '')
+                date_display = convert_iso_to_display(review_date_iso)
+                
+                rating_booking = review.get('rating', 0)
+                
+                # Construir texto de review de Booking
+                review_parts = []
+                review_title = review.get('reviewTitle')
+                liked_text = review.get('likedText')
+                disliked_text = review.get('dislikedText')
+                
+                if review_title:
+                    review_parts.append(f"<b>{review_title}</b>")
+                if liked_text:
+                    review_parts.append(f"👍 {liked_text}")
+                if disliked_text:
+                    review_parts.append(f"👎 {disliked_text}")
+                
+                review_text = '<br/>'.join(review_parts) if review_parts else f"Bewertung: <b>{rating_booking}/10</b>"
+                
+                # Normalizar rating de Booking (10) a escala de Airbnb (5)
+                # 8-10 = 5 estrellas, 6-7 = 4 estrellas, 4-5 = 3 estrellas, 2-3 = 2 estrellas, 0-1 = 1 estrella
+                if rating_booking >= 8:
+                    rating_normalized = 5
+                elif rating_booking >= 6:
+                    rating_normalized = 4
+                elif rating_booking >= 4:
+                    rating_normalized = 3
+                elif rating_booking >= 2:
+                    rating_normalized = 2
+                elif rating_booking >= 1:
+                    rating_normalized = 1
+                else:
+                    rating_normalized = 0
+                
+                processed_review = {
+                    'id': f"dt_booking_{review.get('id', '')}_{file_created_at}",
+                    'text': review_text,
+                    'rating': rating_normalized,  # Normalizado a escala de 5
+                    'rating_original': int(rating_booking) if rating_booking else 0,  # Original de 10
+                    'max_rating': 5,  # Ahora también usa escala de 5
+                    'platform_code': 'BK',
+                    'date': date_display,
+                    'reviewer_name': review.get('userName', 'Anonym'),
+                    'reviewer_picture': review.get('userAvatar', ''),
+                    'reviewer_location': review.get('userLocation', ''),
+                    'host_name': 'Urlaubsmagie',
+                    'created_at': review_date_iso,
+                    'language': review.get('reviewLanguage', 'de'),
+                    'apartment_id': f"booking_{apartment_code}" if apartment_code else 'unknown',
+                    'apartment_name': apartment_code or 'Unknown',
+                    'apartment_url': booking_url_clean,  # URL limpia sin código
+                    'source': 'Booking',
+                    'file_created_at': file_created_at,
+                    'stay_info': {
+                        'number_of_nights': review.get('numberOfNights', 0),
+                        'traveler_type': review.get('travelerType', '')
+                    }
+                }
+                processed_reviews.append(processed_review)
+        except Exception as e:
+            print(f"⚠️  Error procesando {filename}: {e}")
+    
+    print(f"✅ Total Digital Team reviews: {len(processed_reviews)}\n")
+    return processed_reviews
+
+def parse_dt_filename(filename):
+    """Parsear nombre de archivo DT para extraer fecha y hora
+    Ejemplo: DTAirbnb_06_01_26_113415.json -> 2026-01-06T11:34:15Z
+    """
+    try:
+        # Remover extensión y prefijo
+        parts = filename.replace('.json', '').split('_')
+        if len(parts) >= 5:
+            day = parts[1]
+            month = parts[2]
+            year = f"20{parts[3]}"  # Convertir 26 -> 2026
+            time_str = parts[4]  # 113415
+            
+            hour = time_str[:2]
+            minute = time_str[2:4]
+            second = time_str[4:6]
+            
+            return f"{year}-{month}-{day}T{hour}:{minute}:{second}Z"
+    except:
+        return datetime.now().isoformat()
+    return datetime.now().isoformat()
+
+def get_available_dates_from_reviews(reviews):
+    """Extraer años y meses disponibles de las reviews"""
+    years = set()
+    months = set()
+    
+    for review in reviews:
+        try:
+            created_at = review.get('created_at', '')
+            if created_at:
+                dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                years.add(dt.year)
+                months.add(dt.month)
+        except:
+            continue
+    
+    return {
+        'years': sorted(list(years), reverse=True),
+        'months': sorted(list(months))
+    }
+
+@app.route('/api/digital-team/export-excel')
+def export_digital_team_excel():
+    """Exportar reviews filtradas de Digital Team a Excel"""
+    try:
+        # Obtener parámetros de filtro
+        search_term = request.args.get('search', '').lower()
+        platform_filter = request.args.get('platform', '')
+        rating_filter = request.args.get('rating', '')
+        month_filter = request.args.get('month', '')
+        year_filter = request.args.get('year', '')
+        sort_order = request.args.get('sort', 'newest')
+        
+        # Cargar todas las reviews
+        dt_reviews = load_digital_team_reviews()
+        
+        # Aplicar filtros
+        filtered_reviews = []
+        for review in dt_reviews:
+            # Filtro de búsqueda
+            if search_term and search_term not in review.get('text', '').lower():
+                continue
+            
+            # Filtro de plataforma
+            if platform_filter and review.get('source', '') != platform_filter:
+                continue
+            
+            # Filtro de rating (ya normalizado en el backend)
+            if rating_filter:
+                review_rating = review.get('rating', 0)
+                if review_rating != int(rating_filter):
+                    continue
+            
+            # Filtro de mes y año
+            if month_filter or year_filter:
+                try:
+                    created_at = review.get('created_at', '')
+                    if created_at:
+                        dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                        if month_filter and dt.month != int(month_filter):
+                            continue
+                        if year_filter and dt.year != int(year_filter):
+                            continue
+                except:
+                    continue
+            
+            filtered_reviews.append(review)
+        
+        # Ordenar
+        if sort_order == 'newest':
+            filtered_reviews.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        elif sort_order == 'oldest':
+            filtered_reviews.sort(key=lambda x: x.get('created_at', ''))
+        elif sort_order == 'rating-high':
+            filtered_reviews.sort(key=lambda x: x.get('rating', 0), reverse=True)
+        elif sort_order == 'rating-low':
+            filtered_reviews.sort(key=lambda x: x.get('rating', 0))
+        
+        # Crear archivo Excel
+        import io
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from flask import send_file
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Digital Team Reviews"
+        
+        # Encabezados
+        headers = ['Plattform', 'Name', 'Standort', 'Bewertung', 'Datum', 'Exakte Datum', 'Apartment', 'Bewertungstext']
+        ws.append(headers)
+        
+        # Estilo de encabezados
+        header_fill = PatternFill(start_color="667EEA", end_color="667EEA", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+        
+        # Agregar datos
+        for review in filtered_reviews:
+            # Limpiar texto HTML
+            import re
+            text = review.get('text', '')
+            text = re.sub(r'<br/>', ' ', text)
+            text = re.sub(r'<[^>]+>', '', text)
+            text = text.replace('👍', '[Me gusta]').replace('👎', '[No me gusta]')
+            
+            # Mostrar rating según la plataforma
+            rating = review.get('rating', 0)
+            rating_original = review.get('rating_original', 0)
+            
+            if rating_original and review.get('source') == 'Booking':
+                rating = f"{rating}/5 ({rating_original}/10)"
+            else:
+                rating = f"{rating}/5"
+            
+            # Fecha exacta formateada
+            exact_date = format_exact_date(review.get('created_at', '')) if review.get('created_at') else ''
+            
+            row = [
+                review.get('source', ''),
+                review.get('reviewer_name', ''),
+                review.get('reviewer_location', ''),
+                rating,
+                review.get('date', ''),
+                exact_date,
+                review.get('apartment_name', ''),
+                text
+            ]
+            ws.append(row)
+        
+        # Ajustar anchos de columna
+        ws.column_dimensions['A'].width = 12  # Plattform
+        ws.column_dimensions['B'].width = 20  # Name
+        ws.column_dimensions['C'].width = 15  # Standort
+        ws.column_dimensions['D'].width = 15  # Bewertung
+        ws.column_dimensions['E'].width = 20  # Datum
+        ws.column_dimensions['F'].width = 25  # Exakte Datum
+        ws.column_dimensions['G'].width = 15  # Apartment
+        ws.column_dimensions['H'].width = 80  # Bewertungstext
+        
+        # Wrap text en columna de texto
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+            row[7].alignment = Alignment(wrap_text=True, vertical='top')
+        
+        # Guardar en memoria
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        # Generar nombre de archivo con filtros aplicados
+        filename_parts = ['Digital_Team_Reviews']
+        if platform_filter:
+            filename_parts.append(platform_filter)
+        if rating_filter:
+            filename_parts.append(f"{rating_filter}Sterne")
+        if month_filter:
+            month_names = ['Jan', 'Feb', 'Maerz', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez']
+            filename_parts.append(month_names[int(month_filter)-1])
+        if year_filter:
+            filename_parts.append(year_filter)
+        
+        filename = '_'.join(filename_parts) + '.xlsx'
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        print(f"❌ Error exportando a Excel: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/digital-team/export-apartments-excel')
+def export_apartments_excel():
+    """Exportar estadísticas de apartamentos a Excel"""
+    try:
+        # Obtener parámetros de filtro
+        platform_filter = request.args.get('platform', '')
+        month_filter = request.args.get('month', '')
+        year_filter = request.args.get('year', '')
+        
+        # Cargar todas las reviews
+        dt_reviews = load_digital_team_reviews()
+        
+        # Calcular estadísticas de apartamentos
+        apartment_stats = calculate_apartment_statistics(dt_reviews)
+        
+        # Aplicar filtros y recalcular estadísticas
+        filtered_apartment_stats = {}
+        
+        for apt_id, apt_data in apartment_stats.items():
+            all_reviews = apt_data.get('all_reviews', [])
+            
+            # Filtrar reviews
+            filtered_reviews = []
+            for review in all_reviews:
+                # Filtro de plataforma
+                if platform_filter and review.get('source', '') != platform_filter:
+                    continue
+                
+                # Filtro de mes y año
+                if month_filter or year_filter:
+                    try:
+                        created_at = review.get('created_at', '')
+                        if created_at:
+                            dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                            if month_filter and dt.month != int(month_filter):
+                                continue
+                            if year_filter and dt.year != int(year_filter):
+                                continue
+                    except:
+                        continue
+                
+                filtered_reviews.append(review)
+            
+            # Solo incluir apartamentos con reviews después del filtro
+            if filtered_reviews:
+                # Recalcular estadísticas
+                total_reviews = len(filtered_reviews)
+                total_rating = sum(r.get('rating', 0) for r in filtered_reviews)
+                avg_rating = total_rating / total_reviews if total_reviews > 0 else 0
+                
+                # Distribución de estrellas
+                distribution = {'1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
+                for r in filtered_reviews:
+                    rating = str(int(r.get('rating', 0)))
+                    if rating in distribution:
+                        distribution[rating] += 1
+                
+                # Por plataforma
+                airbnb_reviews = [r for r in filtered_reviews if r.get('source') == 'Airbnb']
+                booking_reviews = [r for r in filtered_reviews if r.get('source') == 'Booking']
+                
+                airbnb_count = len(airbnb_reviews)
+                booking_count = len(booking_reviews)
+                airbnb_avg = sum(r.get('rating', 0) for r in airbnb_reviews) / airbnb_count if airbnb_count > 0 else 0
+                booking_avg = sum(r.get('rating', 0) for r in booking_reviews) / booking_count if booking_count > 0 else 0
+                
+                filtered_apartment_stats[apt_id] = {
+                    'name': apt_data.get('name', 'Unknown'),
+                    'total_reviews': total_reviews,
+                    'average_rating': avg_rating,
+                    'distribution': distribution,
+                    'airbnb_count': airbnb_count,
+                    'booking_count': booking_count,
+                    'airbnb_avg': airbnb_avg,
+                    'booking_avg': booking_avg,
+                    'star_5': distribution.get('5', 0),
+                    'star_4': distribution.get('4', 0),
+                    'star_3': distribution.get('3', 0),
+                    'star_2': distribution.get('2', 0),
+                    'star_1': distribution.get('1', 0)
+                }
+        
+        # Crear archivo Excel
+        import io
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from flask import send_file
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Wohnungen Statistiken"
+        
+        # Encabezados
+        headers = [
+            'Wohnung', 
+            'Gesamt Bewertungen', 
+            'Durchschnitt',
+            '5 Sterne',
+            '4 Sterne',
+            '3 Sterne',
+            '2 Sterne',
+            '1 Stern',
+            'Airbnb Anzahl',
+            'Airbnb Durchschnitt',
+            'Booking Anzahl',
+            'Booking Durchschnitt'
+        ]
+        
+        # Añadir información de filtros si existen
+        if month_filter or year_filter or platform_filter:
+            filter_info = []
+            if platform_filter:
+                filter_info.append(f"Plattform: {platform_filter}")
+            if month_filter:
+                month_names = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
+                filter_info.append(f"Monat: {month_names[int(month_filter)-1]}")
+            if year_filter:
+                filter_info.append(f"Jahr: {year_filter}")
+            
+            ws.append(['Filter: ' + ', '.join(filter_info)])
+            ws.merge_cells('A1:L1')
+            ws['A1'].font = Font(bold=True, size=12)
+            ws['A1'].alignment = Alignment(horizontal='center')
+            ws.append([])  # Fila vacía
+        
+        ws.append(headers)
+        
+        # Estilo de encabezados
+        header_fill = PatternFill(start_color="667EEA", end_color="667EEA", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        
+        header_row = 3 if (month_filter or year_filter or platform_filter) else 1
+        for cell in ws[header_row]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+        
+        # Agregar datos de apartamentos
+        for apt_id, apt_data in sorted(filtered_apartment_stats.items(), key=lambda x: x[1]['name']):
+            row = [
+                apt_data['name'],
+                apt_data['total_reviews'],
+                round(apt_data['average_rating'], 2),
+                apt_data['star_5'],
+                apt_data['star_4'],
+                apt_data['star_3'],
+                apt_data['star_2'],
+                apt_data['star_1'],
+                apt_data['airbnb_count'],
+                round(apt_data['airbnb_avg'], 2) if apt_data['airbnb_avg'] > 0 else 'N/A',
+                apt_data['booking_count'],
+                round(apt_data['booking_avg'], 2) if apt_data['booking_avg'] > 0 else 'N/A'
+            ]
+            ws.append(row)
+        
+        # Ajustar anchos de columna
+        ws.column_dimensions['A'].width = 20  # Wohnung
+        ws.column_dimensions['B'].width = 18  # Gesamt Bewertungen
+        ws.column_dimensions['C'].width = 15  # Durchschnitt
+        ws.column_dimensions['D'].width = 12  # 5 Sterne
+        ws.column_dimensions['E'].width = 12  # 4 Sterne
+        ws.column_dimensions['F'].width = 12  # 3 Sterne
+        ws.column_dimensions['G'].width = 12  # 2 Sterne
+        ws.column_dimensions['H'].width = 12  # 1 Stern
+        ws.column_dimensions['I'].width = 15  # Airbnb Anzahl
+        ws.column_dimensions['J'].width = 20  # Airbnb Durchschnitt
+        ws.column_dimensions['K'].width = 15  # Booking Anzahl
+        ws.column_dimensions['L'].width = 20  # Booking Durchschnitt
+        
+        # Guardar en memoria
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        # Generar nombre de archivo con filtros aplicados
+        filename_parts = ['Wohnungen_Statistiken']
+        if platform_filter:
+            filename_parts.append(platform_filter)
+        if month_filter:
+            month_names = ['Jan', 'Feb', 'Maerz', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez']
+            filename_parts.append(month_names[int(month_filter)-1])
+        if year_filter:
+            filename_parts.append(year_filter)
+        
+        filename = '_'.join(filename_parts) + '.xlsx'
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        print(f"❌ Error exportando apartamentos a Excel: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/digital-team/export-general-stats-excel')
+def export_general_stats_excel():
+    """Exportar estadísticas generales de Urlaubsmagie a Excel"""
+    try:
+        # Obtener parámetros de filtro
+        platform_filter = request.args.get('platform', '')
+        month_filter = request.args.get('month', '')
+        year_filter = request.args.get('year', '')
+        
+        # Cargar todas las reviews
+        dt_reviews = load_digital_team_reviews()
+        
+        # Aplicar filtros
+        filtered_reviews = []
+        for review in dt_reviews:
+            # Filtro de plataforma
+            if platform_filter and review.get('source', '') != platform_filter:
+                continue
+            
+            # Filtro de mes y año
+            if month_filter or year_filter:
+                try:
+                    created_at = review.get('created_at', '')
+                    if created_at:
+                        dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                        if month_filter and dt.month != int(month_filter):
+                            continue
+                        if year_filter and dt.year != int(year_filter):
+                            continue
+                except:
+                    continue
+            
+            filtered_reviews.append(review)
+        
+        # Calcular estadísticas generales
+        total_reviews = len(filtered_reviews)
+        
+        if total_reviews == 0:
+            # Si no hay datos, crear Excel vacío con mensaje
+            import io
+            from openpyxl import Workbook
+            from flask import send_file
+            
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Gesamtstatistiken"
+            ws.append(['Keine Daten verfügbar für die ausgewählten Filter'])
+            
+            output = io.BytesIO()
+            wb.save(output)
+            output.seek(0)
+            
+            return send_file(
+                output,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name='Urlaubsmagie_Gesamtstatistiken_Leer.xlsx'
+            )
+        
+        # Calcular estadísticas
+        total_rating = sum(r.get('rating', 0) for r in filtered_reviews)
+        avg_rating = total_rating / total_reviews
+        
+        # Distribución de estrellas
+        distribution = {'1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
+        for r in filtered_reviews:
+            rating = str(int(r.get('rating', 0)))
+            if rating in distribution:
+                distribution[rating] += 1
+        
+        # Porcentaje de 5 estrellas
+        five_star_count = distribution.get('5', 0)
+        five_star_percent = (five_star_count / total_reviews * 100) if total_reviews > 0 else 0
+        
+        # Por plataforma
+        airbnb_reviews = [r for r in filtered_reviews if r.get('source') == 'Airbnb']
+        booking_reviews = [r for r in filtered_reviews if r.get('source') == 'Booking']
+        
+        airbnb_count = len(airbnb_reviews)
+        booking_count = len(booking_reviews)
+        airbnb_avg = sum(r.get('rating', 0) for r in airbnb_reviews) / airbnb_count if airbnb_count > 0 else 0
+        booking_avg = sum(r.get('rating', 0) for r in booking_reviews) / booking_count if booking_count > 0 else 0
+        
+        # Crear archivo Excel
+        import io
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from flask import send_file
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Gesamtstatistiken"
+        
+        # Título principal
+        ws.append(['Urlaubsmagie - Gesamtstatistiken'])
+        ws.merge_cells('A1:B1')
+        ws['A1'].font = Font(bold=True, size=16, color="667EEA")
+        ws['A1'].alignment = Alignment(horizontal='center')
+        ws.append([])  # Fila vacía
+        
+        # Información de filtros si existen
+        if month_filter or year_filter or platform_filter:
+            filter_info = []
+            if platform_filter:
+                filter_info.append(f"Plattform: {platform_filter}")
+            if month_filter:
+                month_names = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
+                filter_info.append(f"Monat: {month_names[int(month_filter)-1]}")
+            if year_filter:
+                filter_info.append(f"Jahr: {year_filter}")
+            
+            ws.append(['Filter: ' + ', '.join(filter_info)])
+            ws.merge_cells(f'A{ws.max_row}:B{ws.max_row}')
+            ws[f'A{ws.max_row}'].font = Font(bold=True)
+            ws[f'A{ws.max_row}'].alignment = Alignment(horizontal='center')
+            ws.append([])  # Fila vacía
+        
+        # Sección: Totales principales
+        header_fill = PatternFill(start_color="667EEA", end_color="667EEA", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        
+        ws.append(['Metrik', 'Wert'])
+        header_row = ws.max_row
+        for cell in ws[header_row]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+        
+        ws.append(['Gesamtbewertungen', total_reviews])
+        ws.append(['Durchschnittsbewertung', round(avg_rating, 2)])
+        ws.append(['5-Sterne-Bewertungen (%)', round(five_star_percent, 1)])
+        ws.append([])  # Fila vacía
+        
+        # Sección: Distribución por estrellas
+        ws.append(['Verteilung nach Sternen'])
+        ws.merge_cells(f'A{ws.max_row}:B{ws.max_row}')
+        ws[f'A{ws.max_row}'].font = Font(bold=True, size=12)
+        ws[f'A{ws.max_row}'].alignment = Alignment(horizontal='center')
+        
+        ws.append(['Sterne', 'Anzahl'])
+        header_row = ws.max_row
+        for cell in ws[header_row]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+        
+        for star in range(5, 0, -1):
+            count = distribution.get(str(star), 0)
+            percentage = (count / total_reviews * 100) if total_reviews > 0 else 0
+            ws.append([f'{star} Sterne', f'{count} ({percentage:.1f}%)'])
+        
+        ws.append([])  # Fila vacía
+        
+        # Sección: Por plataforma
+        ws.append(['Nach Plattform'])
+        ws.merge_cells(f'A{ws.max_row}:B{ws.max_row}')
+        ws[f'A{ws.max_row}'].font = Font(bold=True, size=12)
+        ws[f'A{ws.max_row}'].alignment = Alignment(horizontal='center')
+        
+        ws.append(['Plattform', 'Details'])
+        header_row = ws.max_row
+        for cell in ws[header_row]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+        
+        ws.append(['Airbnb', f'{airbnb_count} Bewertungen (Durchschnitt: {round(airbnb_avg, 2) if airbnb_avg > 0 else "N/A"})'])
+        ws.append(['Booking', f'{booking_count} Bewertungen (Durchschnitt: {round(booking_avg, 2) if booking_avg > 0 else "N/A"})'])
+        
+        # Ajustar anchos de columna
+        ws.column_dimensions['A'].width = 30
+        ws.column_dimensions['B'].width = 40
+        
+        # Guardar en memoria
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        # Generar nombre de archivo con filtros aplicados
+        filename_parts = ['Urlaubsmagie_Gesamtstatistiken']
+        if platform_filter:
+            filename_parts.append(platform_filter)
+        if month_filter:
+            month_names = ['Jan', 'Feb', 'Maerz', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez']
+            filename_parts.append(month_names[int(month_filter)-1])
+        if year_filter:
+            filename_parts.append(year_filter)
+        
+        filename = '_'.join(filename_parts) + '.xlsx'
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        print(f"❌ Error exportando estadísticas generales a Excel: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/slideshow')
 def slideshow():
-    """Ruta alternativa para slideshow"""
+    """Ruta alternativa para slideshow con traducciones"""
     return index()
 
 @app.route('/api/reviews')
@@ -928,6 +2137,30 @@ def api_stats():
     reviews = load_reviews()
     stats = get_statistics(reviews)
     return jsonify(stats)
+
+@app.route('/api/translate', methods=['POST'])
+def api_translate():
+    """API endpoint para traducir texto individual al alemán"""
+    try:
+        data = request.get_json()
+        text = data.get('text', '')
+        
+        if not text:
+            return jsonify({'error': 'No text provided'}), 400
+        
+        # Usar la función de traducción existente
+        translated_text, was_translated, source_lang = translate_to_german(text)
+        
+        return jsonify({
+            'original': text,
+            'translated': translated_text,
+            'was_translated': was_translated,
+            'source_language': source_lang
+        })
+    
+    except Exception as e:
+        print(f"❌ Error en traducción API: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/analytics')
 def analytics():
@@ -1858,5 +3091,18 @@ def api_analytics_general():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+def preload_cache():
+    """Pre-cargar el caché de reviews al iniciar el servidor"""
+    print("\n🚀 Pre-cargando caché de reviews...")
+    try:
+        load_reviews()
+        print("✅ Caché de reviews nuevas cargado")
+        load_reviews_for_slideshow()
+        print("✅ Caché de slideshow (con traducciones) cargado")
+    except Exception as e:
+        print(f"⚠️  Error pre-cargando caché: {e}")
+
 if __name__ == '__main__':
+    # Pre-cargar caché antes de iniciar el servidor
+    preload_cache()
     app.run(debug=True, host='0.0.0.0', port=80)

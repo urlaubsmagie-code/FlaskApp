@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Team - Bewertungen Dashboard</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+
+        .header-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 60px 0;
+            margin-bottom: 40px;
+        }
+
+        .stats-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .review-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .review-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+        }
+
+        .reviewer-info {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .reviewer-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            margin-right: 15px;
+            object-fit: cover;
+        }
+
+        .rating-stars {
+            color: #ffc107;
+            margin-bottom: 15px;
+        }
+
+        .review-text {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        .review-date {
+            color: #666;
+            font-size: 14px;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .review-source-btn {
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .review-source-btn:hover {
+            background-color: #667eea !important;
+            color: white !important;
+            transform: translateX(2px);
+        }
+
+        @media (max-width: 768px) {
+            .review-date {
+                flex-direction: column !important;
+                align-items: flex-start !important;
+                gap: 10px;
+            }
+
+            .review-source-btn {
+                width: 100%;
+                text-align: center;
+            }
+        }
+
+        .stats-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .filter-section {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+        }
+
+        .search-box {
+            border-radius: 25px;
+            border: 2px solid #e9ecef;
+            padding: 12px 20px;
+        }
+
+        .search-box:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Header Section -->
+    <div class="header-section">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1 class="display-4 mb-3">
+                        <i class="fas fa-users-cog me-3"></i>
+                        Digital Team Dashboard
+                    </h1>
+                    <p class="lead">
+                        Alle Reviews aus DT-Dateien
+                    </p>
+                </div>
+                <div class="col-md-4 text-center">
+                    <div class="display-6 mb-2">{{ stats.average_rating or 0 }}/5</div>
+                    <div class="mb-3">{{ total_reviews }} Bewertungen</div>
+                    <a href="/reviews" class="btn btn-light btn-lg">
+                        <i class="fas fa-arrow-left me-2"></i>
+                        Zurück zu Bewertungen
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Tabs Navigation -->
+        <ul class="nav nav-tabs nav-fill mb-4" id="digitalTeamTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="reviews-tab" data-bs-toggle="tab" data-bs-target="#reviews-content" 
+                        type="button" role="tab" style="font-size: 1.1rem; font-weight: 600;">
+                    <i class="fas fa-comments me-2"></i>Bewertungen
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="apartments-tab" data-bs-toggle="tab" data-bs-target="#apartments-content" 
+                        type="button" role="tab" style="font-size: 1.1rem; font-weight: 600;">
+                    <i class="fas fa-building me-2"></i>Wohnungen
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="general-stats-tab" data-bs-toggle="tab" data-bs-target="#general-stats-content" 
+                        type="button" role="tab" style="font-size: 1.1rem; font-weight: 600;">
+                    <i class="fas fa-chart-line me-2"></i>Allgemeine Statistiken
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="digitalTeamTabContent">
+            <!-- Bewertungen Tab -->
+            <div class="tab-pane fade show active" id="reviews-content" role="tabpanel">
+                <!-- Statistik -->
+                <div class="stats-card">
+            <h3 class="text-center mb-4">
+                <i class="fas fa-chart-bar me-2"></i>
+                Bewertungsstatistiken
+            </h3>
+
+            <div class="row">
+                <div class="col-md-3 text-center mb-4">
+                    <div class="stats-number">{{ total_reviews }}</div>
+                    <div class="text-muted">Gesamtbewertungen</div>
+                </div>
+                <div class="col-md-3 text-center mb-4">
+                    <div class="stats-number">{{ stats.average_rating or 0 }}</div>
+                    <div class="text-muted">Durchschnittsbewertung</div>
+                </div>
+                <div class="col-md-3 text-center mb-4">
+                    <div class="stats-number">{{ stats.five_star_percentage or 0 }}%</div>
+                    <div class="text-muted">5-Sterne-Bewertungen</div>
+                </div>
+                <div class="col-md-3 text-center mb-4">
+                    <div class="stats-number">
+                        {% set airbnb_count = reviews | selectattr('source', 'equalto', 'Airbnb') | list | length %}
+                        {% set booking_count = reviews | selectattr('source', 'equalto', 'Booking') | list | length %}
+                        {{ airbnb_count }} / {{ booking_count }}
+                    </div>
+                    <div class="text-muted">Airbnb / Booking</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter Section -->
+        <div class="filter-section">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">
+                    <i class="fas fa-filter me-2"></i>
+                    Filter
+                </h5>
+                <div>
+                    <button id="exportExcelBtn" class="btn btn-success">
+                        <i class="fas fa-file-excel me-2"></i>
+                        Nach Excel exportieren
+                    </button>
+                    <span id="resultCount" class="ms-2 text-muted" style="font-size: 0.9rem;">
+                        <i class="fas fa-info-circle me-1"></i>
+                        <span id="countNumber">{{ total_reviews }}</span> Bewertungen
+                    </span>
+                </div>
+            </div>
+            <div class="row align-items-center mb-3">
+                <div class="col-md-4">
+                    <input type="text" id="searchInput" class="form-control search-box"
+                        placeholder="Bewertungen durchsuchen...">
+                </div>
+                <div class="col-md-2">
+                    <select id="platformFilter" class="form-select">
+                        <option value="">Alle Plattformen</option>
+                        <option value="Airbnb">Nur Airbnb</option>
+                        <option value="Booking">Nur Booking</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select id="ratingFilter" class="form-select">
+                        <option value="">Alle Bewertungen</option>
+                        <option value="5">5 Sterne</option>
+                        <option value="4">4 Sterne</option>
+                        <option value="3">3 Sterne</option>
+                        <option value="2">2 Sterne</option>
+                        <option value="1">1 Stern</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select id="monthFilter" class="form-select">
+                        <option value="">Alle Monate</option>
+                        {% for month in range(1, 13) %}
+                        <option value="{{ month }}">{{ ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][month-1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select id="yearFilter" class="form-select">
+                        <option value="">Alle Jahre</option>
+                        {% for year in available_years %}
+                        <option value="{{ year }}">{{ year }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-12">
+                    <select id="sortOrder" class="form-select">
+                        <option value="newest">Neueste zuerst</option>
+                        <option value="oldest">Älteste zuerst</option>
+                        <option value="rating-high">Höchste Bewertung</option>
+                        <option value="rating-low">Niedrigste Bewertung</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reviews Section -->
+        <div class="row">
+            <div class="col-12">
+                <h3 class="mb-4">
+                    <i class="fas fa-comments me-2"></i>
+                    Bewertungen (Digital Team)
+                </h3>
+
+                <div id="reviewsContainer">
+                    {% for review in reviews %}
+                    <div class="review-card" 
+                         data-rating="{{ review.rating }}" 
+                         data-date="{{ review.created_at }}"
+                         data-source="{{ review.source }}">
+                        <div class="reviewer-info">
+                            {% if review.reviewer_picture %}
+                            <img src="{{ review.reviewer_picture }}" alt="{{ review.reviewer_name }}"
+                                class="reviewer-avatar"
+                                onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                            <div class="reviewer-avatar-placeholder"
+                                style="display:none;width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:none;align-items:center;justify-content:center;margin-right:15px;">
+                                <span style="color:white;font-weight:700;font-size:1.2rem;">{{ review.reviewer_name[0]
+                                    if review.reviewer_name else 'G' }}</span>
+                            </div>
+                            {% else %}
+                            <div class="reviewer-avatar-placeholder"
+                                style="width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;margin-right:15px;flex-shrink:0;">
+                                <span style="color:white;font-weight:700;font-size:1.2rem;">{{ review.reviewer_name[0]
+                                    if review.reviewer_name else 'G' }}</span>
+                            </div>
+                            {% endif %}
+                            <div>
+                                <div class="fw-bold">{{ review.reviewer_name }}</div>
+                                {% if review.reviewer_location %}
+                                <small class="text-muted">{{ review.reviewer_location }}</small>
+                                {% else %}
+                                <small class="text-muted">{{ review.source }}-Gast</small>
+                                {% endif %}
+                                {% if review.apartment_name %}
+                                <br>
+                                <small class="badge bg-secondary" style="font-size: 0.75rem;">
+                                    <i class="fas fa-home me-1"></i>{{ review.apartment_name }}
+                                </small>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="rating-stars">
+                            {% for i in range(1, 6) %}
+                            {% if i <= review.rating %} <i class="fas fa-star"></i>
+                                {% else %}
+                                <i class="far fa-star"></i>
+                            {% endif %}
+                            {% endfor %}
+                            
+                            {% if review.rating_original and review.source == 'Booking' %}
+                            <span class="badge bg-info ms-2" style="font-size: 0.8rem;">
+                                {{ review.rating_original }}/10
+                            </span>
+                            {% else %}
+                            <span class="badge bg-warning ms-2" style="font-size: 0.8rem; color: #000;">
+                                {{ review.rating }}/5
+                            </span>
+                            {% endif %}
+                        </div>
+
+                        <div class="review-text">
+                            {{ review.text|safe }}
+                        </div>
+
+                        <div class="review-date d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-calendar-alt me-1"></i>
+                                {{ review.date }}
+                                
+                                {% if review.exact_date_formatted %}
+                                <br>
+                                <small class="text-muted" style="font-size: 0.85rem;">
+                                    <i class="fas fa-clock me-1"></i>
+                                    Exakte Datum: {{ review.exact_date_formatted }}
+                                </small>
+                                {% endif %}
+
+                                {% if review.platform_code %}
+                                <span
+                                    class="badge {% if review.platform_code == 'AB' %}bg-danger{% else %}bg-primary{% endif %} ms-2">
+                                    {{ review.platform_code }}
+                                </span>
+                                {% endif %}
+                            </div>
+
+                            {% if review.apartment_url %}
+                            <a href="{{ review.apartment_url }}" target="_blank"
+                                class="btn btn-sm btn-outline-primary review-source-btn"
+                                title="Zur Originalanzeige öffnen">
+                                <i class="fas fa-external-link-alt me-1"></i>
+                                {% if review.platform_code == 'AB' %}
+                                Airbnb
+                                {% elif review.platform_code == 'BK' %}
+                                Booking
+                                {% else %}
+                                Quelle
+                                {% endif %}
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                {% if not reviews %}
+                <div class="text-center py-5">
+                    <i class="fas fa-comments fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">Noch keine Bewertungen vorhanden</h5>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+            </div>
+            <!-- Fin Bewertungen Tab -->
+
+            <!-- Wohnungen Tab -->
+            <div class="tab-pane fade" id="apartments-content" role="tabpanel">
+                <!-- Filtros para Wohnungen -->
+                <div class="filter-section">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">
+                            <i class="fas fa-filter me-2"></i>
+                            Filter für Wohnungen
+                        </h5>
+                        <button id="exportApartmentsExcelBtn" class="btn btn-success">
+                            <i class="fas fa-file-excel me-2"></i>
+                            Nach Excel exportieren
+                        </button>
+                    </div>
+                    <div class="row align-items-center">
+                        <div class="col-md-4">
+                            <select id="apartmentPlatformFilter" class="form-select">
+                                <option value="">Alle Plattformen</option>
+                                <option value="Airbnb">Nur Airbnb</option>
+                                <option value="Booking">Nur Booking</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <select id="apartmentMonthFilter" class="form-select">
+                                <option value="">Alle Monate</option>
+                                {% for month in range(1, 13) %}
+                                <option value="{{ month }}">{{ ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][month-1] }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <select id="apartmentYearFilter" class="form-select">
+                                <option value="">Alle Jahre</option>
+                                {% for year in available_years %}
+                                <option value="{{ year }}">{{ year }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lista de Apartamentos (Accordion) -->
+                <div class="accordion" id="apartmentsAccordion">
+                    {% for apt_id, apt_data in apartment_stats.items() %}
+                    <div class="accordion-item apartment-item" 
+                         data-apartment-id="{{ apt_id }}"
+                         data-apartment-stats='{{ apt_data | tojson }}'>
+                        <h2 class="accordion-header" id="heading-{{ apt_id }}">
+                            <button class="accordion-button collapsed" type="button" 
+                                    data-bs-toggle="collapse" 
+                                    data-bs-target="#collapse-{{ apt_id }}" 
+                                    aria-expanded="false">
+                                <div class="d-flex justify-content-between align-items-center w-100 me-3">
+                                    <div>
+                                        <strong style="font-size: 1.1rem;">{{ apt_data.name }}</strong>
+                                        <br>
+                                        <small class="text-muted">
+                                            <span class="total-reviews">{{ apt_data.total_reviews }}</span> Bewertungen
+                                        </small>
+                                    </div>
+                                    <div class="text-end">
+                                        <span class="badge bg-success" style="font-size: 1rem;">
+                                            <i class="fas fa-star"></i> 
+                                            <span class="avg-rating">{{ "%.2f"|format(apt_data.average_rating) }}</span>
+                                        </span>
+                                    </div>
+                                </div>
+                            </button>
+                        </h2>
+                        <div id="collapse-{{ apt_id }}" class="accordion-collapse collapse" 
+                             aria-labelledby="heading-{{ apt_id }}">
+                            <div class="accordion-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h6><i class="fas fa-chart-bar me-2"></i>Verteilung nach Sternen:</h6>
+                                        {% for star in range(5, 0, -1) %}
+                                        <div class="d-flex align-items-center mb-2">
+                                            <div style="width: 100px;">
+                                                {% for i in range(star) %}<i class="fas fa-star text-warning"></i>{% endfor %}
+                                            </div>
+                                            <div class="progress flex-grow-1 mx-2" style="height: 20px;">
+                                                {% set count = apt_data.rating_distribution.get(star|string, 0) %}
+                                                {% set percentage = (count / apt_data.total_reviews * 100) if apt_data.total_reviews > 0 else 0 %}
+                                                <div class="progress-bar bg-warning" style="width: {{ percentage }}%"></div>
+                                            </div>
+                                            <div style="width: 80px;" class="text-end">
+                                                <strong class="star-{{ star }}-count">{{ apt_data.rating_distribution.get(star|string, 0) }}</strong> 
+                                                <span class="star-{{ star }}-percent">({{ "%.0f"|format(percentage) }}%)</span>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6><i class="fas fa-building me-2"></i>Nach Plattform:</h6>
+                                        <div class="mb-3">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <span>
+                                                    <i class="fas fa-circle text-danger me-2"></i>
+                                                    <strong>Airbnb</strong>
+                                                </span>
+                                                <span>
+                                                    <span class="airbnb-count">{{ apt_data.airbnb_count }}</span> Bewertungen
+                                                    <span class="badge bg-danger ms-2 airbnb-rating">{{ "%.2f"|format(apt_data.airbnb_avg) if apt_data.airbnb_avg else 'N/A' }}</span>
+                                                </span>
+                                            </div>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <span>
+                                                    <i class="fas fa-circle text-primary me-2"></i>
+                                                    <strong>Booking</strong>
+                                                </span>
+                                                <span>
+                                                    <span class="booking-count">{{ apt_data.booking_count }}</span> Bewertungen
+                                                    <span class="badge bg-primary ms-2 booking-rating">{{ "%.2f"|format(apt_data.booking_avg) if apt_data.booking_avg else 'N/A' }}</span>
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                {% if not apartment_stats %}
+                <div class="text-center py-5">
+                    <i class="fas fa-building fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">Keine Wohnungsdaten verfügbar</h5>
+                </div>
+                {% endif %}
+            </div>
+            <!-- Fin Wohnungen Tab -->
+
+            <!-- Allgemeine Statistiken Tab -->
+            <div class="tab-pane fade" id="general-stats-content" role="tabpanel">
+                <!-- Filtros para Estadísticas Generales -->
+                <div class="filter-section">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">
+                            <i class="fas fa-filter me-2"></i>
+                            Filter für Statistiken
+                        </h5>
+                        <button id="exportGeneralStatsExcelBtn" class="btn btn-success">
+                            <i class="fas fa-file-excel me-2"></i>
+                            Nach Excel exportieren
+                        </button>
+                    </div>
+                    <div class="row align-items-center">
+                        <div class="col-md-4">
+                            <select id="generalPlatformFilter" class="form-select">
+                                <option value="">Alle Plattformen</option>
+                                <option value="Airbnb">Nur Airbnb</option>
+                                <option value="Booking">Nur Booking</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <select id="generalMonthFilter" class="form-select">
+                                <option value="">Alle Monate</option>
+                                {% for month in range(1, 13) %}
+                                <option value="{{ month }}">{{ ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][month-1] }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <select id="generalYearFilter" class="form-select">
+                                <option value="">Alle Jahre</option>
+                                {% for year in available_years %}
+                                <option value="{{ year }}">{{ year }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Estadísticas Generales de Urlaubsmagie -->
+                <div class="stats-card">
+                    <h3 class="text-center mb-4">
+                        <i class="fas fa-chart-line me-2"></i>
+                        Urlaubsmagie - Gesamtstatistiken
+                    </h3>
+
+                    <!-- Row 1: Totales principales -->
+                    <div class="row mb-4">
+                        <div class="col-md-4 text-center">
+                            <div class="stats-number" id="generalTotalReviews">{{ total_reviews }}</div>
+                            <div class="text-muted">Gesamtbewertungen</div>
+                        </div>
+                        <div class="col-md-4 text-center">
+                            <div class="stats-number" id="generalAvgRating">{{ "%.2f"|format(stats.average_rating) if stats.average_rating else '0.00' }}</div>
+                            <div class="text-muted">Durchschnittsbewertung</div>
+                        </div>
+                        <div class="col-md-4 text-center">
+                            <div class="stats-number" id="generalFiveStarPercent">{{ stats.five_star_percentage or 0 }}%</div>
+                            <div class="text-muted">5-Sterne-Bewertungen</div>
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- Row 2: Distribución por estrellas -->
+                    <h5 class="mb-3"><i class="fas fa-star me-2"></i>Verteilung nach Sternen</h5>
+                    <div class="row mb-4" id="generalStarDistribution">
+                        {% for star in range(5, 0, -1) %}
+                        <div class="col-md-12 mb-3">
+                            <div class="d-flex align-items-center">
+                                <div style="width: 100px; display: flex; align-items: center;">
+                                    <strong style="min-width: 60px;">{{ star }} Sterne</strong>
+                                </div>
+                                <div style="width: 100px; text-align: left;">
+                                    {% for i in range(star) %}<i class="fas fa-star text-warning"></i>{% endfor %}
+                                </div>
+                                <div class="progress flex-grow-1 mx-3" style="height: 30px;">
+                                    {% set count = reviews | selectattr('rating', 'equalto', star) | list | length %}
+                                    {% set percentage = (count / total_reviews * 100) if total_reviews > 0 else 0 %}
+                                    <div class="progress-bar bg-warning" 
+                                         style="width: {{ percentage }}%" 
+                                         data-star="{{ star }}"
+                                         data-count="{{ count }}"
+                                         data-percentage="{{ percentage }}">
+                                    </div>
+                                </div>
+                                <div style="width: 150px; text-align: right;">
+                                    <strong class="general-star-{{ star }}-count">{{ count }}</strong> 
+                                    <span class="text-muted general-star-{{ star }}-percent">({{ "%.1f"|format(percentage) }}%)</span>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- Row 3: Por plataforma -->
+                    <h5 class="mb-3"><i class="fas fa-building me-2"></i>Nach Plattform</h5>
+                    <div class="row">
+                        <div class="col-md-6 text-center mb-3">
+                            <div class="p-3 border rounded">
+                                <h4 class="text-danger"><i class="fab fa-airbnb me-2"></i>Airbnb</h4>
+                                {% set airbnb_reviews = reviews | selectattr('source', 'equalto', 'Airbnb') | list %}
+                                {% set airbnb_count = airbnb_reviews | length %}
+                                {% set airbnb_avg = (airbnb_reviews | sum(attribute='rating') / airbnb_count) if airbnb_count > 0 else 0 %}
+                                <div class="display-6 text-danger" id="generalAirbnbCount">{{ airbnb_count }}</div>
+                                <div class="text-muted mb-2">Bewertungen</div>
+                                <div class="badge bg-danger" style="font-size: 1.2rem;" id="generalAirbnbAvg">
+                                    <i class="fas fa-star"></i> {{ "%.2f"|format(airbnb_avg) }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 text-center mb-3">
+                            <div class="p-3 border rounded">
+                                <h4 class="text-primary"><i class="fas fa-bed me-2"></i>Booking</h4>
+                                {% set booking_reviews = reviews | selectattr('source', 'equalto', 'Booking') | list %}
+                                {% set booking_count = booking_reviews | length %}
+                                {% set booking_avg = (booking_reviews | sum(attribute='rating') / booking_count) if booking_count > 0 else 0 %}
+                                <div class="display-6 text-primary" id="generalBookingCount">{{ booking_count }}</div>
+                                <div class="text-muted mb-2">Bewertungen</div>
+                                <div class="badge bg-primary" style="font-size: 1.2rem;" id="generalBookingAvg">
+                                    <i class="fas fa-star"></i> {{ "%.2f"|format(booking_avg) }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Fin Allgemeine Statistiken Tab -->
+        </div>
+        <!-- Fin Tab Content -->
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const searchInput = document.getElementById('searchInput');
+            const platformFilter = document.getElementById('platformFilter');
+            const ratingFilter = document.getElementById('ratingFilter');
+            const monthFilter = document.getElementById('monthFilter');
+            const yearFilter = document.getElementById('yearFilter');
+            const sortOrder = document.getElementById('sortOrder');
+            const reviewsContainer = document.getElementById('reviewsContainer');
+
+            let reviews = Array.from(document.querySelectorAll('.review-card'));
+
+            function filterAndSortReviews() {
+                const searchTerm = searchInput.value.toLowerCase();
+                const selectedPlatform = platformFilter.value;
+                const selectedRating = ratingFilter.value;
+                const selectedMonth = monthFilter.value;
+                const selectedYear = yearFilter.value;
+                const selectedSort = sortOrder.value;
+
+                let filteredReviews = reviews.filter(review => {
+                    const text = review.querySelector('.review-text').textContent.toLowerCase();
+                    const rating = review.dataset.rating;
+                    const source = review.dataset.source;
+                    const dateStr = review.dataset.date;
+
+                    // Filtro de búsqueda
+                    if (searchTerm && !text.includes(searchTerm)) return false;
+
+                    // Filtro de plataforma
+                    if (selectedPlatform && source !== selectedPlatform) return false;
+
+                    // Filtro de rating
+                    if (selectedRating && Math.round(rating) != selectedRating) return false;
+
+                    // Filtro de mes y año
+                    if (dateStr && (selectedMonth || selectedYear)) {
+                        try {
+                            const date = new Date(dateStr);
+                            const month = date.getMonth() + 1;
+                            const year = date.getFullYear();
+
+                            if (selectedMonth && month != selectedMonth) return false;
+                            if (selectedYear && year != selectedYear) return false;
+                        } catch (e) {
+                            // Si no se puede parsear la fecha, no filtrar
+                        }
+                    }
+
+                    return true;
+                });
+
+                // Ordenar
+                filteredReviews.sort((a, b) => {
+                    if (selectedSort === 'newest') {
+                        return new Date(b.dataset.date) - new Date(a.dataset.date);
+                    } else if (selectedSort === 'oldest') {
+                        return new Date(a.dataset.date) - new Date(b.dataset.date);
+                    } else if (selectedSort === 'rating-high') {
+                        return parseFloat(b.dataset.rating) - parseFloat(a.dataset.rating);
+                    } else if (selectedSort === 'rating-low') {
+                        return parseFloat(a.dataset.rating) - parseFloat(b.dataset.rating);
+                    }
+                    return 0;
+                });
+
+                // Mostrar/ocultar reviews
+                reviews.forEach(review => review.style.display = 'none');
+                filteredReviews.forEach(review => review.style.display = 'block');
+
+                // Agregar al contenedor
+                reviewsContainer.innerHTML = '';
+                filteredReviews.forEach(review => reviewsContainer.appendChild(review));
+
+                // Actualizar contador
+                document.getElementById('countNumber').textContent = filteredReviews.length;
+            }
+
+            // Event listeners
+            searchInput.addEventListener('input', filterAndSortReviews);
+            platformFilter.addEventListener('change', filterAndSortReviews);
+            ratingFilter.addEventListener('change', filterAndSortReviews);
+            monthFilter.addEventListener('change', filterAndSortReviews);
+            yearFilter.addEventListener('change', filterAndSortReviews);
+            sortOrder.addEventListener('change', filterAndSortReviews);
+
+            // Exportar a Excel
+            document.getElementById('exportExcelBtn').addEventListener('click', function() {
+                const params = new URLSearchParams({
+                    search: searchInput.value,
+                    platform: platformFilter.value,
+                    rating: ratingFilter.value,
+                    month: monthFilter.value,
+                    year: yearFilter.value,
+                    sort: sortOrder.value
+                });
+                
+                // Abrir en nueva pestaña para descargar
+                window.open(`/api/digital-team/export-excel?${params.toString()}`, '_blank');
+            });
+
+            // === FILTROS PARA WOHNUNGEN TAB ===
+            const apartmentPlatformFilter = document.getElementById('apartmentPlatformFilter');
+            const apartmentMonthFilter = document.getElementById('apartmentMonthFilter');
+            const apartmentYearFilter = document.getElementById('apartmentYearFilter');
+            const apartmentItems = Array.from(document.querySelectorAll('.apartment-item'));
+
+            function filterApartments() {
+                const selectedPlatform = apartmentPlatformFilter.value;
+                const selectedMonth = apartmentMonthFilter.value;
+                const selectedYear = apartmentYearFilter.value;
+
+                apartmentItems.forEach(item => {
+                    const statsData = JSON.parse(item.dataset.apartmentStats);
+                    const allReviews = statsData.all_reviews || [];
+
+                    // Filtrar reviews según criterios
+                    let filteredReviews = allReviews.filter(review => {
+                        // Filtro de plataforma
+                        if (selectedPlatform && review.source !== selectedPlatform) return false;
+
+                        // Filtro de mes y año
+                        if (selectedMonth || selectedYear) {
+                            try {
+                                const date = new Date(review.created_at);
+                                const month = date.getMonth() + 1;
+                                const year = date.getFullYear();
+
+                                if (selectedMonth && month != selectedMonth) return false;
+                                if (selectedYear && year != selectedYear) return false;
+                            } catch (e) {
+                                return false;
+                            }
+                        }
+
+                        return true;
+                    });
+
+                    // Recalcular estadísticas
+                    if (filteredReviews.length === 0) {
+                        item.style.display = 'none';
+                        return;
+                    }
+
+                    item.style.display = 'block';
+
+                    // Calcular nuevo promedio
+                    const totalRating = filteredReviews.reduce((sum, r) => sum + r.rating, 0);
+                    const avgRating = totalRating / filteredReviews.length;
+
+                    // Calcular distribución
+                    const distribution = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+                    let airbnbCount = 0, bookingCount = 0;
+                    let airbnbSum = 0, bookingSum = 0;
+
+                    filteredReviews.forEach(review => {
+                        distribution[review.rating] = (distribution[review.rating] || 0) + 1;
+                        
+                        if (review.source === 'Airbnb') {
+                            airbnbCount++;
+                            airbnbSum += review.rating;
+                        } else {
+                            bookingCount++;
+                            bookingSum += review.rating;
+                        }
+                    });
+
+                    // Actualizar UI
+                    item.querySelector('.total-reviews').textContent = filteredReviews.length;
+                    item.querySelector('.avg-rating').textContent = avgRating.toFixed(2);
+
+                    // Actualizar distribución de estrellas
+                    for (let star = 1; star <= 5; star++) {
+                        const count = distribution[star] || 0;
+                        const percentage = (count / filteredReviews.length * 100).toFixed(0);
+                        
+                        const countEl = item.querySelector(`.star-${star}-count`);
+                        const percentEl = item.querySelector(`.star-${star}-percent`);
+                        
+                        if (countEl) countEl.textContent = count;
+                        if (percentEl) percentEl.textContent = `(${percentage}%)`;
+
+                        // Actualizar barra de progreso
+                        const progressBar = item.querySelectorAll('.progress-bar')[5 - star];
+                        if (progressBar) progressBar.style.width = `${percentage}%`;
+                    }
+
+                    // Actualizar contadores por plataforma
+                    const airbnbCountEl = item.querySelector('.airbnb-count');
+                    const bookingCountEl = item.querySelector('.booking-count');
+                    const airbnbRatingEl = item.querySelector('.airbnb-rating');
+                    const bookingRatingEl = item.querySelector('.booking-rating');
+
+                    if (airbnbCountEl) airbnbCountEl.textContent = airbnbCount;
+                    if (bookingCountEl) bookingCountEl.textContent = bookingCount;
+                    
+                    if (airbnbRatingEl) {
+                        airbnbRatingEl.textContent = airbnbCount > 0 ? (airbnbSum / airbnbCount).toFixed(2) : 'N/A';
+                    }
+                    if (bookingRatingEl) {
+                        bookingRatingEl.textContent = bookingCount > 0 ? (bookingSum / bookingCount).toFixed(2) : 'N/A';
+                    }
+                });
+            }
+
+            // Event listeners para filtros de apartamentos
+            if (apartmentPlatformFilter) apartmentPlatformFilter.addEventListener('change', filterApartments);
+            if (apartmentMonthFilter) apartmentMonthFilter.addEventListener('change', filterApartments);
+            if (apartmentYearFilter) apartmentYearFilter.addEventListener('change', filterApartments);
+
+            // Exportar apartamentos a Excel
+            document.getElementById('exportApartmentsExcelBtn').addEventListener('click', function() {
+                const params = new URLSearchParams({
+                    platform: apartmentPlatformFilter.value,
+                    month: apartmentMonthFilter.value,
+                    year: apartmentYearFilter.value
+                });
+                
+                // Abrir en nueva pestaña para descargar
+                window.open(`/api/digital-team/export-apartments-excel?${params.toString()}`, '_blank');
+            });
+
+            // === FILTROS PARA ALLGEMEINE STATISTIKEN TAB ===
+            const generalPlatformFilter = document.getElementById('generalPlatformFilter');
+            const generalMonthFilter = document.getElementById('generalMonthFilter');
+            const generalYearFilter = document.getElementById('generalYearFilter');
+
+            // Guardar todos los reviews en memoria para recalcular
+            const allReviewsData = reviews.map(review => ({
+                rating: parseFloat(review.dataset.rating),
+                source: review.dataset.source,
+                date: review.dataset.date
+            }));
+
+            function filterGeneralStats() {
+                const selectedPlatform = generalPlatformFilter.value;
+                const selectedMonth = generalMonthFilter.value;
+                const selectedYear = generalYearFilter.value;
+
+                // Filtrar reviews según criterios
+                let filteredReviews = allReviewsData.filter(review => {
+                    // Filtro de plataforma
+                    if (selectedPlatform && review.source !== selectedPlatform) return false;
+
+                    // Filtro de mes y año
+                    if (selectedMonth || selectedYear) {
+                        try {
+                            const date = new Date(review.date);
+                            const month = date.getMonth() + 1;
+                            const year = date.getFullYear();
+
+                            if (selectedMonth && month != selectedMonth) return false;
+                            if (selectedYear && year != selectedYear) return false;
+                        } catch (e) {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                });
+
+                // Recalcular estadísticas
+                const totalReviews = filteredReviews.length;
+                
+                if (totalReviews === 0) {
+                    // Si no hay reviews, mostrar ceros
+                    document.getElementById('generalTotalReviews').textContent = '0';
+                    document.getElementById('generalAvgRating').textContent = '0.00';
+                    document.getElementById('generalFiveStarPercent').textContent = '0';
+                    document.getElementById('generalAirbnbCount').textContent = '0';
+                    document.getElementById('generalBookingCount').textContent = '0';
+                    document.getElementById('generalAirbnbAvg').innerHTML = '<i class="fas fa-star"></i> N/A';
+                    document.getElementById('generalBookingAvg').innerHTML = '<i class="fas fa-star"></i> N/A';
+                    
+                    // Resetear barras de progreso
+                    for (let star = 1; star <= 5; star++) {
+                        document.querySelector(`.general-star-${star}-count`).textContent = '0';
+                        document.querySelector(`.general-star-${star}-percent`).textContent = '(0.0%)';
+                        const progressBar = document.querySelector(`.progress-bar[data-star="${star}"]`);
+                        if (progressBar) progressBar.style.width = '0%';
+                    }
+                    return;
+                }
+
+                // Calcular promedio general
+                const totalRating = filteredReviews.reduce((sum, r) => sum + r.rating, 0);
+                const avgRating = totalRating / totalReviews;
+
+                // Calcular distribución de estrellas
+                const distribution = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+                filteredReviews.forEach(review => {
+                    const rating = Math.round(review.rating);
+                    distribution[rating] = (distribution[rating] || 0) + 1;
+                });
+
+                // Calcular porcentaje de 5 estrellas
+                const fiveStarCount = distribution[5] || 0;
+                const fiveStarPercent = (fiveStarCount / totalReviews * 100).toFixed(1);
+
+                // Separar por plataforma
+                const airbnbReviews = filteredReviews.filter(r => r.source === 'Airbnb');
+                const bookingReviews = filteredReviews.filter(r => r.source === 'Booking');
+                
+                const airbnbCount = airbnbReviews.length;
+                const bookingCount = bookingReviews.length;
+                
+                const airbnbAvg = airbnbCount > 0 
+                    ? (airbnbReviews.reduce((sum, r) => sum + r.rating, 0) / airbnbCount).toFixed(2)
+                    : 'N/A';
+                const bookingAvg = bookingCount > 0
+                    ? (bookingReviews.reduce((sum, r) => sum + r.rating, 0) / bookingCount).toFixed(2)
+                    : 'N/A';
+
+                // Actualizar UI - Totales principales
+                document.getElementById('generalTotalReviews').textContent = totalReviews;
+                document.getElementById('generalAvgRating').textContent = avgRating.toFixed(2);
+                document.getElementById('generalFiveStarPercent').textContent = fiveStarPercent;
+
+                // Actualizar distribución de estrellas
+                for (let star = 5; star >= 1; star--) {
+                    const count = distribution[star] || 0;
+                    const percentage = (count / totalReviews * 100);
+                    
+                    document.querySelector(`.general-star-${star}-count`).textContent = count;
+                    document.querySelector(`.general-star-${star}-percent`).textContent = `(${percentage.toFixed(1)}%)`;
+                    
+                    const progressBar = document.querySelector(`.progress-bar[data-star="${star}"]`);
+                    if (progressBar) progressBar.style.width = `${percentage}%`;
+                }
+
+                // Actualizar por plataforma
+                document.getElementById('generalAirbnbCount').textContent = airbnbCount;
+                document.getElementById('generalBookingCount').textContent = bookingCount;
+                document.getElementById('generalAirbnbAvg').innerHTML = `<i class="fas fa-star"></i> ${airbnbAvg}`;
+                document.getElementById('generalBookingAvg').innerHTML = `<i class="fas fa-star"></i> ${bookingAvg}`;
+            }
+
+            // Event listeners para filtros de estadísticas generales
+            if (generalPlatformFilter) generalPlatformFilter.addEventListener('change', filterGeneralStats);
+            if (generalMonthFilter) generalMonthFilter.addEventListener('change', filterGeneralStats);
+            if (generalYearFilter) generalYearFilter.addEventListener('change', filterGeneralStats);
+
+            // Exportar estadísticas generales a Excel
+            document.getElementById('exportGeneralStatsExcelBtn').addEventListener('click', function() {
+                const params = new URLSearchParams({
+                    platform: generalPlatformFilter.value,
+                    month: generalMonthFilter.value,
+                    year: generalYearFilter.value
+                });
+                
+                // Abrir en nueva pestaña para descargar
+                window.open(`/api/digital-team/export-general-stats-excel?${params.toString()}`, '_blank');
+            });
+        });
+    </script>
+</body>
+
+</html>
