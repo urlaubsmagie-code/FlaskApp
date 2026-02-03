@@ -9,7 +9,7 @@ import os
 
 # Rutas de archivos
 JSON_FILE_PATH = r"C:\Users\admin\Downloads\dataset_Airbnb-Listings-Url_2025-10-21_12-07-09-132.json"
-TXT_FILE_PATH = r"C:\Users\admin\Desktop\ID.txt"
+TXT_FILE_PATH = r"C:\n8n_Docker\Files\ID.txt"
 
 def extract_ids_from_json():
     """Extraer IDs de apartamentos desde el archivo JSON de enlaces"""

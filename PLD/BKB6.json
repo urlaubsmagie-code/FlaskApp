@@ -1,0 +1,1 @@
+[{"content":{"parts":[{"text":"{\n  \"probleme\": [\n    {\n      \"beschreibung\": \"Fehlende Lampe im Wohnzimmer\",\n      \"erwähnungen\": 1,\n      \"Name\": \"Eva\"\n    },\n    {\n      \"beschreibung\": \"Einkaufsmöglichkeiten schwer erreichbar\",\n      \"erwähnungen\": 1,\n      \"Name\": \"Tina\"\n    }\n  ]\n}"}],"role":"model"},"finishReason":"STOP","index":0}]

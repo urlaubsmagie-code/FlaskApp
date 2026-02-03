@@ -1,0 +1,160 @@
+[{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-11-02T18:25:55.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Lucie"
+},
+{
+  "rating": 9,
+  "reviewTitle": "Aangename herberg",
+  "likedText": "We hebben redelijk laat gereserveerd en krijgen een snelle respons. We konden vlot een nacht bij boeken. Het hotel lag heel dicht bij het natuurpark wat perfect was voor onze wandelvakantie.",
+  "dislikedText": null,
+  "reviewDate": "2025-10-28T10:49:33.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Couple",
+  "userName": "Johanna"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": "Lokal spełnił nasze oczekiwania jak równiez jego położenie, które umożliwia dobry dojazd do atrakcji Swajcarii Saksońskiej i Czeskiej. Wejście do budynku na kod a do mieszkania klucze w sejfie. Apartament czysty, kuchnia dobrze wyposażona. Do sklepu Aldi 5 minut samochodem. W ramach opłaty klimatycznej - voucher uprawniający m.in. do darmowego korzystania z komunikacji dla dwóch osób. Wszystkie potrzebne informacje zawarte sa w mailach od wynajmującego. Polecam.",
+  "dislikedText": null,
+  "reviewDate": "2025-10-18T16:47:30.000Z",
+  "numberOfNights": 6,
+  "travelerType": "Family",
+  "userName": "Krzysztof"
+},
+{
+  "rating": 10,
+  "reviewTitle": "Great apartment with everything you need.",
+  "likedText": "Very clean apartment. Comfortable bed. Well equipped kitchen. Great parking just across the street. Easy instructions for entry.",
+  "dislikedText": "Handle to the bathroom was broken, so bathroom door couldn't be closed.",
+  "reviewDate": "2025-10-05T16:22:47.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "P"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-05-02T06:43:15.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Couple",
+  "userName": "Uwe"
+},
+{
+  "rating": 1,
+  "reviewTitle": "Urlaubs Desaster",
+  "likedText": "gut ausgestattete Küche, günstiger Preis",
+  "dislikedText": "dreckige Wohnung, teils defekte Gegenstände, Schimmel am Fenster, Fotos lassen die Wohnung deutlich größer wirken, als sie ist. Insgesamt wirkt das Gebäude sehr merkwürdig und lädt überhaupt nicht zu einem Urlaub ein. Zusätzlich fiel bei uns kurzfristig das Wasser aus und niemand reagierte von den Vermietern darauf. Daher kann ich nur abraten hier zu schlafen",
+  "reviewDate": "2025-04-08T06:53:10.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Couple",
+  "userName": "Paul"
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-03-27T13:27:09.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Couple",
+  "userName": "Kristýna"
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": "tichá lokalita, možnost parkování",
+  "dislikedText": "chybí topení, byla zima a topit si přímotopem co dostatečně nehřeje je na 2místnosti dost málo a už vůbec ne v prosinci..",
+  "reviewDate": "2025-03-04T08:51:21.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Petra"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": "Gute Ausstattung \nSauber",
+  "dislikedText": null,
+  "reviewDate": "2024-11-28T12:20:54.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Family",
+  "userName": "Walter"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-11-07T07:20:35.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Couple",
+  "userName": "Oxana"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-09-27T05:57:02.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Solo traveler",
+  "userName": "Sergej"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-09-23T08:56:59.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Couple",
+  "userName": "Simon"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-09-09T06:08:23.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Solo traveler",
+  "userName": "Illia"
+},
+{
+  "rating": 8,
+  "reviewTitle": "Eine wunderschöne Gegend die sehr viel zu bieten hat, eine wirkliche nette kleine Unterkunft. Wir kommen auf jeden Fall",
+  "likedText": "Es war eine wirklich niedliche kleine Wohnung mit allem was man so braucht.alles sehr unkompliziert und sehr freundlich",
+  "dislikedText": "Das Haus an sich ist relativ hellhörig und daher sind sehr viele Geräusche aus den anderen Wohnungen zu hören.",
+  "reviewDate": "2024-09-04T19:02:37.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Couple",
+  "userName": "Edda"
+},
+{
+  "rating": 10,
+  "reviewTitle": "Perfekte Lage, sauber Unterkunft, nette Gastgeber.",
+  "likedText": "Sehr nette Gastgeber. Unterkunft liegt ideal. Umgebung ist ruhig und lädt zum wandern ein. Alles sauber. Wir kommen gerne wieder.",
+  "dislikedText": "Ein Besen in der Wohnung ist sicherlich sinnvoll.",
+  "reviewDate": "2024-08-10T21:03:45.000Z",
+  "numberOfNights": 6,
+  "travelerType": "Solo traveler",
+  "userName": "Anja"
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-08-02T15:47:04.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Couple",
+  "userName": "Edith"
+}]

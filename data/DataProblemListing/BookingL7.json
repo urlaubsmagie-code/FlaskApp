@@ -1,0 +1,50 @@
+[{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-11-17T06:46:25.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Solo traveler",
+  "userName": "Gaby"
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-10-04T15:28:08.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Solo traveler",
+  "userName": "Patrizia"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-06-12T07:28:26.000Z",
+  "numberOfNights": 6,
+  "travelerType": "Solo traveler",
+  "userName": "Ingrid"
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": "Check In war super einfach und Kontakt bei einer Nachfrage sehr freundlich.\n\nSehr sauber.",
+  "dislikedText": "Etwas hellhörig aber zu verkraften.\n\nLeichte (kleinere) Defekte (Lattenrost des Betts, Griff vom Schrank und Stöpsel des Waschbeckens)",
+  "reviewDate": "2025-05-05T11:25:18.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Solo traveler",
+  "userName": "Diron"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-05-01T10:48:12.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Solo traveler",
+  "userName": "Christopher"
+}]

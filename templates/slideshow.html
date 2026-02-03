@@ -4,7 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="googlebot" content="noindex, nofollow">
     <title>Gästebewertungen</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         * {
@@ -279,7 +282,15 @@
             <!-- FOOTER -->
             <div class="footer">
                 {% if review.date %}
-                <div><i class="fas fa-calendar-alt"></i> {{ review.date }}</div>
+                <div>
+                    <i class="fas fa-calendar-alt"></i> {{ review.date }}
+                    {% if review.exact_date_formatted %}
+                    <br>
+                    <small style="color: #999; font-size: 11px;">
+                        <i class="fas fa-clock"></i> {{ review.exact_date_formatted }}
+                    </small>
+                    {% endif %}
+                </div>
                 {% endif %}
 
                 {% if review.stay_info and review.platform_code == 'BK' %}
@@ -309,10 +320,196 @@
         let speed = 30000;
         let timer = null;
         let progress = null;
+        
+        // Cache de traducciones para evitar traducir el mismo texto múltiples veces
+        const translationCache = new Map();
+        
+        // Detectar si un texto está en alemán (heurística mejorada)
+        function isGerman(text) {
+            // Palabras comunes en alemán
+            const germanWords = /\b(der|die|das|und|ist|war|mit|für|von|den|dem|nicht|sich|auf|ein|eine|zu|auch|sehr|gut|haben|sein|werden|aber|oder|bei|nach|über|nur|noch|mehr|hier|alle|kann|wie|uns|wir|sie|aus)\b/i;
+            
+            // Palabras que indican otros idiomas (NO alemán)
+            const nonGermanWords = {
+                english: /\b(the|and|was|with|for|from|not|very|good|have|are|were|been|this|that|which|what|where|when|nice|great|amazing|beautiful|clean|perfect|loved|would|recommend)\b/i,
+                polish: /\b(w|z|i|jest|przy|oraz|do|na|bardzo|dobrze|apartament|apartamenty|wszystko|bardzo|pokój|kuchnia|łóżko|dobry|polecam)\b/i,
+                french: /\b(le|la|les|et|est|très|avec|pour|dans|bien|bon|belle|tout|nous|vous|merci)\b/i,
+                spanish: /\b(el|la|los|las|y|es|muy|con|para|en|bien|bueno|todo|gracias)\b/i,
+                italian: /\b(il|la|le|gli|e|è|molto|con|per|nel|bene|buono|tutto|grazie)\b/i
+            };
+            
+            // Si solo tiene emojis o es muy corto, no traducir
+            if (text.length < 15 || /^[\s👍👎❤️😊😍🙏✨🎉]*$/.test(text)) {
+                return true;
+            }
+            
+            const hasGerman = germanWords.test(text);
+            
+            // Verificar si tiene palabras de otros idiomas
+            for (const [lang, pattern] of Object.entries(nonGermanWords)) {
+                if (pattern.test(text)) {
+                    console.log(`🌍 Idioma detectado: ${lang} - necesita traducción`);
+                    return false; // No es alemán, necesita traducción
+                }
+            }
+            
+            // Si tiene palabras alemanas, es alemán
+            if (hasGerman) {
+                console.log('🇩🇪 Texto en alemán - sin traducción necesaria');
+                return true;
+            }
+            
+            // Si no detectamos nada específico, asumir que necesita traducción
+            console.log('❓ Idioma desconocido - traduciendo por seguridad');
+            return false;
+        }
+        
+        // Traducir texto usando la API de Google Translate (método libre)
+        async function translateToGerman(text) {
+            console.log('\n🔄 Intentando traducir:', text.substring(0, 50) + '...');
+            
+            // Verificar caché primero
+            const cacheKey = text.substring(0, 100); // Usar primeros 100 caracteres como key
+            if (translationCache.has(cacheKey)) {
+                console.log('⚡ Usando traducción en caché');
+                return translationCache.get(cacheKey);
+            }
+            
+            // Limpiar HTML tags para la detección
+            const cleanText = text.replace(/<[^>]+>/g, ' ').replace(/[👍👎]/g, '').trim();
+            console.log('🧹 Texto limpio:', cleanText.substring(0, 50) + '...');
+            
+            // Si ya está en alemán, no traducir
+            if (isGerman(cleanText)) {
+                console.log('✅ Texto ya en alemán, sin traducción');
+                translationCache.set(cacheKey, text);
+                return text;
+            }
+            
+            try {
+                console.log('🚀 Llamando al servidor Flask para traducir...');
+                // Usar endpoint del servidor Flask que tiene deep-translator
+                const response = await fetch('/api/translate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text: cleanText
+                    })
+                });
+                
+                console.log('📡 Respuesta del servidor:', response.status);
+                
+                if (!response.ok) {
+                    console.error('❌ Error del servidor:', response.status, response.statusText);
+                    translationCache.set(cacheKey, text);
+                    return text;
+                }
+                
+                const data = await response.json();
+                console.log('📊 Datos de traducción recibidos:', data);
+                
+                const translated = data.translated || '';
+                
+                console.log('🔤 Texto traducido:', translated.substring(0, 50) + '...');
+                console.log('🌐 Idioma origen detectado:', data.source_language);
+                console.log('✅ Fue traducido:', data.was_translated);
+                
+                // Si la traducción falló o está vacía, devolver original
+                if (!translated || translated.trim() === '') {
+                    console.warn('⚠️ Traducción vacía, usando original');
+                    translationCache.set(cacheKey, text);
+                    return text;
+                }
+                
+                // Reconstruir HTML preservando formato original
+                let finalText = translated;
+                
+                // Si el texto original tenía estructura HTML con <b>, <br/>, emojis, etc.
+                // intentar reconstruir manteniendo el formato
+                if (text.includes('<b>') || text.includes('<br/>') || text.includes('👍') || text.includes('👎')) {
+                    // Parsear estructura original
+                    const hasTitle = /<b>([^<]+)<\/b>/.test(text);
+                    const hasLiked = text.includes('👍');
+                    const hasDisliked = text.includes('👎');
+                    
+                    // Dividir traducción en partes
+                    const translatedParts = translated.split(/[.!?]\s+/).filter(p => p.trim());
+                    
+                    let reconstructed = [];
+                    let partIndex = 0;
+                    
+                    // Reconstruir con formato
+                    if (hasTitle && translatedParts[partIndex]) {
+                        reconstructed.push(`<b>${translatedParts[partIndex]}</b>`);
+                        partIndex++;
+                    }
+                    
+                    if (hasLiked && translatedParts[partIndex]) {
+                        reconstructed.push(`👍 ${translatedParts[partIndex]}`);
+                        partIndex++;
+                    }
+                    
+                    if (hasDisliked && translatedParts[partIndex]) {
+                        reconstructed.push(`👎 ${translatedParts[partIndex]}`);
+                        partIndex++;
+                    }
+                    
+                    // Si quedaron partes sin asignar, agregarlas
+                    while (partIndex < translatedParts.length) {
+                        reconstructed.push(translatedParts[partIndex]);
+                        partIndex++;
+                    }
+                    
+                    // Si logramos reconstruir, usar eso
+                    if (reconstructed.length > 0) {
+                        finalText = reconstructed.join('<br/>');
+                    }
+                }
+                
+                console.log('🎨 Texto final formateado:', finalText.substring(0, 50) + '...');
+                
+                // Guardar en caché
+                translationCache.set(cacheKey, finalText);
+                return finalText;
+                
+            } catch (error) {
+                console.warn('Error traduciendo:', error);
+                // En caso de error, devolver texto original
+                translationCache.set(cacheKey, text);
+                return text;
+            }
+        }
+        
+        // Traducir el contenido de una slide antes de mostrarla
+        async function translateSlideContent(slideElement) {
+            const reviewTextElement = slideElement.querySelector('.review-text');
+            if (!reviewTextElement) return;
+            
+            const originalText = reviewTextElement.getAttribute('data-original-text');
+            
+            // Si no tiene el atributo data-original-text, guardarlo
+            if (!originalText) {
+                reviewTextElement.setAttribute('data-original-text', reviewTextElement.innerHTML);
+            }
+            
+            // Obtener texto a traducir
+            const textToTranslate = originalText || reviewTextElement.innerHTML;
+            
+            // Traducir
+            const translatedText = await translateToGerman(textToTranslate);
+            
+            // Actualizar contenido
+            reviewTextElement.innerHTML = translatedText;
+        }
 
-        function show(n) {
+        async function show(n) {
             slides.forEach(s => s.classList.remove('active'));
             if (slides[n]) {
+                // Traducir contenido antes de mostrar
+                await translateSlideContent(slides[n]);
+                
                 slides[n].classList.add('active');
                 startProgress(n);
             }

@@ -9,7 +9,7 @@ import os
 import re
 
 # Rutas de archivos
-TXT_FILE_PATH = r"C:\Users\admin\Desktop\ID.txt"
+TXT_FILE_PATH = r"C:\n8n_Docker\Files\ID.txt"
 CONFIG_FILE_PATH = "apartment_config.json"
 
 def parse_txt_file():

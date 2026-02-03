@@ -1,16 +1,34 @@
 @echo off
 echo ============================================
-echo   Gaestebewertungen Flask Server
+echo   Urlaubsmagie Bewertungsportal
 echo ============================================
 echo.
-echo Starte Flask Server...
+echo Starte Flask Server und Cloudflare Tunnel...
 echo.
-echo Zugriff ueber:
-echo   - Hauptseite: http://127.0.0.1:5000
-echo   - Slideshow:  http://127.0.0.1:5000/slideshow
-echo   - Netzwerk:   http://192.168.178.188:5000
+
+REM Start Flask in background
+start "Flask Server" /min cmd /c "python app.py"
+
+REM Wait for Flask to start
+timeout /t 3 /nobreak >nul
+
+echo ============================================
+echo   Server gestartet!
+echo ============================================
+echo.
+echo Lokaler Zugriff:
+echo   - http://127.0.0.1
+echo   - http://192.168.178.36
+echo.
+echo Externer Zugriff (weltweit):
+echo   - https://umteamsbz.com
 echo.
 echo Druecke Ctrl+C zum Beenden
 echo.
-python app.py
+
+REM Start Cloudflare Tunnel
+cloudflared tunnel run umteam-flask
+
+REM When tunnel closes, also stop Flask
+taskkill /FI "WINDOWTITLE eq Flask Server" /F >nul 2>&1
 pause
