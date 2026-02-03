@@ -5,13 +5,13 @@
 import json
 
 # Load files
-with open(r'C:\Users\admin\n8n-docker\files\GeneralReviews.json', 'r', encoding='utf-8') as f:
+with open(r'C:\n8n_Docker\Files\GeneralReviews.json', 'r', encoding='utf-8') as f:
     gr = json.load(f)
 
-with open(r'C:\Users\admin\n8n-docker\files\DatasetScr.json', 'r', encoding='utf-8') as f:
+with open(r'C:\n8n_Docker\Files\DatasetScr.json', 'r', encoding='utf-8') as f:
     ds = json.load(f)
 
-with open(r'C:\Users\admin\n8n-docker\files\DatasetScrBooking.json', 'r', encoding='utf-8') as f:
+with open(r'C:\n8n_Docker\Files\DatasetScrBooking.json', 'r', encoding='utf-8') as f:
     dsb = json.load(f)
 
 # Create sets of available IDs and names

@@ -8,7 +8,7 @@ import json
 import os
 
 # Rutas
-JSON_FOLDER_PATH = r"C:\Users\admin\n8n-docker\files"
+JSON_FOLDER_PATH = r"C:\n8n_Docker\Files"
 BOOKING_JSON_FILE_NAME = "DatasetScrBooking.json"
 
 def test_booking_reviews():

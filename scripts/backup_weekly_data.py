@@ -11,7 +11,7 @@ from datetime import datetime
 import json
 
 # Source files
-SOURCE_DIR = r"C:\Users\admin\n8n-docker\files"
+SOURCE_DIR = r"C:\n8n_Docker\Files"
 SOURCE_FILES = [
     "GeneralReviews.json",
     "DatasetScr.json", 
@@ -19,7 +19,7 @@ SOURCE_FILES = [
 ]
 
 # Destination directory
-BACKUP_DIR = r"C:\Users\admin\Server\FlaskApp\data\BackupIssues"
+BACKUP_DIR = r"C:\Users\admin\Documents\FlaskApp\data\BackupIssues"
 
 def create_backup():
     """Create backup copies with date suffix in format DDMMYY"""

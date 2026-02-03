@@ -9,18 +9,25 @@ import hashlib
 import shutil
 from deep_translator import GoogleTranslator
 from deep_translator.exceptions import TranslationNotFound, NotValidPayload
+import sys
+
+# Configurar codificación UTF-8 para la consola
+if sys.platform == 'win32':
+    import codecs
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
 
 app = Flask(__name__)
 
 # Configuración
-JSON_FOLDER_PATH = r"C:\Users\admin\n8n-docker\files"
+JSON_FOLDER_PATH = r"C:\n8n_Docker\Files"
 APARTMENT_CONFIG_FILE = "apartment_config.json"
-ID_MAPPING_FILE = r"C:\Users\admin\Desktop\ID.txt"
-IDB_MAPPING_FILE = r"C:\Users\admin\Desktop\IDB.txt"
+ID_MAPPING_FILE = r"C:\n8n_Docker\Files\ID.txt"
+IDB_MAPPING_FILE = r"C:\n8n_Docker\Files\IDB.txt"
 
 # Nombre de los archivos JSON
-JSON_FILE_NAME = "DatasetScr.json"  # Airbnb reviews
-BOOKING_JSON_FILE_NAME = "DatasetScrBooking.json"  # Booking reviews
+JSON_FILE_NAME = "DatasetScrAN.json"  # Airbnb reviews (updated data source)
+BOOKING_JSON_FILE_NAME = "DatasetScrBookingAN.json"  # Booking reviews (updated data source)
 GENERAL_REVIEWS_FILE_NAME = "GeneralReviews.json"  # General problems
 
 # Configuración de snapshots
@@ -51,6 +58,25 @@ reviews_cache = {
 
 # Tiempo de vida del caché en segundos (5 minutos)
 CACHE_TTL = 300
+
+def normalize_probleme(wohnungen):
+    """Normalize field names in probleme to handle encoding issues with erwähnungen.
+
+    The AI workflow sometimes outputs 'erw??hnungen' instead of 'erwähnungen' due to
+    character encoding issues. This function normalizes the field name to ensure
+    consistent access to mention counts.
+    """
+    for apt in wohnungen:
+        if 'probleme' in apt and isinstance(apt['probleme'], list):
+            for prob in apt['probleme']:
+                # Handle corrupted field name 'erw??hnungen' -> 'erwähnungen'
+                if 'erw??hnungen' in prob and 'erwähnungen' not in prob:
+                    prob['erwähnungen'] = prob.pop('erw??hnungen')
+                # Also check for other possible encoding variations
+                for key in list(prob.keys()):
+                    if key.startswith('erw') and key.endswith('hnungen') and key != 'erwähnungen':
+                        prob['erwähnungen'] = prob.pop(key)
+    return wohnungen
 
 def load_id_mapping():
     """Cargar mapeo de IDs desde ID.txt (para Airbnb)"""
@@ -593,13 +619,26 @@ def load_reviews():
         check_and_create_snapshot()
         
         # ===== CARGAR REVIEWS DE AIRBNB =====
-        json_file_path_airbnb = os.path.join(JSON_FOLDER_PATH, JSON_FILE_NAME)
+        # Solo cargar desde DatasetScrAN.json (archivo principal)
+        airbnb_files = []
+        airbnb_file = os.path.join(JSON_FOLDER_PATH, JSON_FILE_NAME)
+        if os.path.exists(airbnb_file):
+            airbnb_files.append(airbnb_file)
         
-        if os.path.exists(json_file_path_airbnb):
-            print(f"\n📁 Cargando reviews de Airbnb: {JSON_FILE_NAME}")
+        reviews_data_airbnb = []
+        
+        if airbnb_files:
+            print(f"\n📁 Cargando reviews de Airbnb: {len(airbnb_files)} archivo(s) encontrado(s)")
             
-            with open(json_file_path_airbnb, 'r', encoding='utf-8') as file:
-                reviews_data_airbnb = json.load(file)
+            for file_path in airbnb_files:
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as file:
+                        data = json.load(file)
+                        if isinstance(data, list):
+                            reviews_data_airbnb.extend(data)
+                            print(f"   ✓ {os.path.basename(file_path)}: {len(data)} reviews")
+                except Exception as e:
+                    print(f"   ⚠️  Error leyendo {os.path.basename(file_path)}: {e}")
             
             if isinstance(reviews_data_airbnb, list):
                 total_reviews_found_airbnb = len(reviews_data_airbnb)
@@ -673,23 +712,35 @@ def load_reviews():
                     processed_reviews.append(processed_review)
                     apartment_stats[apartment_id]['count'] += 1
         else:
-            print(f"\n⚠️  Archivo Airbnb no encontrado: {json_file_path_airbnb}")
+            print(f"\n⚠️  Archivos Airbnb no encontrados")
         
         # ===== CARGAR REVIEWS DE BOOKING =====
-        json_file_path_booking = os.path.join(JSON_FOLDER_PATH, BOOKING_JSON_FILE_NAME)
+        # Solo cargar desde DatasetScrBookingAN.json (archivo principal)
+        booking_files = []
+        booking_file = os.path.join(JSON_FOLDER_PATH, BOOKING_JSON_FILE_NAME)
+        if os.path.exists(booking_file):
+            booking_files.append(booking_file)
         
-        if os.path.exists(json_file_path_booking):
-            print(f"\n📁 Cargando reviews de Booking: {BOOKING_JSON_FILE_NAME}")
+        reviews_data_booking = []
+        
+        if booking_files:
+            print(f"\n📁 Cargando reviews de Booking: {len(booking_files)} archivo(s) encontrado(s)")
             
-            with open(json_file_path_booking, 'r', encoding='utf-8') as file:
-                reviews_data_booking = json.load(file)
+            for file_path in booking_files:
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as file:
+                        data = json.load(file)
+                        if isinstance(data, list):
+                            reviews_data_booking.extend(data)
+                            print(f"   ✓ {os.path.basename(file_path)}: {len(data)} reviews")
+                except Exception as e:
+                    print(f"   ⚠️  Error leyendo {os.path.basename(file_path)}: {e}")
             
-            if isinstance(reviews_data_booking, list):
-                total_reviews_found_booking = len(reviews_data_booking)
-                print(f"✅ {total_reviews_found_booking} reviews de Booking encontradas")
-                
-                # Procesar cada review de Booking
-                for review in reviews_data_booking:
+            total_reviews_found_booking = len(reviews_data_booking)
+            print(f"✅ {total_reviews_found_booking} reviews de Booking encontradas")
+            
+            # Procesar cada review de Booking
+            for review in reviews_data_booking:
                     booking_url = review.get('startUrl', '')
                     reviewer_name = review.get('userName', 'Anonym')
                     reviewer_picture = review.get('userAvatar', '')
@@ -819,7 +870,7 @@ def load_reviews():
                     processed_reviews.append(processed_review)
                     apartment_stats[apartment_id]['count'] += 1
         else:
-            print(f"\n⚠️  Archivo Booking no encontrado: {json_file_path_booking}")
+            print(f"\n⚠️  Archivos Booking no encontrados")
         
         # Ordenar de forma aleatoria
         random.shuffle(processed_reviews)
@@ -1055,7 +1106,7 @@ def load_historical_reviews():
                         total_reviews_booking += 1
             
             except Exception as e:
-                print(f"⚠️  Error procesando {filename}: {e}")
+                print(f"   [!] Error procesando {filename}: {e}")
                 continue
         
         # Ordenar de forma aleatoria
@@ -1225,18 +1276,52 @@ def get_statistics(reviews):
         'five_star_percentage': round((rating_distribution[5] / len(ratings)) * 100) if ratings else 0
     }
 
+@app.route('/robots.txt')
+def robots_txt():
+    """Block all search engine crawlers - site is for internal company use only"""
+    robots_content = """# Robots.txt - Urlaubsmagie Bewertungsportal
+# This site is for internal company use only
+# All search engine crawlers are blocked
+
+User-agent: *
+Disallow: /
+
+# Block all known search engines explicitly
+User-agent: Googlebot
+Disallow: /
+
+User-agent: Bingbot
+Disallow: /
+
+User-agent: Yahoo! Slurp
+Disallow: /
+
+User-agent: DuckDuckBot
+Disallow: /
+
+User-agent: Baiduspider
+Disallow: /
+
+User-agent: YandexBot
+Disallow: /
+
+User-agent: facebot
+Disallow: /
+
+User-agent: ia_archiver
+Disallow: /
+"""
+    return robots_content, 200, {'Content-Type': 'text/plain'}
+
 @app.route('/')
-def index():
-    """Página principal - Presentación automática de reseñas (Slideshow)"""
-    reviews = load_reviews()  # Cargar sin traducir - se traducirá on-the-fly en el navegador
-    apartment_info = get_apartment_info()
-    stats = get_statistics(reviews)
-    
-    return render_template('slideshow.html', 
-                         reviews=reviews,
-                         apartment_info=apartment_info,
-                         stats=stats,
-                         total_reviews=len(reviews))
+def homepage():
+    """Página principal - Menú de navegación"""
+    return render_template('homepage.html')
+
+@app.route('/home')
+def home_alias():
+    """Alias para la página principal"""
+    return render_template('homepage.html')
 
 @app.route('/reviews')
 def reviews_view():
@@ -1374,45 +1459,68 @@ def format_exact_date(iso_date_str):
         return iso_date_str
 
 def load_digital_team_reviews():
-    """Cargar reviews de archivos DTAirbnb y DTBooking"""
-    dt_folder = r"C:\Users\admin\n8n-docker\files"
+    """Cargar reviews de archivos DTAirbnb, DTBooking, AirbnbDataDT y BookingDataDT"""
+    dt_folder = r"C:\n8n_Docker\Files"
     processed_reviews = []
-    
+
     # Patrón para encontrar archivos DT: DTAirbnb_DD_MM_YY_HHMMSS.json o DTBooking_DD_MM_YY_HHMMSS.json
     import glob
-    
+
     dt_airbnb_files = glob.glob(os.path.join(dt_folder, "DTAirbnb_*.json"))
     dt_booking_files = glob.glob(os.path.join(dt_folder, "DTBooking_*.json"))
-    
-    print(f"\n📊 Cargando Digital Team reviews...")
-    print(f"   🎗️  Archivos Airbnb encontrados: {len(dt_airbnb_files)}")
-    print(f"   🏛️  Archivos Booking encontrados: {len(dt_booking_files)}")
-    
+
+    # Agregar archivos de historial completo
+    airbnb_data_dt = os.path.join(dt_folder, "AirbnbDataDT.json")
+    booking_data_dt = os.path.join(dt_folder, "BookingDataDT.json")
+
+    if os.path.exists(airbnb_data_dt):
+        dt_airbnb_files.append(airbnb_data_dt)
+    if os.path.exists(booking_data_dt):
+        dt_booking_files.append(booking_data_dt)
+
+    print(f"\n[DT] Cargando Digital Team reviews...")
+    print(f"   [AB] Archivos Airbnb encontrados: {len(dt_airbnb_files)}")
+    print(f"   [BK] Archivos Booking encontrados: {len(dt_booking_files)}")
+
+    # Usar conjuntos para evitar duplicados entre todos los archivos
+    seen_airbnb_review_ids = set()
+    seen_booking_review_ids = set()
+
     # Procesar archivos DTAirbnb
     for file_path in dt_airbnb_files:
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 airbnb_data = json.load(f)
-            
+
             # Extraer fecha del nombre del archivo: DTAirbnb_06_01_26_113415.json
             filename = os.path.basename(file_path)
             file_created_at = parse_dt_filename(filename)
-            
+
+            print(f"      > Procesando: {filename} ({len(airbnb_data)} reviews)")
+
             for review in airbnb_data:
+                review_id = review.get('reviewId', '')
+
+                # Evitar duplicados (especialmente importante con archivos de historial completo)
+                if review_id and review_id in seen_airbnb_review_ids:
+                    continue
+                if review_id:
+                    seen_airbnb_review_ids.add(review_id)
+
                 listing_url = review.get('listingUrl', '')
                 apartment_id = extract_apartment_id_from_url(listing_url)
-                
+
                 # Filtrar apartamentos excluidos
                 if apartment_id in EXCLUDED_APARTMENT_IDS:
                     continue
-                
+
                 apartment_name = get_apartment_name_from_url(listing_url) if apartment_id else 'Unknown'
-                
+
                 review_date_iso = review.get('reviewDate', '')
                 date_display = convert_iso_to_display(review_date_iso)
-                
+
                 processed_review = {
-                    'id': f"dt_airbnb_{review.get('reviewId', '')}_{file_created_at}",
+                    'id': f"dt_airbnb_{review_id}",
                     'text': review.get('reviewText', ''),
                     'rating': review.get('rating', 0),
                     'max_rating': 5,
@@ -1433,24 +1541,35 @@ def load_digital_team_reviews():
                 }
                 processed_reviews.append(processed_review)
         except Exception as e:
-            print(f"⚠️  Error procesando {filename}: {e}")
+            print(f"   [!] Error procesando {filename}: {e}")
     
     # Procesar archivos DTBooking
     for file_path in dt_booking_files:
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 booking_data = json.load(f)
-            
+
             filename = os.path.basename(file_path)
             file_created_at = parse_dt_filename(filename)
-            
+
+            print(f"      > Procesando: {filename} ({len(booking_data)} reviews)")
+
             for review in booking_data:
+                # Crear un ID único para evitar duplicados en Booking (no tienen reviewId como Airbnb)
+                # Usamos: userName + reviewDate + rating como identificador compuesto
+                review_unique_key = f"{review.get('userName', '')}_{review.get('reviewDate', '')}_{review.get('rating', '')}"
+
+                # Evitar duplicados
+                if review_unique_key in seen_booking_review_ids:
+                    continue
+                seen_booking_review_ids.add(review_unique_key)
+
                 booking_url = review.get('startUrl', '')
                 apartment_code = get_apartment_code_from_booking_url(booking_url)
-                
+
                 # Limpiar URL removiendo el código entre paréntesis al final
                 booking_url_clean = re.sub(r'\s*\([^)]+\)\s*$', '', booking_url)
-                
+
                 review_date_iso = review.get('reviewDate', '')
                 date_display = convert_iso_to_display(review_date_iso)
                 
@@ -1487,7 +1606,7 @@ def load_digital_team_reviews():
                     rating_normalized = 0
                 
                 processed_review = {
-                    'id': f"dt_booking_{review.get('id', '')}_{file_created_at}",
+                    'id': f"dt_booking_{hash(review_unique_key)}",
                     'text': review_text,
                     'rating': rating_normalized,  # Normalizado a escala de 5
                     'rating_original': int(rating_booking) if rating_booking else 0,  # Original de 10
@@ -1512,16 +1631,27 @@ def load_digital_team_reviews():
                 }
                 processed_reviews.append(processed_review)
         except Exception as e:
-            print(f"⚠️  Error procesando {filename}: {e}")
-    
-    print(f"✅ Total Digital Team reviews: {len(processed_reviews)}\n")
+            print(f"   [!] Error procesando {filename}: {e}")
+
+    # Contar reviews por fuente
+    airbnb_count = sum(1 for r in processed_reviews if r['source'] == 'Airbnb')
+    booking_count = sum(1 for r in processed_reviews if r['source'] == 'Booking')
+
+    print(f"[OK] Total Digital Team reviews: {len(processed_reviews)}")
+    print(f"   [AB] Airbnb: {airbnb_count} reviews")
+    print(f"   [BK] Booking: {booking_count} reviews\n")
     return processed_reviews
 
 def parse_dt_filename(filename):
     """Parsear nombre de archivo DT para extraer fecha y hora
     Ejemplo: DTAirbnb_06_01_26_113415.json -> 2026-01-06T11:34:15Z
+    Para archivos de historial completo (AirbnbDataDT.json, BookingDataDT.json) usa la fecha actual
     """
     try:
+        # Si es un archivo de historial completo (sin timestamp en el nombre)
+        if filename in ['AirbnbDataDT.json', 'BookingDataDT.json']:
+            return 'history_full'  # Marcador especial para archivos de historial
+
         # Remover extensión y prefijo
         parts = filename.replace('.json', '').split('_')
         if len(parts) >= 5:
@@ -1529,11 +1659,11 @@ def parse_dt_filename(filename):
             month = parts[2]
             year = f"20{parts[3]}"  # Convertir 26 -> 2026
             time_str = parts[4]  # 113415
-            
+
             hour = time_str[:2]
             minute = time_str[2:4]
             second = time_str[4:6]
-            
+
             return f"{year}-{month}-{day}T{hour}:{minute}:{second}Z"
     except:
         return datetime.now().isoformat()
@@ -2122,8 +2252,22 @@ def export_general_stats_excel():
 
 @app.route('/slideshow')
 def slideshow():
-    """Ruta alternativa para slideshow con traducciones"""
-    return index()
+    """Presentación automática de reseñas para TV"""
+    reviews = load_reviews()
+
+    # Agregar fecha exacta formateada a cada review
+    for review in reviews:
+        if review.get('created_at'):
+            review['exact_date_formatted'] = format_exact_date(review['created_at'])
+
+    apartment_info = get_apartment_info()
+    stats = get_statistics(reviews)
+
+    return render_template('slideshow.html',
+                         reviews=reviews,
+                         apartment_info=apartment_info,
+                         stats=stats,
+                         total_reviews=len(reviews))
 
 @app.route('/api/reviews')
 def api_reviews():
@@ -2442,16 +2586,40 @@ def apartment_issues():
 def api_apartment_issues():
     """API endpoint para obtener problemas de apartamentos desde GeneralReviews.json"""
     try:
-        general_reviews_path = os.path.join(JSON_FOLDER_PATH, GENERAL_REVIEWS_FILE_NAME)
+        # Buscar todos los archivos GeneralReviews con timestamp
+        import glob
+        general_files = glob.glob(os.path.join(JSON_FOLDER_PATH, "GeneralReviews_*.json"))
         
-        if not os.path.exists(general_reviews_path):
+        # Si no hay archivos con timestamp, buscar el archivo legacy sin timestamp
+        if not general_files:
+            legacy_file = os.path.join(JSON_FOLDER_PATH, GENERAL_REVIEWS_FILE_NAME)
+            if os.path.exists(legacy_file):
+                general_files = [legacy_file]
+        
+        if not general_files:
             return jsonify({
-                'error': 'GeneralReviews.json no encontrado',
+                'error': 'GeneralReviews files not found',
                 'wohnungen': []
             }), 404
         
-        with open(general_reviews_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        print(f"\n📁 Cargando GeneralReviews: {len(general_files)} archivo(s) encontrado(s)")
+        
+        # Ordenar archivos por nombre (más reciente primero)
+        general_files.sort(reverse=True)
+
+        # RECENTS: Solo el archivo más reciente
+        most_recent_wohnungen = []
+        if general_files:
+            most_recent_file = general_files[0]
+            try:
+                with open(most_recent_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    if isinstance(data, list) and len(data) > 0:
+                        most_recent_wohnungen = data[0].get('message', {}).get('content', {}).get('wohnungen', [])
+                        most_recent_wohnungen = normalize_probleme(most_recent_wohnungen)
+                        print(f"   ✓ Más reciente: {os.path.basename(most_recent_file)}: {len(most_recent_wohnungen)} wohnungen")
+            except Exception as e:
+                print(f"   ⚠️  Error leyendo archivo más reciente: {e}")
         
         # Load history reviews from HRFinal.json
         hrfinal_path = os.path.join(os.path.dirname(__file__), 'HRFinal.json')
@@ -2461,11 +2629,10 @@ def api_apartment_issues():
                 hist_data = json.load(f)
             if isinstance(hist_data, list) and len(hist_data) > 0:
                 history_wohnungen = hist_data[0].get('message', {}).get('content', {}).get('wohnungen', [])
+                history_wohnungen = normalize_probleme(history_wohnungen)
         
-        # Extract recents from general data
-        recents_wohnungen = []
-        if isinstance(data, list) and len(data) > 0:
-            recents_wohnungen = data[0].get('message', {}).get('content', {}).get('wohnungen', [])
+        # Use only most recent file for recents
+        recents_wohnungen = most_recent_wohnungen
         
         # Merge history and recents for general view
         merged = {}
@@ -2578,29 +2745,42 @@ def api_apartment_reviews(apartment_code):
 
 @app.route('/api/current-reviews')
 def api_current_reviews():
-    """API endpoint para obtener reviews actuales desde DatasetScr y DatasetScrBooking"""
+    """API endpoint para obtener reviews actuales desde DatasetScrAN.json y DatasetScrBookingAN.json"""
     try:
-        dataset_folder = r'C:\Users\admin\n8n-docker\files'
-        
+        import glob
+        dataset_folder = r'C:\n8n_Docker\Files'
+
         reviews = []
-        
-        # Load Airbnb reviews from DatasetScr.json
-        airbnb_file = os.path.join(dataset_folder, 'DatasetScr.json')
+
+        # Load Airbnb reviews from DatasetScrAN.json (main analyzed data source)
+        airbnb_file = os.path.join(dataset_folder, 'DatasetScrAN.json')
         if os.path.exists(airbnb_file):
-            with open(airbnb_file, 'r', encoding='utf-8') as f:
-                airbnb_data = json.load(f)
-                for review in airbnb_data:
-                    reviews.append({
-                        'id': str(review.get('reviewId', '')),
-                        'name': review.get('reviewerName', ''),
-                        'date': review.get('reviewDate', ''),
-                        'text': review.get('reviewText', ''),
-                        'rating': review.get('rating', 0),
-                        'source': 'Airbnb'
-                    })
+            try:
+                with open(airbnb_file, 'r', encoding='utf-8') as f:
+                    # Read as text first to preserve large numbers
+                    import re
+                    content = f.read()
+                    # Convert large reviewId numbers to strings to prevent precision loss
+                    # Match "reviewId": followed by a large number (15+ digits)
+                    content = re.sub(r'"reviewId"\s*:\s*(\d{15,})', r'"reviewId": "\1"', content)
+                    airbnb_data = json.loads(content)
+
+                    if isinstance(airbnb_data, list):
+                        for review in airbnb_data:
+                            if 'reviewId' in review:
+                                reviews.append({
+                                    'id': str(review.get('reviewId', '')),
+                                    'name': review.get('reviewerName', ''),
+                                    'date': review.get('reviewDate', ''),
+                                    'text': review.get('reviewText', ''),
+                                    'rating': review.get('rating', 0),
+                                    'source': 'Airbnb'
+                                })
+            except Exception as e:
+                print(f"Warning: Error loading {airbnb_file}: {e}")
         
-        # Load Booking reviews from DatasetScrBooking.json
-        booking_file = os.path.join(dataset_folder, 'DatasetScrBooking.json')
+        # Load Booking reviews from DatasetScrBookingAN.json (updated data source)
+        booking_file = os.path.join(dataset_folder, 'DatasetScrBookingAN.json')
         if os.path.exists(booking_file):
             with open(booking_file, 'r', encoding='utf-8') as f:
                 booking_data = json.load(f)
@@ -2641,79 +2821,180 @@ def api_current_reviews():
 
 @app.route('/api/backup-dates')
 def api_backup_dates():
-    """API endpoint para listar fechas de backup disponibles"""
+    """API endpoint para listar meses de backup disponibles (archivos GeneralReviews con timestamp)"""
     try:
-        backup_folder = os.path.join(os.path.dirname(__file__), 'data', 'BackupIssues')
-        
-        if not os.path.exists(backup_folder):
-            return jsonify({'dates': []})
-        
-        # Find all GeneralReviews backup files
-        files = os.listdir(backup_folder)
-        backup_dates = set()
-        
-        for filename in files:
-            # Extract date from filename (e.g., GeneralReviews021225.json -> 021225)
-            if filename.startswith('GeneralReviews') and filename.endswith('.json'):
-                date_part = filename.replace('GeneralReviews', '').replace('.json', '')
-                if len(date_part) == 6 and date_part.isdigit():
-                    backup_dates.add(date_part)
-        
-        # Sort dates (most recent first)
-        sorted_dates = sorted(list(backup_dates), reverse=True)
-        
-        # Convert to readable format
-        date_list = []
-        for date_str in sorted_dates:
+        import glob
+        import re
+
+        # Buscar archivos GeneralReviews con timestamp (formato: GeneralReviewsDD_MM_YY_HHMMSS.json)
+        general_files = glob.glob(os.path.join(JSON_FOLDER_PATH, "GeneralReviews[0-9]*.json"))
+
+        print(f"\n📂 Buscando backups de GeneralReviews: {len(general_files)} encontrados")
+
+        # Nombres de meses en alemán
+        month_names = {
+            '01': 'Januar', '02': 'Februar', '03': 'März', '04': 'April',
+            '05': 'Mai', '06': 'Juni', '07': 'Juli', '08': 'August',
+            '09': 'September', '10': 'Oktober', '11': 'November', '12': 'Dezember'
+        }
+
+        # Agrupar por mes (MM_YY)
+        months_found = {}
+        for file_path in general_files:
             try:
-                from datetime import datetime
-                day = date_str[0:2]
-                month = date_str[2:4]
-                year = '20' + date_str[4:6]
-                date_obj = datetime.strptime(f"{day}{month}{year}", "%d%m%Y")
-                date_list.append({
-                    'date_key': date_str,
-                    'date_formatted': date_obj.strftime('%d.%m.%Y'),
-                    'date_iso': date_obj.strftime('%Y-%m-%d')
-                })
-            except:
+                filename = os.path.basename(file_path)
+                # Extraer fecha: GeneralReviewsDD_MM_YY_HHMMSS.json
+                match = re.match(r'GeneralReviews(\d{2})_(\d{2})_(\d{2})_(\d+)\.json', filename)
+                if match:
+                    day, month, year, time_str = match.groups()
+                    month_key = f"{month}_{year}"  # MM_YY
+
+                    if month_key not in months_found:
+                        full_year = f"20{year}"
+                        month_name = month_names.get(month, month)
+                        months_found[month_key] = {
+                            'month_key': month_key,
+                            'month_formatted': f"{month_name} {full_year}",
+                            'month': month,
+                            'year': year,
+                            'files_count': 0
+                        }
+                    months_found[month_key]['files_count'] += 1
+                    print(f"   ✓ {filename} -> {month_names.get(month, month)} 20{year}")
+            except Exception as e:
+                print(f"   ⚠️  Error parseando {filename}: {e}")
                 continue
-        
-        return jsonify({'dates': date_list})
-        
+
+        # Ordenar por año y mes (más reciente primero)
+        months_list = sorted(months_found.values(),
+                           key=lambda x: (x['year'], x['month']),
+                           reverse=True)
+
+        return jsonify({'dates': months_list})
+
     except Exception as e:
-        print(f"❌ Error al listar fechas de backup: {e}")
+        print(f"❌ Error al listar meses de backup: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e), 'dates': []}), 500
 
-@app.route('/api/backup-data/<date_key>')
-def api_backup_data(date_key):
-    """API endpoint para obtener datos de backup de una fecha específica"""
+@app.route('/api/backup-data/<month_key>')
+def api_backup_data(month_key):
+    """API endpoint para obtener datos de backup de un mes específico (MM_YY)"""
     try:
-        backup_folder = os.path.join(os.path.dirname(__file__), 'data', 'BackupIssues')
-        
-        # Load GeneralReviews backup for this date
-        general_file = os.path.join(backup_folder, f'GeneralReviews{date_key}.json')
-        
-        if not os.path.exists(general_file):
-            return jsonify({'error': 'Backup no encontrado', 'wohnungen': []}), 404
-        
-        with open(general_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        
-        # Extract wohnungen from backup
-        backup_wohnungen = []
-        if isinstance(data, list) and len(data) > 0:
-            backup_wohnungen = data[0].get('message', {}).get('content', {}).get('wohnungen', [])
-        
+        import glob
+        import re
+
+        # Validar formato month_key: MM_YY
+        parts = month_key.split('_')
+        if len(parts) != 2 or len(parts[0]) != 2 or len(parts[1]) != 2:
+            return jsonify({'error': 'Formato de month_key inválido (debe ser MM_YY)', 'wohnungen': []}), 400
+
+        month = parts[0]
+        year = parts[1]
+
+        print(f"\n📂 Cargando backups del mes: {month}/20{year}")
+
+        # Buscar todos los archivos GeneralReviews de ese mes
+        # Formato: GeneralReviewsDD_MM_YY_HHMMSS.json
+        pattern = os.path.join(JSON_FOLDER_PATH, f"GeneralReviews*_{month}_{year}_*.json")
+        general_files = glob.glob(pattern)
+
+        print(f"   📁 Archivos encontrados: {len(general_files)}")
+
+        if not general_files:
+            return jsonify({'error': 'Keine Backups für diesen Monat gefunden', 'wohnungen': []}), 404
+
+        # Cargar y fusionar todos los archivos
+        merged_wohnungen = {}  # Dict para fusionar por apartamento
+
+        for file_path in general_files:
+            try:
+                filename = os.path.basename(file_path)
+                print(f"   📄 Cargando: {filename}")
+
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+
+                # Extract wohnungen from backup
+                file_wohnungen = []
+                if isinstance(data, list) and len(data) > 0:
+                    file_wohnungen = data[0].get('message', {}).get('content', {}).get('wohnungen', [])
+                    file_wohnungen = normalize_probleme(file_wohnungen)
+
+                # Fusionar con datos existentes
+                for wohnung in file_wohnungen:
+                    apt_name = wohnung.get('wohnung', 'Unknown')
+                    if apt_name not in merged_wohnungen:
+                        merged_wohnungen[apt_name] = {
+                            'wohnung': apt_name,
+                            'probleme': {}
+                        }
+
+                    # Fusionar problemas
+                    for problem in wohnung.get('probleme', []):
+                        desc = problem.get('beschreibung', '')
+                        if not desc:
+                            continue
+
+                        if desc not in merged_wohnungen[apt_name]['probleme']:
+                            merged_wohnungen[apt_name]['probleme'][desc] = {
+                                'beschreibung': desc,
+                                'erwähnungen': 0,
+                                'kategorie': problem.get('kategorie', 'Sonstiges'),
+                                'ids': [],
+                                'names': []
+                            }
+
+                        # Sumar erwähnungen
+                        erw = problem.get('erwähnungen') or problem.get('erw??hnungen') or 0
+                        merged_wohnungen[apt_name]['probleme'][desc]['erwähnungen'] += erw
+
+                        # Fusionar ids
+                        prob_ids = problem.get('ids', []) or problem.get('id', [])
+                        if isinstance(prob_ids, str):
+                            prob_ids = [prob_ids]
+                        elif not isinstance(prob_ids, list):
+                            prob_ids = [str(prob_ids)] if prob_ids else []
+                        for pid in prob_ids:
+                            if pid and str(pid) not in merged_wohnungen[apt_name]['probleme'][desc]['ids']:
+                                merged_wohnungen[apt_name]['probleme'][desc]['ids'].append(str(pid))
+
+                        # Fusionar names
+                        prob_names = problem.get('names', [])
+                        if isinstance(prob_names, str):
+                            prob_names = [prob_names]
+                        for name in prob_names:
+                            if name and name not in merged_wohnungen[apt_name]['probleme'][desc]['names']:
+                                merged_wohnungen[apt_name]['probleme'][desc]['names'].append(name)
+
+                print(f"      ✓ {len(file_wohnungen)} wohnungen procesadas")
+
+            except Exception as e:
+                print(f"   ⚠️  Error cargando {filename}: {e}")
+                continue
+
+        # Convertir dict a lista
+        result_wohnungen = []
+        for apt_name, apt_data in merged_wohnungen.items():
+            result_wohnungen.append({
+                'wohnung': apt_name,
+                'probleme': list(apt_data['probleme'].values())
+            })
+
+        # Ordenar por nombre de apartamento
+        result_wohnungen.sort(key=lambda x: x['wohnung'])
+
+        print(f"   ✅ Total: {len(result_wohnungen)} wohnungen con {sum(len(w['probleme']) for w in result_wohnungen)} problemas")
+
         return jsonify({
-            'date_key': date_key,
-            'wohnungen': backup_wohnungen
+            'month_key': month_key,
+            'wohnungen': result_wohnungen,
+            'files_loaded': len(general_files)
         })
-        
+
     except Exception as e:
-        print(f"❌ Error al cargar backup {date_key}: {e}")
+        print(f"❌ Error al cargar backup {month_key}: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({
@@ -2721,63 +3002,105 @@ def api_backup_data(date_key):
             'wohnungen': []
         }), 500
 
-@app.route('/api/backup-reviews/<date_key>')
-def api_backup_reviews(date_key):
-    """API endpoint para obtener reviews de backup de una fecha específica"""
+@app.route('/api/backup-reviews/<month_key>')
+def api_backup_reviews(month_key):
+    """API endpoint para obtener reviews de backup de un mes específico (MM_YY)"""
     try:
-        backup_folder = os.path.join(os.path.dirname(__file__), 'data', 'BackupIssues')
-        
+        import glob
+
+        # Validar formato month_key: MM_YY
+        parts = month_key.split('_')
+        if len(parts) != 2 or len(parts[0]) != 2 or len(parts[1]) != 2:
+            return jsonify({'error': 'Formato de month_key inválido (debe ser MM_YY)', 'reviews': []}), 400
+
+        month = parts[0]
+        year = parts[1]
+
+        print(f"\n📂 Cargando reviews del mes: {month}/20{year}")
+
         reviews = []
-        
-        # Load Airbnb reviews from DatasetScr backup
-        airbnb_file = os.path.join(backup_folder, f'DatasetScr{date_key}.json')
-        if os.path.exists(airbnb_file):
-            with open(airbnb_file, 'r', encoding='utf-8') as f:
-                airbnb_data = json.load(f)
-                for review in airbnb_data:
-                    reviews.append({
-                        'id': str(review.get('reviewId', '')),
-                        'name': review.get('reviewerName', ''),
-                        'date': review.get('reviewDate', ''),
-                        'text': review.get('reviewText', ''),
-                        'rating': review.get('rating', 0),
-                        'source': 'Airbnb'
-                    })
-        
-        # Load Booking reviews from DatasetScrBooking backup
-        booking_file = os.path.join(backup_folder, f'DatasetScrBooking{date_key}.json')
-        if os.path.exists(booking_file):
-            with open(booking_file, 'r', encoding='utf-8') as f:
-                booking_data = json.load(f)
-                for review in booking_data:
-                    # Combine liked and disliked text
-                    liked = review.get('likedText', '') or ''
-                    disliked = review.get('dislikedText', '') or ''
-                    full_text = ''
-                    if liked:
-                        full_text += f"👍 {liked}"
-                    if disliked:
-                        if full_text:
-                            full_text += " | "
-                        full_text += f"👎 {disliked}"
-                    
-                    reviews.append({
-                        'id': review.get('id', ''),
-                        'name': review.get('userName', ''),
-                        'date': review.get('reviewDate', ''),
-                        'text': full_text or review.get('reviewTitle', ''),
-                        'rating': review.get('rating', 0),
-                        'source': 'Booking'
-                    })
-        
+        seen_ids = set()  # Para evitar duplicados
+
+        # Buscar archivos Airbnb de ese mes
+        # Formato: DatasetScr_DD_MM_YY_HHMMSS.json
+        airbnb_pattern = os.path.join(JSON_FOLDER_PATH, f"DatasetScr_*_{month}_{year}_*.json")
+        airbnb_files = glob.glob(airbnb_pattern)
+
+        print(f"   📁 Archivos Airbnb encontrados: {len(airbnb_files)}")
+
+        for file_path in airbnb_files:
+            try:
+                filename = os.path.basename(file_path)
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    airbnb_data = json.load(f)
+                    for review in airbnb_data:
+                        review_id = str(review.get('reviewId', ''))
+                        unique_key = f"airbnb_{review_id}"
+                        if unique_key not in seen_ids:
+                            seen_ids.add(unique_key)
+                            reviews.append({
+                                'id': review_id,
+                                'name': review.get('reviewerName', ''),
+                                'date': review.get('reviewDate', ''),
+                                'text': review.get('reviewText', ''),
+                                'rating': review.get('rating', 0),
+                                'source': 'Airbnb'
+                            })
+                print(f"      ✓ {filename}: {len(airbnb_data)} reviews")
+            except Exception as e:
+                print(f"      ⚠️  Error cargando {filename}: {e}")
+
+        # Buscar archivos Booking de ese mes
+        # Formato: DatasetScrBooking_DD_MM_YY_HHMMSS.json
+        booking_pattern = os.path.join(JSON_FOLDER_PATH, f"DatasetScrBooking_*_{month}_{year}_*.json")
+        booking_files = glob.glob(booking_pattern)
+
+        print(f"   📁 Archivos Booking encontrados: {len(booking_files)}")
+
+        for file_path in booking_files:
+            try:
+                filename = os.path.basename(file_path)
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    booking_data = json.load(f)
+                    for review in booking_data:
+                        reviewer_name = review.get('userName', '')
+                        review_date = review.get('reviewDate', '')
+                        unique_key = f"booking_{reviewer_name}_{review_date}"
+                        if unique_key not in seen_ids:
+                            seen_ids.add(unique_key)
+                            # Combine liked and disliked text
+                            liked = review.get('likedText', '') or ''
+                            disliked = review.get('dislikedText', '') or ''
+                            full_text = ''
+                            if liked:
+                                full_text += f"👍 {liked}"
+                            if disliked:
+                                if full_text:
+                                    full_text += " | "
+                                full_text += f"👎 {disliked}"
+
+                            reviews.append({
+                                'id': review.get('id', ''),
+                                'name': reviewer_name,
+                                'date': review_date,
+                                'text': full_text or review.get('reviewTitle', ''),
+                                'rating': review.get('rating', 0),
+                                'source': 'Booking'
+                            })
+                print(f"      ✓ {filename}: {len(booking_data)} reviews")
+            except Exception as e:
+                print(f"      ⚠️  Error cargando {filename}: {e}")
+
+        print(f"   ✅ Total: {len(reviews)} reviews únicas")
+
         return jsonify({
-            'date_key': date_key,
+            'month_key': month_key,
             'reviews': reviews,
             'total': len(reviews)
         })
-        
+
     except Exception as e:
-        print(f"❌ Error al cargar reviews de backup {date_key}: {e}")
+        print(f"❌ Error al cargar reviews de backup {month_key}: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({

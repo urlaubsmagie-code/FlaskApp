@@ -7,7 +7,7 @@ Find URLs for missing Hotel IDs
 import json
 import os
 
-JSON_FOLDER_PATH = r"C:\Users\admin\n8n-docker\files"
+JSON_FOLDER_PATH = r"C:\n8n_Docker\Files"
 BOOKING_JSON_FILE_NAME = "DatasetScrBooking.json"
 
 # Missing IDs to find

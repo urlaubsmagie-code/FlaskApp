@@ -1,7 +1,7 @@
 import json
 
 # Cargar datos de Booking
-with open(r'C:\Users\admin\n8n-docker\files\DatasetScrBooking.json', 'r', encoding='utf-8') as f:
+with open(r'C:\n8n_Docker\Files\DatasetScrBooking.json', 'r', encoding='utf-8') as f:
     data = json.load(f)
 
 print(f"Total reviews: {len(data)}\n")

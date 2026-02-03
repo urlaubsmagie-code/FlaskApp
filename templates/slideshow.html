@@ -4,7 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="googlebot" content="noindex, nofollow">
     <title>Gästebewertungen</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         * {
@@ -279,7 +282,15 @@
             <!-- FOOTER -->
             <div class="footer">
                 {% if review.date %}
-                <div><i class="fas fa-calendar-alt"></i> {{ review.date }}</div>
+                <div>
+                    <i class="fas fa-calendar-alt"></i> {{ review.date }}
+                    {% if review.exact_date_formatted %}
+                    <br>
+                    <small style="color: #999; font-size: 11px;">
+                        <i class="fas fa-clock"></i> {{ review.exact_date_formatted }}
+                    </small>
+                    {% endif %}
+                </div>
                 {% endif %}
 
                 {% if review.stay_info and review.platform_code == 'BK' %}

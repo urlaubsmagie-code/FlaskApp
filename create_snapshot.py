@@ -9,9 +9,9 @@ from datetime import datetime
 from app import extract_apartment_id_from_url, get_apartment_name_from_url, EXCLUDED_APARTMENT_IDS
 
 # Configuración
-JSON_FOLDER_PATH = r"C:\Users\admin\n8n-docker\files"
+JSON_FOLDER_PATH = r"C:\n8n_Docker\Files"
 DATASET_FILE = "DatasetScr.json"
-SNAPSHOTS_FILE = r"C:\Users\admin\Server\FlaskApp\data\snapshots.json"
+SNAPSHOTS_FILE = r"C:\Users\admin\Documents\FlaskApp\data\snapshots.json"
 
 def create_snapshot():
     """Crear un snapshot de las estadísticas actuales"""
