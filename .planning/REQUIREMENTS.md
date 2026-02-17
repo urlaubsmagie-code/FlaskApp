@@ -94,36 +94,36 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | TBD | Pending |
-| INFRA-02 | TBD | Pending |
-| INFRA-03 | TBD | Pending |
-| FILT-01 | TBD | Pending |
-| FILT-02 | TBD | Pending |
-| FILT-03 | TBD | Pending |
-| FILT-04 | TBD | Pending |
-| FILT-05 | TBD | Pending |
-| FILT-06 | TBD | Pending |
-| FILT-07 | TBD | Pending |
-| SRCH-01 | TBD | Pending |
-| SRCH-02 | TBD | Pending |
-| SRCH-03 | TBD | Pending |
-| SRCH-04 | TBD | Pending |
-| SRCH-05 | TBD | Pending |
-| PROF-01 | TBD | Pending |
-| PROF-02 | TBD | Pending |
-| PROF-03 | TBD | Pending |
-| PROF-04 | TBD | Pending |
-| POLL-01 | TBD | Pending |
-| POLL-02 | TBD | Pending |
-| POLL-03 | TBD | Pending |
-| POLL-04 | TBD | Pending |
-| POLL-05 | TBD | Pending |
+| INFRA-01 | Phase 1 | Pending |
+| INFRA-02 | Phase 1 | Pending |
+| INFRA-03 | Phase 1 | Pending |
+| FILT-01 | Phase 4 | Pending |
+| FILT-02 | Phase 5 | Pending |
+| FILT-03 | Phase 3 | Pending |
+| FILT-04 | Phase 6 | Pending |
+| FILT-05 | Phase 4 | Pending |
+| FILT-06 | Phase 4 | Pending |
+| FILT-07 | Phase 4 | Pending |
+| SRCH-01 | Phase 7 | Pending |
+| SRCH-02 | Phase 7 | Pending |
+| SRCH-03 | Phase 7 | Pending |
+| SRCH-04 | Phase 7 | Pending |
+| SRCH-05 | Phase 7 | Pending |
+| PROF-01 | Phase 8 | Pending |
+| PROF-02 | Phase 8 | Pending |
+| PROF-03 | Phase 8 | Pending |
+| PROF-04 | Phase 8 | Pending |
+| POLL-01 | Phase 2 | Pending |
+| POLL-02 | Phase 2 | Pending |
+| POLL-03 | Phase 2 | Pending |
+| POLL-04 | Phase 2 | Pending |
+| POLL-05 | Phase 3 | Pending |
 
 **Coverage:**
 - v1 requirements: 24 total
-- Mapped to phases: 0
-- Unmapped: 24 (pending roadmap creation)
+- Mapped to phases: 24
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-17*
-*Last updated: 2026-02-17 after initial definition*
+*Last updated: 2026-02-17 after roadmap creation*
