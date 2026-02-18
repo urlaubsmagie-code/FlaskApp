@@ -108,6 +108,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='js/polling.js') }}"></script>
+<script src="{{ url_for('static', filename='js/filter-state.js') }}"></script>
 <script>
     // =========================================================================
     // Conversation Card DOM Helpers
@@ -277,14 +278,6 @@
         const container = document.getElementById('conversationList');
         if (!container) return;
 
-        // Get current filter state
-        const activeFilterBtn = document.querySelector('.filter-btn.active');
-        const currentFilter = activeFilterBtn ? activeFilterBtn.dataset.filter : 'all';
-
-        // Get current search query
-        const searchInput = document.getElementById('searchInput');
-        const searchQuery = searchInput ? searchInput.value.toLowerCase() : '';
-
         // Handle empty state
         if (!conversations || conversations.length === 0) {
             const existingEmpty = container.querySelector('.empty-state');
@@ -367,79 +360,36 @@
             }
         });
 
-        // Re-apply filter after update
-        if (currentFilter !== 'all') {
-            filterConversations(currentFilter);
-        }
-
-        // Re-apply search after update
-        if (searchQuery) {
-            applySearch(searchQuery);
-        }
+        // Re-apply filters after update (handles platform, status, and search)
+        filterState.applyFilters();
     }
 
     // =========================================================================
-    // Filter and Search
+    // Filter and Search (using FilterState module)
     // =========================================================================
 
-    /**
-     * Filter conversations by status (uses data-status attribute for speed)
-     */
-    function filterConversations(filter) {
-        const cards = document.querySelectorAll('.conversation-card');
-        cards.forEach(card => {
-            const status = card.dataset.status;
-            if (filter === 'all' || status === filter) {
-                card.style.display = 'flex';
-            } else {
-                card.style.display = 'none';
-            }
-        });
-    }
-
-    /**
-     * Apply search filter
-     */
-    function applySearch(query) {
-        const cards = document.querySelectorAll('.conversation-card');
-        cards.forEach(card => {
-            const text = card.textContent.toLowerCase();
-            if (text.includes(query)) {
-                // Only show if not filtered out by status
-                if (card.style.display !== 'none') {
-                    card.style.display = 'flex';
-                }
-            } else {
-                card.style.display = 'none';
-            }
-        });
-    }
-
-    // Filter button click handlers
-    document.querySelectorAll('.filter-btn').forEach(btn => {
+    // Platform filter button click handlers
+    document.querySelectorAll('[data-filter-platform]').forEach(btn => {
         btn.addEventListener('click', function() {
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            filterConversations(this.dataset.filter);
-
-            // Also re-apply search if active
-            const searchInput = document.getElementById('searchInput');
-            if (searchInput && searchInput.value) {
-                applySearch(searchInput.value.toLowerCase());
-            }
+            filterState.setPlatform(this.dataset.filterPlatform || null);
         });
     });
 
-    // Search input handler
+    // Status filter button click handlers
+    document.querySelectorAll('[data-filter-status]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            filterState.setStatus(this.dataset.filterStatus || null);
+        });
+    });
+
+    // Clear all filters button
+    document.getElementById('clearFiltersBtn').addEventListener('click', function() {
+        filterState.reset();
+    });
+
+    // Search input handler - just trigger filter reapply
     document.getElementById('searchInput').addEventListener('input', function() {
-        const query = this.value.toLowerCase();
-        // First apply filter, then search
-        const activeFilterBtn = document.querySelector('.filter-btn.active');
-        const currentFilter = activeFilterBtn ? activeFilterBtn.dataset.filter : 'all';
-        filterConversations(currentFilter);
-        if (query) {
-            applySearch(query);
-        }
+        filterState.applyFilters();
     });
 
     // =========================================================================
@@ -471,6 +421,11 @@
 
     // Start polling when page loads
     document.addEventListener('DOMContentLoaded', () => {
+        // Initialize filter state from URL and apply
+        filterState.applyFilters();
+        filterState.updateUI();
+
+        // Then start polling
         inboxPoller.start();
     });
 </script>
