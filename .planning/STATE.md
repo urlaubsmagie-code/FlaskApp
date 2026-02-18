@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-17)
 
 **Core value:** The system remembers EVERYTHING about every guest permanently
-**Current focus:** Phase 2 - Polling Core
+**Current focus:** Phase 3 - Unread Tracking
 
 ## Current Position
 
-Phase: 2 of 8 (Polling Core)
-Plan: 3 of 3 in current phase
-Status: Phase 2 Complete
-Last activity: 2026-02-18 — Completed 02-03-PLAN.md
+Phase: 3 of 8 (Unread Tracking)
+Plan: 1 of 2 in current phase
+Status: Executing
+Last activity: 2026-02-18 — Completed 03-01-PLAN.md
 
-Progress: [#####░░░░░] 31%
+Progress: [######░░░░] 38%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
+- Total plans completed: 6
 - Average duration: 4 min
-- Total execution time: 0.30 hours
+- Total execution time: 0.32 hours
 
 **By Phase:**
 
@@ -29,9 +29,10 @@ Progress: [#####░░░░░] 31%
 |-------|-------|-------|----------|
 | 01-infrastructure-foundation | 2 | 12 min | 6 min |
 | 02-polling-core | 3 | 6 min | 2 min |
+| 03-unread-tracking | 1 | 1 min | 1 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (7 min), 01-02 (5 min), 02-01 (2 min), 02-02 (2 min), 02-03 (2 min)
+- Last 5 plans: 01-02 (5 min), 02-01 (2 min), 02-02 (2 min), 02-03 (2 min), 03-01 (1 min)
 - Trend: Improving
 
 *Updated after each plan completion*
@@ -61,6 +62,9 @@ Recent decisions affecting current work:
 - [02-03]: 10-second poll interval for conversation (faster than inbox for active viewing)
 - [02-03]: Track message IDs immediately after send/AI-generate to prevent duplicates
 - [02-03]: Dual-format addMessageToUI for backward compatibility
+- [03-01]: PATCH over POST for idempotent state change
+- [03-01]: Blue dot via ::before pseudo-element for clean DOM
+- [03-01]: sr-only class follows WCAG accessibility pattern
 
 ### Pending Todos
 
@@ -73,5 +77,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 02-03-PLAN.md (Conversation Polling)
-Resume file: .planning/phases/03-*/03-01-PLAN.md
+Stopped at: Completed 03-01-PLAN.md (Unread Indicators)
+Resume file: .planning/phases/03-unread-tracking/03-02-PLAN.md
