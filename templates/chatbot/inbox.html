@@ -124,10 +124,11 @@
     function createConversationCard(conv) {
         const card = document.createElement('a');
         card.href = `/chatbot/conversation/${conv.id}`;
-        card.className = 'conversation-card';
+        card.className = 'conversation-card' + (!conv.is_read ? ' unread' : '');
         card.dataset.conversationId = conv.id;
         card.dataset.updatedAt = conv.updated_at || '';
         card.dataset.status = conv.status;
+        card.dataset.isRead = conv.is_read ? 'true' : 'false';
 
         // Get guest display name
         const guestName = (conv.guest && (conv.guest.name || conv.guest.email)) || 'Unknown Guest';
@@ -143,7 +144,11 @@
         // Build AI badge HTML
         const aiBadge = conv.ai_enabled ? '<span class="ai-badge"><i class="fas fa-robot"></i></span>' : '';
 
+        // Build screen reader text for unread
+        const srText = !conv.is_read ? '<span class="sr-only">Unread</span>' : '';
+
         card.innerHTML = `
+            ${srText}
             <div class="conversation-avatar">
                 <i class="${getPlatformIcon(conv.platform)}"></i>
             </div>
@@ -181,6 +186,22 @@
         // Update data attributes
         card.dataset.updatedAt = conv.updated_at || '';
         card.dataset.status = conv.status;
+        card.dataset.isRead = conv.is_read ? 'true' : 'false';
+
+        // Update unread state
+        if (conv.is_read) {
+            card.classList.remove('unread');
+            const srOnly = card.querySelector('.sr-only');
+            if (srOnly) srOnly.remove();
+        } else {
+            card.classList.add('unread');
+            if (!card.querySelector('.sr-only')) {
+                const srSpan = document.createElement('span');
+                srSpan.className = 'sr-only';
+                srSpan.textContent = 'Unread';
+                card.insertBefore(srSpan, card.firstChild);
+            }
+        }
 
         // Update time
         const timeEl = card.querySelector('.conversation-time');
@@ -275,8 +296,9 @@
             const existingCard = existingCards.get(convId);
 
             if (existingCard) {
-                // Update existing card if data changed
-                if (existingCard.dataset.updatedAt !== conv.updated_at) {
+                // Update existing card if data changed (timestamp or read state)
+                const isReadChanged = existingCard.dataset.isRead !== (conv.is_read ? 'true' : 'false');
+                if (existingCard.dataset.updatedAt !== conv.updated_at || isReadChanged) {
                     updateConversationCard(existingCard, conv);
                 }
 
