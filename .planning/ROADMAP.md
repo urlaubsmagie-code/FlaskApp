@@ -77,11 +77,11 @@ Plans:
   2. Active filter is visible as a badge/indicator showing current selection
   3. User can clear all filters with single click returning to full inbox
   4. Filter selection persists in URL (back button restores previous filter, URL is shareable)
-**Plans**: TBD
+**Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 04-01: FilterState module and URL sync
-- [ ] 04-02: Platform filter API and UI
+- [ ] 04-01-PLAN.md — FilterState module with URL sync via History API (Wave 1)
+- [ ] 04-02-PLAN.md — Platform filter UI and FilterState integration (Wave 2)
 
 ### Phase 5: Status Filtering
 **Goal**: Users can filter inbox by conversation status
