@@ -72,7 +72,7 @@ def search_messages(query_text, limit=50, conversation_ids=None):
                 'message_id': row.id,
                 'content': row.content,
                 'sender_type': row.sender_type,
-                'sent_at': row.sent_at.isoformat() if row.sent_at else None,
+                'sent_at': row.sent_at if isinstance(row.sent_at, str) else (row.sent_at.isoformat() if row.sent_at else None),
                 'conversation_id': row.conversation_id,
                 'subject': row.subject,
                 'platform': row.platform,
@@ -133,7 +133,7 @@ def search_by_guest_name(name_query, limit=20):
                 'platform': row.platform,
                 'status': row.status,
                 'is_read': row.is_read,
-                'updated_at': row.updated_at.isoformat() if row.updated_at else None,
+                'updated_at': row.updated_at if isinstance(row.updated_at, str) else (row.updated_at.isoformat() if row.updated_at else None),
                 'guest_id': row.guest_id,
                 'guest_name': row.guest_name,
                 'guest_email': row.guest_email
