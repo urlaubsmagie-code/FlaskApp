@@ -32,7 +32,10 @@
     <div class="conversation-list" id="conversationList">
         {% if conversations %}
             {% for conv in conversations %}
-            <a href="{{ url_for('chatbot.conversation_view', conversation_id=conv.id) }}" class="conversation-card" data-conversation-id="{{ conv.id }}" data-updated-at="{{ conv.updated_at.isoformat() if conv.updated_at else '' }}" data-status="{{ conv.status }}">
+            <a href="{{ url_for('chatbot.conversation_view', conversation_id=conv.id) }}" class="conversation-card{% if not conv.is_read %} unread{% endif %}" data-conversation-id="{{ conv.id }}" data-updated-at="{{ conv.updated_at.isoformat() if conv.updated_at else '' }}" data-status="{{ conv.status }}" data-is-read="{{ 'true' if conv.is_read else 'false' }}">
+                {% if not conv.is_read %}
+                <span class="sr-only">Unread</span>
+                {% endif %}
                 <div class="conversation-avatar">
                     {% if conv.platform == 'email' %}
                         <i class="fas fa-envelope"></i>
