@@ -468,6 +468,58 @@ a {
     border: 0;
 }
 
+/* Active Filter Badges */
+.active-filters {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.active-filter-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.active-filter-badge button {
+    background: none;
+    border: none;
+    padding: 0;
+    margin-left: 2px;
+    cursor: pointer;
+    color: var(--text-light);
+    display: flex;
+    align-items: center;
+    font-size: 0.625rem;
+}
+
+.active-filter-badge button:hover {
+    color: var(--danger-color);
+}
+
+/* Platform-specific active filter badge colors */
+.active-filter-badge.platform-email { background: #fce8e6; color: var(--email-color); border-color: #fcd5d2; }
+.active-filter-badge.platform-whatsapp { background: #e6f7ed; color: var(--whatsapp-color); border-color: #c3e8d0; }
+.active-filter-badge.platform-airbnb { background: #ffe6e6; color: var(--airbnb-color); border-color: #fcd0d0; }
+.active-filter-badge.platform-booking { background: #e6eef7; color: var(--booking-color); border-color: #c5d9ed; }
+
+/* Status-specific active filter badge colors */
+.active-filter-badge.status-active { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+.active-filter-badge.status-pending_owner { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.active-filter-badge.status-closed { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+
+/* Clear All Filters button */
+#clearFiltersBtn {
+    margin-left: auto;
+}
+
 /* ============================================================================
    Conversation View
    ============================================================================ */
