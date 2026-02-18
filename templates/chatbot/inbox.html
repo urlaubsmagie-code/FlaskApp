@@ -1,0 +1,116 @@
+{% extends "chatbot/base.html" %}
+
+{% block title %}Inbox{% endblock %}
+
+{% block content %}
+<div class="inbox-container">
+    <!-- Header -->
+    <div class="page-header">
+        <h1><i class="fas fa-inbox"></i> Inbox</h1>
+        <div class="header-actions">
+            <button class="btn btn-secondary" onclick="refreshConversations()">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-bar">
+        <div class="filter-group">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="active">Active</button>
+            <button class="filter-btn" data-filter="pending_owner">Pending</button>
+            <button class="filter-btn" data-filter="closed">Closed</button>
+        </div>
+        <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" placeholder="Search conversations..." id="searchInput">
+        </div>
+    </div>
+
+    <!-- Conversation List -->
+    <div class="conversation-list" id="conversationList">
+        {% if conversations %}
+            {% for conv in conversations %}
+            <a href="{{ url_for('chatbot.conversation_view', conversation_id=conv.id) }}" class="conversation-card" data-conversation-id="{{ conv.id }}" data-updated-at="{{ conv.updated_at.isoformat() if conv.updated_at else '' }}" data-status="{{ conv.status }}">
+                <div class="conversation-avatar">
+                    {% if conv.platform == 'email' %}
+                        <i class="fas fa-envelope"></i>
+                    {% elif conv.platform == 'whatsapp' %}
+                        <i class="fab fa-whatsapp"></i>
+                    {% elif conv.platform == 'airbnb' %}
+                        <i class="fab fa-airbnb"></i>
+                    {% else %}
+                        <i class="fas fa-comment"></i>
+                    {% endif %}
+                </div>
+                <div class="conversation-info">
+                    <div class="conversation-header">
+                        <span class="guest-name">{{ conv.guest.name or conv.guest.email or 'Unknown Guest' }}</span>
+                        <span class="conversation-time">{{ conv.updated_at.strftime('%d.%m %H:%M') if conv.updated_at else '' }}</span>
+                    </div>
+                    <div class="conversation-subject">{{ conv.subject or 'No subject' }}</div>
+                    <div class="conversation-preview">
+                        {% if conv.last_message %}
+                            {{ conv.last_message.content[:80] }}{% if conv.last_message.content|length > 80 %}...{% endif %}
+                        {% else %}
+                            No messages yet
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="conversation-meta">
+                    <span class="platform-badge {{ conv.platform }}">{{ conv.platform|capitalize }}</span>
+                    {% if conv.ai_enabled %}
+                        <span class="ai-badge"><i class="fas fa-robot"></i></span>
+                    {% endif %}
+                    <span class="status-badge {{ conv.status }}">{{ conv.status|replace('_', ' ')|title }}</span>
+                </div>
+            </a>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <i class="fas fa-inbox"></i>
+                <h3>No conversations yet</h3>
+                <p>When guests message you, their conversations will appear here.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    // Filter functionality
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            filterConversations(this.dataset.filter);
+        });
+    });
+
+    function filterConversations(filter) {
+        const cards = document.querySelectorAll('.conversation-card');
+        cards.forEach(card => {
+            const status = card.querySelector('.status-badge').textContent.toLowerCase().replace(' ', '_');
+            if (filter === 'all' || status === filter) {
+                card.style.display = 'flex';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+    }
+
+    // Search functionality
+    document.getElementById('searchInput').addEventListener('input', function() {
+        const query = this.value.toLowerCase();
+        const cards = document.querySelectorAll('.conversation-card');
+        cards.forEach(card => {
+            const text = card.textContent.toLowerCase();
+            card.style.display = text.includes(query) ? 'flex' : 'none';
+        });
+    });
+
+    function refreshConversations() {
+        location.reload();
+    }
+</script>
+{% endblock %}
