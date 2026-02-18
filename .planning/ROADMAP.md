@@ -61,11 +61,11 @@ Plans:
   1. Unread conversations display blue dot indicator in inbox list
   2. Opening a conversation marks it as read (blue dot disappears)
   3. New message arrival (via polling) shows visual indicator on inbox
-**Plans**: TBD
+**Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 03-01: Unread status logic and API
-- [ ] 03-02: Visual indicators and auto-mark-read
+- [ ] 03-01-PLAN.md — Mark-as-read API endpoint and CSS styling (Wave 1)
+- [ ] 03-02-PLAN.md — Unread class in templates and auto-mark-read on view (Wave 2)
 
 ### Phase 4: Platform Filtering
 **Goal**: Users can filter inbox to show only conversations from a specific platform
