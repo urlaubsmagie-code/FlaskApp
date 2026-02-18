@@ -46,12 +46,12 @@ Plans:
   2. Conversation view shows new messages without page refresh
   3. Polling pauses when browser tab is hidden (no network requests in background)
   4. Polling resumes and fetches latest data when tab becomes visible
-**Plans**: TBD
+**Plans**: 3 plans in 2 waves
 
 Plans:
-- [ ] 02-01: PollingManager module and API endpoints
-- [ ] 02-02: Inbox polling integration
-- [ ] 02-03: Conversation polling integration
+- [ ] 02-01-PLAN.md — PollingManager class with visibility API (Wave 1)
+- [ ] 02-02-PLAN.md — Inbox polling with incremental DOM updates (Wave 2)
+- [ ] 02-03-PLAN.md — Conversation message polling (Wave 2)
 
 ### Phase 3: Unread Tracking
 **Goal**: Users can see at a glance which conversations have unread messages
