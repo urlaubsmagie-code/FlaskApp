@@ -169,7 +169,9 @@ class Conversation(db.Model):
             'is_read': self.is_read,
             'property_id': self.property_id,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'guest': self.guest.to_dict() if self.guest else None,
+            'last_message': self.last_message.to_dict() if self.last_message else None
         }
         if include_messages:
             data['messages'] = [m.to_dict() for m in self.messages.all()]
