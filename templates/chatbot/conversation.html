@@ -1,0 +1,204 @@
+{% extends "chatbot/base.html" %}
+
+{% block title %}Conversation - {{ guest.name or 'Guest' }}{% endblock %}
+
+{% block content %}
+<div class="conversation-container">
+    <!-- Conversation Header -->
+    <div class="conversation-header-bar">
+        <a href="{{ url_for('chatbot.index') }}" class="back-btn">
+            <i class="fas fa-arrow-left"></i>
+        </a>
+        <div class="conversation-title">
+            <div class="guest-avatar">
+                {% if conversation.platform == 'email' %}
+                    <i class="fas fa-envelope"></i>
+                {% elif conversation.platform == 'whatsapp' %}
+                    <i class="fab fa-whatsapp"></i>
+                {% elif conversation.platform == 'airbnb' %}
+                    <i class="fab fa-airbnb"></i>
+                {% else %}
+                    <i class="fas fa-user"></i>
+                {% endif %}
+            </div>
+            <div class="guest-info">
+                <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="guest-name-link">
+                    {{ guest.name or guest.email or 'Unknown Guest' }}
+                </a>
+                <span class="conversation-meta-text">
+                    {{ conversation.platform|capitalize }}
+                    {% if conversation.subject %}- {{ conversation.subject }}{% endif %}
+                </span>
+            </div>
+        </div>
+        <div class="conversation-actions">
+            <button class="btn btn-icon" onclick="toggleAI()" title="Toggle AI" id="aiToggleBtn">
+                <i class="fas fa-robot"></i>
+                <span class="toggle-status">{{ 'ON' if conversation.ai_enabled else 'OFF' }}</span>
+            </button>
+            <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="btn btn-icon" title="Guest Profile">
+                <i class="fas fa-user"></i>
+            </a>
+        </div>
+    </div>
+
+    <!-- Messages Area -->
+    <div class="messages-container" id="messagesContainer">
+        {% for message in messages %}
+        <div class="message {{ message.sender_type }}" data-message-id="{{ message.id }}">
+            <div class="message-avatar">
+                {% if message.sender_type == 'guest' %}
+                    <i class="fas fa-user"></i>
+                {% elif message.sender_type == 'owner' %}
+                    <i class="fas fa-home"></i>
+                {% else %}
+                    <i class="fas fa-robot"></i>
+                {% endif %}
+            </div>
+            <div class="message-content">
+                <div class="message-header">
+                    <span class="sender-name">
+                        {% if message.sender_type == 'guest' %}{{ guest.name or 'Guest' }}
+                        {% elif message.sender_type == 'owner' %}You
+                        {% else %}AI Assistant{% endif %}
+                    </span>
+                    <span class="message-time">{{ message.sent_at.strftime('%d.%m.%Y %H:%M') if message.sent_at else '' }}</span>
+                </div>
+                <div class="message-text">{{ message.content }}</div>
+            </div>
+        </div>
+        {% endfor %}
+
+        {% if not messages %}
+        <div class="empty-messages">
+            <i class="fas fa-comments"></i>
+            <p>No messages in this conversation yet.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Message Input -->
+    <div class="message-input-container">
+        <div class="input-actions">
+            <button class="btn btn-secondary" onclick="generateAIResponse()" id="generateAiBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
+                <i class="fas fa-magic"></i> Generate AI Response
+            </button>
+        </div>
+        <form class="message-form" id="messageForm" onsubmit="sendMessage(event)">
+            <textarea
+                id="messageInput"
+                placeholder="Type your message..."
+                rows="2"
+                required
+            ></textarea>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-paper-plane"></i> Send
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+    const conversationId = {{ conversation.id }};
+    let aiEnabled = {{ 'true' if conversation.ai_enabled else 'false' }};
+
+    // Scroll to bottom on load
+    document.addEventListener('DOMContentLoaded', function() {
+        scrollToBottom();
+    });
+
+    function scrollToBottom() {
+        const container = document.getElementById('messagesContainer');
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function sendMessage(e) {
+        e.preventDefault();
+        const input = document.getElementById('messageInput');
+        const content = input.value.trim();
+
+        if (!content) return;
+
+        fetch(`/chatbot/api/conversations/${conversationId}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: content })
+        })
+        .then(response => response.json())
+        .then(data => {
+            addMessageToUI(data, 'owner');
+            input.value = '';
+            scrollToBottom();
+        })
+        .catch(err => {
+            console.error('Failed to send message:', err);
+            alert('Failed to send message. Please try again.');
+        });
+    }
+
+    function generateAIResponse() {
+        const btn = document.getElementById('generateAiBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+
+        fetch(`/chatbot/api/conversations/${conversationId}/ai-response`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert(data.error);
+            } else {
+                addMessageToUI(data, 'ai');
+                scrollToBottom();
+            }
+        })
+        .catch(err => {
+            console.error('Failed to generate AI response:', err);
+            alert('Failed to generate AI response. Please try again.');
+        })
+        .finally(() => {
+            btn.disabled = !aiEnabled;
+            btn.innerHTML = '<i class="fas fa-magic"></i> Generate AI Response';
+        });
+    }
+
+    function toggleAI() {
+        fetch(`/chatbot/api/conversations/${conversationId}/toggle-ai`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            aiEnabled = data.ai_enabled;
+            const btn = document.getElementById('aiToggleBtn');
+            btn.querySelector('.toggle-status').textContent = aiEnabled ? 'ON' : 'OFF';
+            document.getElementById('generateAiBtn').disabled = !aiEnabled;
+        })
+        .catch(err => console.error('Failed to toggle AI:', err));
+    }
+
+    function addMessageToUI(message, senderType) {
+        const container = document.getElementById('messagesContainer');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${senderType}`;
+
+        const icon = senderType === 'guest' ? 'fa-user' : (senderType === 'owner' ? 'fa-home' : 'fa-robot');
+        const name = senderType === 'guest' ? '{{ guest.name or "Guest" }}' : (senderType === 'owner' ? 'You' : 'AI Assistant');
+        const time = new Date().toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+        messageDiv.innerHTML = `
+            <div class="message-avatar"><i class="fas ${icon}"></i></div>
+            <div class="message-content">
+                <div class="message-header">
+                    <span class="sender-name">${name}</span>
+                    <span class="message-time">${time}</span>
+                </div>
+                <div class="message-text">${message.content}</div>
+            </div>
+        `;
+
+        container.appendChild(messageDiv);
+    }
+</script>
+{% endblock %}
