@@ -153,3 +153,27 @@ class PollingManager {
         }
     }
 }
+
+/*
+ * Usage Example:
+ *
+ * const poller = new PollingManager({
+ *     fetchFn: async (signal) => {
+ *         const response = await fetch('/api/data', { signal });
+ *         if (!response.ok) throw new Error(`HTTP ${response.status}`);
+ *         return response.json();
+ *     },
+ *     onUpdate: (data) => {
+ *         console.log('Received:', data);
+ *         updateUI(data);
+ *     },
+ *     interval: 15000,  // 15 seconds
+ *     onError: (err) => console.error('Poll failed:', err)
+ * });
+ *
+ * // Start polling (also polls immediately)
+ * poller.start();
+ *
+ * // Stop polling (e.g., when leaving page)
+ * poller.stop();
+ */
