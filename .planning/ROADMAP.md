@@ -31,11 +31,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. Conversation model has is_read field that persists across server restarts
   2. Database operates in WAL mode (verified via PRAGMA query)
   3. Full-text search on messages returns results in under 500ms for 1000+ messages
-**Plans**: TBD
+**Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 01-01: Schema migration and WAL mode
-- [ ] 01-02: Full-text search index
+- [ ] 01-01-PLAN.md — Schema migration, is_read field, and WAL mode setup (Wave 1)
+- [ ] 01-02-PLAN.md — FTS5 full-text search index with triggers (Wave 2)
 
 ### Phase 2: Polling Core
 **Goal**: Inbox and conversations update automatically without page refresh
