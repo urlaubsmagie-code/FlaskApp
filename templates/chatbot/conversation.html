@@ -98,13 +98,17 @@
     </div>
 </div>
 
+<script src="{{ url_for('static', filename='js/polling.js') }}"></script>
 <script>
     const conversationId = {{ conversation.id }};
     let aiEnabled = {{ 'true' if conversation.ai_enabled else 'false' }};
 
-    // Scroll to bottom on load
-    document.addEventListener('DOMContentLoaded', function() {
-        scrollToBottom();
+    // Track known message IDs to prevent duplicates
+    let knownMessageIds = new Set();
+
+    // Build set of message IDs on page load
+    document.querySelectorAll('[data-message-id]').forEach(el => {
+        knownMessageIds.add(parseInt(el.dataset.messageId));
     });
 
     function scrollToBottom() {
@@ -126,6 +130,10 @@
         })
         .then(response => response.json())
         .then(data => {
+            // Add to known IDs immediately to prevent duplicate on next poll
+            if (data.id) {
+                knownMessageIds.add(data.id);
+            }
             addMessageToUI(data, 'owner');
             input.value = '';
             scrollToBottom();
@@ -150,6 +158,10 @@
             if (data.error) {
                 alert(data.error);
             } else {
+                // Add to known IDs immediately to prevent duplicate on next poll
+                if (data.id) {
+                    knownMessageIds.add(data.id);
+                }
                 addMessageToUI(data, 'ai');
                 scrollToBottom();
             }
@@ -178,14 +190,36 @@
         .catch(err => console.error('Failed to toggle AI:', err));
     }
 
+    /**
+     * Add a message to the UI
+     * Supports two formats:
+     * - addMessageToUI(message, senderType) - backward compat with sendMessage/generateAI
+     * - addMessageToUI(message) - full message object with sender_type property
+     */
     function addMessageToUI(message, senderType) {
         const container = document.getElementById('messagesContainer');
         const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${senderType}`;
 
-        const icon = senderType === 'guest' ? 'fa-user' : (senderType === 'owner' ? 'fa-home' : 'fa-robot');
-        const name = senderType === 'guest' ? '{{ guest.name or "Guest" }}' : (senderType === 'owner' ? 'You' : 'AI Assistant');
-        const time = new Date().toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        // Detect format: if message has sender_type property, use it
+        const actualSenderType = message.sender_type || senderType;
+        messageDiv.className = `message ${actualSenderType}`;
+
+        // Set data-message-id for duplicate tracking
+        if (message.id) {
+            messageDiv.dataset.messageId = message.id;
+        }
+
+        const icon = actualSenderType === 'guest' ? 'fa-user' : (actualSenderType === 'owner' ? 'fa-home' : 'fa-robot');
+        const name = actualSenderType === 'guest' ? '{{ guest.name or "Guest" }}' : (actualSenderType === 'owner' ? 'You' : 'AI Assistant');
+
+        // Use sent_at from message if available, otherwise current time
+        let time;
+        if (message.sent_at) {
+            const date = new Date(message.sent_at);
+            time = date.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        } else {
+            time = new Date().toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
 
         messageDiv.innerHTML = `
             <div class="message-avatar"><i class="fas ${icon}"></i></div>
@@ -200,5 +234,55 @@
 
         container.appendChild(messageDiv);
     }
+
+    /**
+     * Update messages from poll response - append only new messages
+     */
+    function updateMessages(messages) {
+        const container = document.getElementById('messagesContainer');
+        let hasNewMessages = false;
+
+        messages.forEach(msg => {
+            if (!knownMessageIds.has(msg.id)) {
+                // New message - append to container
+                addMessageToUI(msg, msg.sender_type);
+                knownMessageIds.add(msg.id);
+                hasNewMessages = true;
+            }
+        });
+
+        // Scroll to bottom if new messages added
+        if (hasNewMessages) {
+            scrollToBottom();
+        }
+
+        // Remove empty state if messages exist
+        const emptyState = container.querySelector('.empty-messages');
+        if (emptyState && messages.length > 0) {
+            emptyState.remove();
+        }
+    }
+
+    // Initialize message polling
+    const messagePoller = new PollingManager({
+        fetchFn: async (signal) => {
+            const response = await fetch(
+                `/chatbot/api/conversations/${conversationId}/messages`,
+                { signal }
+            );
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return response.json();
+        },
+        onUpdate: (data) => {
+            updateMessages(data.messages);
+        },
+        interval: 10000  // 10 seconds (faster for active conversation)
+    });
+
+    // Start polling and scroll to bottom on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        scrollToBottom();
+        messagePoller.start();
+    });
 </script>
 {% endblock %}
