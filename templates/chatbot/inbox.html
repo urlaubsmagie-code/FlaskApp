@@ -77,20 +77,265 @@
     </div>
 </div>
 
+<script src="{{ url_for('static', filename='js/polling.js') }}"></script>
 <script>
-    // Filter functionality
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            filterConversations(this.dataset.filter);
-        });
-    });
+    // =========================================================================
+    // Conversation Card DOM Helpers
+    // =========================================================================
 
+    /**
+     * Get platform icon class based on platform name
+     */
+    function getPlatformIcon(platform) {
+        switch (platform) {
+            case 'email': return 'fas fa-envelope';
+            case 'whatsapp': return 'fab fa-whatsapp';
+            case 'airbnb': return 'fab fa-airbnb';
+            default: return 'fas fa-comment';
+        }
+    }
+
+    /**
+     * Format timestamp for display (matches Jinja format: DD.MM HH:MM)
+     */
+    function formatConversationTime(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${day}.${month} ${hours}:${minutes}`;
+    }
+
+    /**
+     * Format status for display (underscores to spaces, title case)
+     */
+    function formatStatus(status) {
+        return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    }
+
+    /**
+     * Create a new conversation card element from API data
+     */
+    function createConversationCard(conv) {
+        const card = document.createElement('a');
+        card.href = `/chatbot/conversation/${conv.id}`;
+        card.className = 'conversation-card';
+        card.dataset.conversationId = conv.id;
+        card.dataset.updatedAt = conv.updated_at || '';
+        card.dataset.status = conv.status;
+
+        // Get guest display name
+        const guestName = (conv.guest && (conv.guest.name || conv.guest.email)) || 'Unknown Guest';
+
+        // Get preview text
+        let preview = 'No messages yet';
+        if (conv.last_message && conv.last_message.content) {
+            preview = conv.last_message.content.length > 80
+                ? conv.last_message.content.substring(0, 80) + '...'
+                : conv.last_message.content;
+        }
+
+        // Build AI badge HTML
+        const aiBadge = conv.ai_enabled ? '<span class="ai-badge"><i class="fas fa-robot"></i></span>' : '';
+
+        card.innerHTML = `
+            <div class="conversation-avatar">
+                <i class="${getPlatformIcon(conv.platform)}"></i>
+            </div>
+            <div class="conversation-info">
+                <div class="conversation-header">
+                    <span class="guest-name">${escapeHtml(guestName)}</span>
+                    <span class="conversation-time">${formatConversationTime(conv.updated_at)}</span>
+                </div>
+                <div class="conversation-subject">${escapeHtml(conv.subject || 'No subject')}</div>
+                <div class="conversation-preview">${escapeHtml(preview)}</div>
+            </div>
+            <div class="conversation-meta">
+                <span class="platform-badge ${conv.platform}">${conv.platform.charAt(0).toUpperCase() + conv.platform.slice(1)}</span>
+                ${aiBadge}
+                <span class="status-badge ${conv.status}">${formatStatus(conv.status)}</span>
+            </div>
+        `;
+
+        return card;
+    }
+
+    /**
+     * Escape HTML to prevent XSS
+     */
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    /**
+     * Update an existing conversation card in place (prevents flicker)
+     */
+    function updateConversationCard(card, conv) {
+        // Update data attributes
+        card.dataset.updatedAt = conv.updated_at || '';
+        card.dataset.status = conv.status;
+
+        // Update time
+        const timeEl = card.querySelector('.conversation-time');
+        if (timeEl) {
+            timeEl.textContent = formatConversationTime(conv.updated_at);
+        }
+
+        // Update preview
+        const previewEl = card.querySelector('.conversation-preview');
+        if (previewEl) {
+            let preview = 'No messages yet';
+            if (conv.last_message && conv.last_message.content) {
+                preview = conv.last_message.content.length > 80
+                    ? conv.last_message.content.substring(0, 80) + '...'
+                    : conv.last_message.content;
+            }
+            previewEl.textContent = preview;
+        }
+
+        // Update status badge
+        const statusEl = card.querySelector('.status-badge');
+        if (statusEl) {
+            statusEl.className = `status-badge ${conv.status}`;
+            statusEl.textContent = formatStatus(conv.status);
+        }
+
+        // Update AI badge
+        const metaEl = card.querySelector('.conversation-meta');
+        const existingAiBadge = card.querySelector('.ai-badge');
+        if (conv.ai_enabled && !existingAiBadge) {
+            // Add AI badge before status badge
+            const aiBadge = document.createElement('span');
+            aiBadge.className = 'ai-badge';
+            aiBadge.innerHTML = '<i class="fas fa-robot"></i>';
+            metaEl.insertBefore(aiBadge, statusEl);
+        } else if (!conv.ai_enabled && existingAiBadge) {
+            existingAiBadge.remove();
+        }
+    }
+
+    /**
+     * Main function to update the inbox list with new data
+     */
+    function updateInboxList(conversations) {
+        const container = document.getElementById('conversationList');
+        if (!container) return;
+
+        // Get current filter state
+        const activeFilterBtn = document.querySelector('.filter-btn.active');
+        const currentFilter = activeFilterBtn ? activeFilterBtn.dataset.filter : 'all';
+
+        // Get current search query
+        const searchInput = document.getElementById('searchInput');
+        const searchQuery = searchInput ? searchInput.value.toLowerCase() : '';
+
+        // Handle empty state
+        if (!conversations || conversations.length === 0) {
+            const existingEmpty = container.querySelector('.empty-state');
+            if (!existingEmpty) {
+                // Clear cards and add empty state
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-inbox"></i>
+                        <h3>No conversations yet</h3>
+                        <p>When guests message you, their conversations will appear here.</p>
+                    </div>
+                `;
+            }
+            return;
+        }
+
+        // Remove empty state if it exists
+        const emptyState = container.querySelector('.empty-state');
+        if (emptyState) {
+            emptyState.remove();
+        }
+
+        // Build map of existing cards by ID
+        const existingCards = new Map();
+        container.querySelectorAll('.conversation-card').forEach(card => {
+            existingCards.set(card.dataset.conversationId, card);
+        });
+
+        // Track which cards we've processed
+        const processedIds = new Set();
+
+        // Process each conversation (already sorted by updated_at desc from API)
+        conversations.forEach((conv, index) => {
+            const convId = String(conv.id);
+            processedIds.add(convId);
+
+            const existingCard = existingCards.get(convId);
+
+            if (existingCard) {
+                // Update existing card if data changed
+                if (existingCard.dataset.updatedAt !== conv.updated_at) {
+                    updateConversationCard(existingCard, conv);
+                }
+
+                // Move to correct position if needed
+                const currentIndex = Array.from(container.querySelectorAll('.conversation-card')).indexOf(existingCard);
+                if (currentIndex !== index) {
+                    if (index === 0) {
+                        container.prepend(existingCard);
+                    } else {
+                        const cards = container.querySelectorAll('.conversation-card');
+                        if (cards[index]) {
+                            container.insertBefore(existingCard, cards[index]);
+                        } else {
+                            container.appendChild(existingCard);
+                        }
+                    }
+                }
+            } else {
+                // Create new card
+                const newCard = createConversationCard(conv);
+
+                // Insert at correct position
+                const cards = container.querySelectorAll('.conversation-card');
+                if (index === 0 || cards.length === 0) {
+                    container.prepend(newCard);
+                } else if (cards[index]) {
+                    container.insertBefore(newCard, cards[index]);
+                } else {
+                    container.appendChild(newCard);
+                }
+            }
+        });
+
+        // Remove cards for conversations that no longer exist
+        existingCards.forEach((card, id) => {
+            if (!processedIds.has(id)) {
+                card.remove();
+            }
+        });
+
+        // Re-apply filter after update
+        if (currentFilter !== 'all') {
+            filterConversations(currentFilter);
+        }
+
+        // Re-apply search after update
+        if (searchQuery) {
+            applySearch(searchQuery);
+        }
+    }
+
+    // =========================================================================
+    // Filter and Search
+    // =========================================================================
+
+    /**
+     * Filter conversations by status (uses data-status attribute for speed)
+     */
     function filterConversations(filter) {
         const cards = document.querySelectorAll('.conversation-card');
         cards.forEach(card => {
-            const status = card.querySelector('.status-badge').textContent.toLowerCase().replace(' ', '_');
+            const status = card.dataset.status;
             if (filter === 'all' || status === filter) {
                 card.style.display = 'flex';
             } else {
@@ -99,18 +344,81 @@
         });
     }
 
-    // Search functionality
-    document.getElementById('searchInput').addEventListener('input', function() {
-        const query = this.value.toLowerCase();
+    /**
+     * Apply search filter
+     */
+    function applySearch(query) {
         const cards = document.querySelectorAll('.conversation-card');
         cards.forEach(card => {
             const text = card.textContent.toLowerCase();
-            card.style.display = text.includes(query) ? 'flex' : 'none';
+            if (text.includes(query)) {
+                // Only show if not filtered out by status
+                if (card.style.display !== 'none') {
+                    card.style.display = 'flex';
+                }
+            } else {
+                card.style.display = 'none';
+            }
+        });
+    }
+
+    // Filter button click handlers
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            filterConversations(this.dataset.filter);
+
+            // Also re-apply search if active
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput && searchInput.value) {
+                applySearch(searchInput.value.toLowerCase());
+            }
         });
     });
 
+    // Search input handler
+    document.getElementById('searchInput').addEventListener('input', function() {
+        const query = this.value.toLowerCase();
+        // First apply filter, then search
+        const activeFilterBtn = document.querySelector('.filter-btn.active');
+        const currentFilter = activeFilterBtn ? activeFilterBtn.dataset.filter : 'all';
+        filterConversations(currentFilter);
+        if (query) {
+            applySearch(query);
+        }
+    });
+
+    // =========================================================================
+    // Polling Setup
+    // =========================================================================
+
+    const inboxPoller = new PollingManager({
+        fetchFn: async (signal) => {
+            const response = await fetch('/chatbot/api/conversations?per_page=50', { signal });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return response.json();
+        },
+        onUpdate: (data) => {
+            updateInboxList(data.conversations);
+        },
+        interval: 15000,  // 15 seconds
+        onError: (err) => {
+            console.error('Inbox polling error:', err);
+        }
+    });
+
+    /**
+     * Manual refresh - restarts polling (triggers immediate poll)
+     */
     function refreshConversations() {
-        location.reload();
+        inboxPoller.stop();
+        inboxPoller.start();
     }
+
+    // Start polling when page loads
+    document.addEventListener('DOMContentLoaded', () => {
+        inboxPoller.start();
+    });
 </script>
 {% endblock %}
