@@ -5,11 +5,15 @@ Run this directly for development: python app.py
 
 import os
 import logging
+from pathlib import Path
 from flask import Flask
 from flask_migrate import Migrate
 from sqlalchemy import event
 
 from .config import get_config
+
+# Path to migrations directory within ChatBotAI package
+MIGRATIONS_DIR = Path(__file__).parent / 'migrations'
 from .models import db, init_db
 from .services.ai_service import init_ai_service
 from .services.memory_service import init_memory_service
@@ -53,7 +57,8 @@ def create_app(config_class=None):
     db.init_app(app)
 
     # Initialize Flask-Migrate with batch mode for SQLite compatibility
-    migrate.init_app(app, db, render_as_batch=True)
+    # Directory points to ChatBotAI/migrations
+    migrate.init_app(app, db, directory=str(MIGRATIONS_DIR), render_as_batch=True)
 
     with app.app_context():
         # Enable WAL mode for SQLite (concurrent access for polling)
