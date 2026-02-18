@@ -16,23 +16,50 @@
 
     <!-- Filters -->
     <div class="filter-bar">
-        <div class="filter-group">
-            <button class="filter-btn active" data-filter="all">All</button>
-            <button class="filter-btn" data-filter="active">Active</button>
-            <button class="filter-btn" data-filter="pending_owner">Pending</button>
-            <button class="filter-btn" data-filter="closed">Closed</button>
+        <!-- Platform Filter Group -->
+        <div class="filter-group" role="group" aria-label="Filter by platform">
+            <button class="filter-btn active" data-filter-platform="">All</button>
+            <button class="filter-btn" data-filter-platform="email">
+                <i class="fas fa-envelope"></i> Email
+            </button>
+            <button class="filter-btn" data-filter-platform="whatsapp">
+                <i class="fab fa-whatsapp"></i> WhatsApp
+            </button>
+            <button class="filter-btn" data-filter-platform="airbnb">
+                <i class="fab fa-airbnb"></i> Airbnb
+            </button>
+            <button class="filter-btn" data-filter-platform="booking">
+                <i class="fas fa-bed"></i> Booking
+            </button>
         </div>
+
+        <!-- Status Filter Group -->
+        <div class="filter-group" role="group" aria-label="Filter by status">
+            <button class="filter-btn active" data-filter-status="">All</button>
+            <button class="filter-btn" data-filter-status="active">Active</button>
+            <button class="filter-btn" data-filter-status="pending_owner">Pending</button>
+            <button class="filter-btn" data-filter-status="closed">Closed</button>
+        </div>
+
         <div class="search-box">
             <i class="fas fa-search"></i>
             <input type="text" placeholder="Search conversations..." id="searchInput">
         </div>
     </div>
 
+    <!-- Active Filter Indicators -->
+    <div class="filter-indicators" style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+        <div id="activeFilters" class="active-filters"></div>
+        <button id="clearFiltersBtn" class="btn btn-secondary btn-sm" style="display: none;">
+            <i class="fas fa-times"></i> Clear All
+        </button>
+    </div>
+
     <!-- Conversation List -->
     <div class="conversation-list" id="conversationList">
         {% if conversations %}
             {% for conv in conversations %}
-            <a href="{{ url_for('chatbot.conversation_view', conversation_id=conv.id) }}" class="conversation-card{% if not conv.is_read %} unread{% endif %}" data-conversation-id="{{ conv.id }}" data-updated-at="{{ conv.updated_at.isoformat() if conv.updated_at else '' }}" data-status="{{ conv.status }}" data-is-read="{{ 'true' if conv.is_read else 'false' }}">
+            <a href="{{ url_for('chatbot.conversation_view', conversation_id=conv.id) }}" class="conversation-card{% if not conv.is_read %} unread{% endif %}" data-conversation-id="{{ conv.id }}" data-updated-at="{{ conv.updated_at.isoformat() if conv.updated_at else '' }}" data-platform="{{ conv.platform }}" data-status="{{ conv.status }}" data-is-read="{{ 'true' if conv.is_read else 'false' }}">
                 {% if not conv.is_read %}
                 <span class="sr-only">Unread</span>
                 {% endif %}
@@ -127,6 +154,7 @@
         card.className = 'conversation-card' + (!conv.is_read ? ' unread' : '');
         card.dataset.conversationId = conv.id;
         card.dataset.updatedAt = conv.updated_at || '';
+        card.dataset.platform = conv.platform;
         card.dataset.status = conv.status;
         card.dataset.isRead = conv.is_read ? 'true' : 'false';
 
