@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 1: Infrastructure Foundation** - Database schema changes and search index setup
 - [ ] **Phase 2: Polling Core** - Real-time inbox and conversation updates via polling
 - [ ] **Phase 3: Unread Tracking** - Visual indicators for unread conversations
-- [ ] **Phase 4: Platform Filtering** - Filter inbox by communication platform
+- [x] **Phase 4: Platform Filtering** - Filter inbox by communication platform (completed 2026-02-18)
 - [ ] **Phase 5: Status Filtering** - Filter inbox by conversation status
 - [ ] **Phase 6: Guest Filtering** - Filter inbox by specific guest
 - [ ] **Phase 7: Search** - Search conversations by name and message content
@@ -150,7 +150,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 1. Infrastructure Foundation | 0/2 | Not started | - |
 | 2. Polling Core | 0/3 | Not started | - |
 | 3. Unread Tracking | 0/2 | Not started | - |
-| 4. Platform Filtering | 0/2 | Not started | - |
+| 4. Platform Filtering | 0/2 | Complete    | 2026-02-18 |
 | 5. Status Filtering | 0/1 | Not started | - |
 | 6. Guest Filtering | 0/1 | Not started | - |
 | 7. Search | 0/2 | Not started | - |
