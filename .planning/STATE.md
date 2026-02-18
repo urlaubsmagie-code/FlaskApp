@@ -55,6 +55,9 @@ Recent decisions affecting current work:
 - [02-01]: Recursive setTimeout over setInterval to prevent call stacking
 - [02-01]: Immediate poll on start() and on tab visible
 - [02-01]: AbortController recreated per request (they can only abort once)
+- [02-02]: Added data-status attribute for faster filter operations
+- [02-02]: XSS prevention with escapeHtml() for user-generated content
+- [02-02]: Filter and search reapplied after each polling update
 - [02-03]: 10-second poll interval for conversation (faster than inbox for active viewing)
 - [02-03]: Track message IDs immediately after send/AI-generate to prevent duplicates
 - [02-03]: Dual-format addMessageToUI for backward compatibility
