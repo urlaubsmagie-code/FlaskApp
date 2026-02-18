@@ -281,6 +281,12 @@
 
     // Start polling and scroll to bottom on page load
     document.addEventListener('DOMContentLoaded', function() {
+        // Mark conversation as read (fire-and-forget)
+        fetch(`/chatbot/api/conversations/${conversationId}/read`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' }
+        }).catch(err => console.error('Failed to mark as read:', err));
+
         scrollToBottom();
         messagePoller.start();
     });
