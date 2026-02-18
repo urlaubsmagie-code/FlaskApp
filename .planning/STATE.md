@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-17)
 
 **Core value:** The system remembers EVERYTHING about every guest permanently
-**Current focus:** Phase 3 - Unread Tracking
+**Current focus:** Phase 4 - Platform Filtering
 
 ## Current Position
 
-Phase: 3 of 8 (Unread Tracking)
-Plan: 3 of 3 in current phase
-Status: Phase Complete (including gap closure)
-Last activity: 2026-02-18 — Completed 03-03-PLAN.md (gap closure)
+Phase: 4 of 8 (Platform Filtering)
+Plan: 1 of 2 in current phase
+Status: In Progress
+Last activity: 2026-02-18 — Completed 04-01-PLAN.md (URL Filter State)
 
-Progress: [#######░░░] 44%
+Progress: [########░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: 3 min
-- Total execution time: 0.38 hours
+- Total execution time: 0.40 hours
 
 **By Phase:**
 
@@ -30,9 +30,10 @@ Progress: [#######░░░] 44%
 | 01-infrastructure-foundation | 2 | 12 min | 6 min |
 | 02-polling-core | 3 | 6 min | 2 min |
 | 03-unread-tracking | 3 | 4 min | 1.3 min |
+| 04-platform-filtering | 1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-02 (2 min), 02-03 (2 min), 03-01 (1 min), 03-02 (1 min), 03-03 (2 min)
+- Last 5 plans: 02-03 (2 min), 03-01 (1 min), 03-02 (1 min), 03-03 (2 min), 04-01 (2 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -69,6 +70,9 @@ Recent decisions affecting current work:
 - [03-02]: Fire-and-forget PATCH call on conversation view (no await, no UI feedback needed)
 - [03-02]: Check both updated_at and is_read changes to trigger card updates
 - [03-03]: Nested guest/last_message in to_dict() for complete API serialization
+- [04-01]: history.replaceState over pushState to avoid cluttering browser history
+- [04-01]: Singleton pattern ensures single source of truth for filter state
+- [04-01]: Combined filter logic supports platform, status, and search simultaneously
 
 ### Pending Todos
 
@@ -81,5 +85,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 03-03-PLAN.md (API Serialization Gap Closure) - Phase 03 fully complete
-Resume file: .planning/phases/04-search-filter/04-01-PLAN.md
+Stopped at: Completed 04-01-PLAN.md (URL Filter State)
+Resume file: .planning/phases/04-platform-filtering/04-02-PLAN.md
