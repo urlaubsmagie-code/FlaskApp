@@ -337,6 +337,26 @@ def api_delete_guest_detail(guest_id, detail_id):
     return jsonify({'success': True})
 
 
+@chatbot_bp.route('/api/guests/<int:guest_id>/details/<int:detail_id>', methods=['PATCH'])
+def api_update_guest_detail(guest_id, detail_id):
+    """Update a guest detail value"""
+    detail = GuestDetail.query.filter_by(id=detail_id, guest_id=guest_id).first_or_404()
+    data = request.get_json()
+
+    if not data or 'detail_value' not in data:
+        return jsonify({'error': 'detail_value is required'}), 400
+
+    new_value = data['detail_value']
+    if not new_value or not new_value.strip():
+        return jsonify({'error': 'detail_value cannot be empty'}), 400
+
+    detail.detail_value = new_value.strip()
+    detail.confidence = 1.0  # Manual edits have full confidence
+
+    db.session.commit()
+    return jsonify(detail.to_dict())
+
+
 @chatbot_bp.route('/api/settings', methods=['GET'])
 def api_get_settings():
     """Get all AI settings"""
