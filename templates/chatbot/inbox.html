@@ -41,6 +41,12 @@
             <button class="filter-btn" data-filter-status="closed">Closed</button>
         </div>
 
+        <!-- Guest Filter Dropdown -->
+        <select id="guestFilter" class="guest-dropdown" aria-label="Filter by guest">
+            <option value="">All Guests</option>
+            <!-- Options populated via JavaScript -->
+        </select>
+
         <div class="search-box">
             <i class="fas fa-search"></i>
             <input type="text" placeholder="Search conversations..." id="searchInput">
@@ -59,7 +65,7 @@
     <div class="conversation-list" id="conversationList">
         {% if conversations %}
             {% for conv in conversations %}
-            <a href="{{ url_for('chatbot.conversation_view', conversation_id=conv.id) }}" class="conversation-card{% if not conv.is_read %} unread{% endif %}" data-conversation-id="{{ conv.id }}" data-updated-at="{{ conv.updated_at.isoformat() if conv.updated_at else '' }}" data-platform="{{ conv.platform }}" data-status="{{ conv.status }}" data-is-read="{{ 'true' if conv.is_read else 'false' }}">
+            <a href="{{ url_for('chatbot.conversation_view', conversation_id=conv.id) }}" class="conversation-card{% if not conv.is_read %} unread{% endif %}" data-conversation-id="{{ conv.id }}" data-updated-at="{{ conv.updated_at.isoformat() if conv.updated_at else '' }}" data-platform="{{ conv.platform }}" data-status="{{ conv.status }}" data-guest-id="{{ conv.guest_id }}" data-is-read="{{ 'true' if conv.is_read else 'false' }}">
                 {% if not conv.is_read %}
                 <span class="sr-only">Unread</span>
                 {% endif %}
@@ -157,6 +163,7 @@
         card.dataset.updatedAt = conv.updated_at || '';
         card.dataset.platform = conv.platform;
         card.dataset.status = conv.status;
+        card.dataset.guestId = conv.guest_id || '';
         card.dataset.isRead = conv.is_read ? 'true' : 'false';
 
         // Get guest display name
@@ -382,6 +389,11 @@
         });
     });
 
+    // Guest filter dropdown handler
+    document.getElementById('guestFilter').addEventListener('change', function() {
+        filterState.setGuest(this.value || null);
+    });
+
     // Clear all filters button
     document.getElementById('clearFiltersBtn').addEventListener('click', function() {
         filterState.reset();
@@ -391,6 +403,59 @@
     document.getElementById('searchInput').addEventListener('input', function() {
         filterState.applyFilters();
     });
+
+    // =========================================================================
+    // Guest Dropdown Population
+    // =========================================================================
+
+    /**
+     * Fetch guests and populate dropdown with conversation counts
+     */
+    async function populateGuestDropdown() {
+        const dropdown = document.getElementById('guestFilter');
+        if (!dropdown) return;
+
+        try {
+            const response = await fetch('/chatbot/api/guests');
+            if (!response.ok) throw new Error('Failed to fetch guests');
+            const data = await response.json();
+
+            // Count conversations per guest from DOM
+            const counts = {};
+            document.querySelectorAll('.conversation-card').forEach(card => {
+                const guestId = card.dataset.guestId;
+                if (guestId) counts[guestId] = (counts[guestId] || 0) + 1;
+            });
+
+            // Clear and rebuild options
+            dropdown.innerHTML = '<option value="">All Guests</option>';
+
+            // Sort guests by name for easy scanning
+            const sortedGuests = data.guests.sort((a, b) => {
+                const nameA = (a.name || a.email || '').toLowerCase();
+                const nameB = (b.name || b.email || '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+
+            sortedGuests.forEach(guest => {
+                const count = counts[guest.id] || 0;
+                if (count > 0) {  // Only show guests with conversations
+                    const option = document.createElement('option');
+                    option.value = guest.id;
+                    const displayName = guest.name || guest.email || 'Unknown Guest';
+                    option.textContent = `${displayName} (${count})`;
+                    dropdown.appendChild(option);
+                }
+            });
+
+            // Restore selection from URL state if present
+            if (filterState.state.guest) {
+                dropdown.value = filterState.state.guest;
+            }
+        } catch (error) {
+            console.error('Failed to populate guest dropdown:', error);
+        }
+    }
 
     // =========================================================================
     // Polling Setup
@@ -424,6 +489,9 @@
         // Initialize filter state from URL and apply
         filterState.applyFilters();
         filterState.updateUI();
+
+        // Populate guest dropdown (after filters applied so counts are accurate)
+        populateGuestDropdown();
 
         // Then start polling
         inboxPoller.start();
