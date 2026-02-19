@@ -515,6 +515,28 @@ a {
 .active-filter-badge.status-pending_owner { background: #fef3c7; color: #92400e; border-color: #fde68a; }
 .active-filter-badge.status-closed { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
 
+/* Guest-specific active filter badge */
+.active-filter-badge.guest { background: #f3e8ff; color: #7c3aed; border-color: #ddd6fe; }
+
+/* Guest dropdown styling */
+.guest-dropdown {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    color: var(--text-secondary);
+    min-width: 160px;
+}
+
+.guest-dropdown:hover,
+.guest-dropdown:focus {
+    color: var(--text-primary);
+    outline: none;
+    border-color: var(--primary-color);
+}
+
 /* Clear All Filters button */
 #clearFiltersBtn {
     margin-left: auto;

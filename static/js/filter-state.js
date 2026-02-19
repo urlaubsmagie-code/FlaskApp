@@ -9,7 +9,8 @@ class FilterState {
     constructor() {
         this.state = {
             platform: null,  // null = all, or 'email'|'whatsapp'|'airbnb'|'booking'
-            status: null     // null = all, or 'active'|'pending_owner'|'closed'
+            status: null,    // null = all, or 'active'|'pending_owner'|'closed'
+            guest: null      // null = all, or guest ID string
         };
 
         // Load initial state from URL
@@ -30,6 +31,7 @@ class FilterState {
         const params = new URLSearchParams(window.location.search);
         this.state.platform = params.get('platform') || null;
         this.state.status = params.get('status') || null;
+        this.state.guest = params.get('guest') || null;
     }
 
     /**
@@ -51,6 +53,13 @@ class FilterState {
             url.searchParams.set('status', this.state.status);
         } else {
             url.searchParams.delete('status');
+        }
+
+        // Set or delete guest param
+        if (this.state.guest) {
+            url.searchParams.set('guest', this.state.guest);
+        } else {
+            url.searchParams.delete('guest');
         }
 
         // Update URL without creating history entry
@@ -80,11 +89,30 @@ class FilterState {
     }
 
     /**
+     * Set guest filter
+     * @param {string|null} guestId - Guest ID to filter by, or null for all
+     */
+    setGuest(guestId) {
+        this.state.guest = guestId || null;
+        this.saveToURL();
+        this.applyFilters();
+        this.updateUI();
+    }
+
+    /**
+     * Clear guest filter (shorthand)
+     */
+    clearGuest() {
+        this.setGuest(null);
+    }
+
+    /**
      * Reset all filters to default (no filtering)
      */
     reset() {
         this.state.platform = null;
         this.state.status = null;
+        this.state.guest = null;
         this.saveToURL();
         this.applyFilters();
         this.updateUI();
@@ -116,9 +144,10 @@ class FilterState {
         cards.forEach(card => {
             const matchesPlatform = !this.state.platform || card.dataset.platform === this.state.platform;
             const matchesStatus = !this.state.status || card.dataset.status === this.state.status;
+            const matchesGuest = !this.state.guest || card.dataset.guestId === this.state.guest;
             const matchesSearch = !searchTerm || card.textContent.toLowerCase().includes(searchTerm);
 
-            card.style.display = (matchesPlatform && matchesStatus && matchesSearch) ? 'flex' : 'none';
+            card.style.display = (matchesPlatform && matchesStatus && matchesGuest && matchesSearch) ? 'flex' : 'none';
         });
     }
 
@@ -143,6 +172,12 @@ class FilterState {
                             (filterValue === this.state.status);
             btn.classList.toggle('active', isActive);
         });
+
+        // Sync guest dropdown selection
+        const guestDropdown = document.getElementById('guestFilter');
+        if (guestDropdown) {
+            guestDropdown.value = this.state.guest || '';
+        }
 
         // Update active filter indicators
         this.updateFilterIndicators();
@@ -170,8 +205,13 @@ class FilterState {
             container.appendChild(this.createFilterBadge('status', this.state.status));
         }
 
+        // Add guest badge if filtered
+        if (this.state.guest) {
+            container.appendChild(this.createFilterBadge('guest', this.state.guest));
+        }
+
         // Show/hide clear all button
-        const hasActiveFilters = this.state.platform || this.state.status;
+        const hasActiveFilters = this.state.platform || this.state.status || this.state.guest;
         if (clearBtn) {
             clearBtn.style.display = hasActiveFilters ? 'inline-flex' : 'none';
         }
@@ -185,7 +225,9 @@ class FilterState {
      */
     createFilterBadge(type, value) {
         const badge = document.createElement('span');
-        badge.className = `active-filter-badge ${type}-${value}`;
+        // Guest badges use just 'guest' class (value is ID), others use type-value
+        const badgeClass = type === 'guest' ? type : `${type}-${value}`;
+        badge.className = `active-filter-badge ${badgeClass}`;
 
         const displayValue = this.formatFilterValue(type, value);
         const escapedValue = typeof escapeHtml === 'function' ? escapeHtml(displayValue) : displayValue;
@@ -205,6 +247,8 @@ class FilterState {
                 this.clearPlatform();
             } else if (type === 'status') {
                 this.clearStatus();
+            } else if (type === 'guest') {
+                this.clearGuest();
             }
         });
 
@@ -227,6 +271,17 @@ class FilterState {
                 .split('_')
                 .map(word => word.charAt(0).toUpperCase() + word.slice(1))
                 .join(' ');
+        } else if (type === 'guest') {
+            // Look up guest name from dropdown option text, strip count suffix
+            const dropdown = document.getElementById('guestFilter');
+            if (dropdown) {
+                const option = dropdown.querySelector(`option[value="${value}"]`);
+                if (option) {
+                    // Remove count suffix like " (3)" from "John Smith (3)"
+                    return option.textContent.replace(/\s*\(\d+\)$/, '');
+                }
+            }
+            return `Guest ${value}`;
         }
         return value;
     }
@@ -244,7 +299,7 @@ class FilterState {
      * @returns {boolean} True if any filter is set
      */
     hasActiveFilters() {
-        return !!(this.state.platform || this.state.status);
+        return !!(this.state.platform || this.state.status || this.state.guest);
     }
 }
 
