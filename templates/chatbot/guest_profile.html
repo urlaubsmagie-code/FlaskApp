@@ -80,17 +80,27 @@
                     <div class="memory-items" id="familyItems">
                         {% if profile.family %}
                             {% for item in profile.family %}
-                            <div class="memory-item" data-id="{{ loop.index }}">
+                            <div class="memory-item" data-id="{{ item.id }}">
                                 <span class="memory-key">{{ item.key|title }}</span>
-                                <span class="memory-value">{{ item.value }}</span>
+                                <span class="memory-value" data-detail-id="{{ item.id }}" data-editable="true">{{ item.value }}</span>
                                 <span class="memory-confidence" title="Confidence: {{ (item.confidence * 100)|round }}%">
                                     {{ (item.confidence * 100)|round }}%
                                 </span>
+                                <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                                    <i class="fas fa-times"></i>
+                                </button>
                             </div>
                             {% endfor %}
                         {% else %}
                             <p class="no-data">No family members recorded</p>
                         {% endif %}
+                        <div class="memory-add-form" data-detail-type="family">
+                            <input type="text" class="memory-key-input" placeholder="Type (e.g., son)">
+                            <input type="text" class="memory-value-input" placeholder="Name/Value">
+                            <button type="button" class="btn btn-sm btn-primary add-memory-btn" onclick="addMemory(this)">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -100,15 +110,27 @@
                     <div class="memory-items" id="petsItems">
                         {% if profile.pets %}
                             {% for item in profile.pets %}
-                            <div class="memory-item">
+                            <div class="memory-item" data-id="{{ item.id }}">
                                 <span class="memory-key">{{ item.key|title }}</span>
-                                <span class="memory-value">{{ item.value }}</span>
-                                <span class="memory-confidence">{{ (item.confidence * 100)|round }}%</span>
+                                <span class="memory-value" data-detail-id="{{ item.id }}" data-editable="true">{{ item.value }}</span>
+                                <span class="memory-confidence" title="Confidence: {{ (item.confidence * 100)|round }}%">
+                                    {{ (item.confidence * 100)|round }}%
+                                </span>
+                                <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                                    <i class="fas fa-times"></i>
+                                </button>
                             </div>
                             {% endfor %}
                         {% else %}
                             <p class="no-data">No pets recorded</p>
                         {% endif %}
+                        <div class="memory-add-form" data-detail-type="pet">
+                            <input type="text" class="memory-key-input" placeholder="Type (e.g., dog)">
+                            <input type="text" class="memory-value-input" placeholder="Name/Value">
+                            <button type="button" class="btn btn-sm btn-primary add-memory-btn" onclick="addMemory(this)">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -118,15 +140,27 @@
                     <div class="memory-items" id="preferencesItems">
                         {% if profile.preferences %}
                             {% for item in profile.preferences %}
-                            <div class="memory-item">
+                            <div class="memory-item" data-id="{{ item.id }}">
                                 <span class="memory-key">{{ item.key|title }}</span>
-                                <span class="memory-value">{{ item.value }}</span>
-                                <span class="memory-confidence">{{ (item.confidence * 100)|round }}%</span>
+                                <span class="memory-value" data-detail-id="{{ item.id }}" data-editable="true">{{ item.value }}</span>
+                                <span class="memory-confidence" title="Confidence: {{ (item.confidence * 100)|round }}%">
+                                    {{ (item.confidence * 100)|round }}%
+                                </span>
+                                <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                                    <i class="fas fa-times"></i>
+                                </button>
                             </div>
                             {% endfor %}
                         {% else %}
                             <p class="no-data">No preferences recorded</p>
                         {% endif %}
+                        <div class="memory-add-form" data-detail-type="preference">
+                            <input type="text" class="memory-key-input" placeholder="Type (e.g., room)">
+                            <input type="text" class="memory-value-input" placeholder="Value">
+                            <button type="button" class="btn btn-sm btn-primary add-memory-btn" onclick="addMemory(this)">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -136,15 +170,27 @@
                     <div class="memory-items" id="allergiesItems">
                         {% if profile.allergies %}
                             {% for item in profile.allergies %}
-                            <div class="memory-item allergy-item">
+                            <div class="memory-item allergy-item" data-id="{{ item.id }}">
                                 <span class="memory-key">{{ item.key|title }}</span>
-                                <span class="memory-value">{{ item.value }}</span>
-                                <span class="memory-confidence">{{ (item.confidence * 100)|round }}%</span>
+                                <span class="memory-value" data-detail-id="{{ item.id }}" data-editable="true">{{ item.value }}</span>
+                                <span class="memory-confidence" title="Confidence: {{ (item.confidence * 100)|round }}%">
+                                    {{ (item.confidence * 100)|round }}%
+                                </span>
+                                <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                                    <i class="fas fa-times"></i>
+                                </button>
                             </div>
                             {% endfor %}
                         {% else %}
                             <p class="no-data">No allergies recorded</p>
                         {% endif %}
+                        <div class="memory-add-form" data-detail-type="allergy">
+                            <input type="text" class="memory-key-input" placeholder="Type (e.g., food)">
+                            <input type="text" class="memory-value-input" placeholder="Allergy details">
+                            <button type="button" class="btn btn-sm btn-primary add-memory-btn" onclick="addMemory(this)">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -154,14 +200,25 @@
                     <div class="memory-items" id="interestsItems">
                         {% if profile.interests %}
                             {% for item in profile.interests %}
-                            <div class="memory-item">
-                                <span class="memory-value">{{ item.value }}</span>
-                                <span class="memory-confidence">{{ (item.confidence * 100)|round }}%</span>
+                            <div class="memory-item" data-id="{{ item.id }}">
+                                <span class="memory-value" data-detail-id="{{ item.id }}" data-editable="true">{{ item.value }}</span>
+                                <span class="memory-confidence" title="Confidence: {{ (item.confidence * 100)|round }}%">
+                                    {{ (item.confidence * 100)|round }}%
+                                </span>
+                                <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                                    <i class="fas fa-times"></i>
+                                </button>
                             </div>
                             {% endfor %}
                         {% else %}
                             <p class="no-data">No interests recorded</p>
                         {% endif %}
+                        <div class="memory-add-form" data-detail-type="interest" data-no-key="true">
+                            <input type="text" class="memory-value-input" placeholder="Add interest...">
+                            <button type="button" class="btn btn-sm btn-primary add-memory-btn" onclick="addMemory(this)">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -171,14 +228,25 @@
                     <div class="memory-items" id="requestsItems">
                         {% if profile.special_requests %}
                             {% for item in profile.special_requests %}
-                            <div class="memory-item">
-                                <span class="memory-value">{{ item.value }}</span>
-                                <span class="memory-confidence">{{ (item.confidence * 100)|round }}%</span>
+                            <div class="memory-item" data-id="{{ item.id }}">
+                                <span class="memory-value" data-detail-id="{{ item.id }}" data-editable="true">{{ item.value }}</span>
+                                <span class="memory-confidence" title="Confidence: {{ (item.confidence * 100)|round }}%">
+                                    {{ (item.confidence * 100)|round }}%
+                                </span>
+                                <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                                    <i class="fas fa-times"></i>
+                                </button>
                             </div>
                             {% endfor %}
                         {% else %}
                             <p class="no-data">No special requests recorded</p>
                         {% endif %}
+                        <div class="memory-add-form" data-detail-type="special_request" data-no-key="true">
+                            <input type="text" class="memory-value-input" placeholder="Add special request...">
+                            <button type="button" class="btn btn-sm btn-primary add-memory-btn" onclick="addMemory(this)">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -314,5 +382,160 @@
             }
         }
     });
+
+    // Delete memory item - uses existing deleteGuestDetail from app.js
+    async function deleteMemory(btn) {
+        const item = btn.closest('.memory-item');
+        const detailId = item.dataset.id;
+
+        if (!confirm('Delete this memory item?')) return;
+
+        const success = await deleteGuestDetail(guestId, detailId);
+        if (success) {
+            item.remove();
+            // Check if section is now empty
+            const section = item.closest('.memory-items');
+            if (section && !section.querySelector('.memory-item')) {
+                // Add "no data" message
+                const noData = document.createElement('p');
+                noData.className = 'no-data';
+                noData.textContent = 'No items recorded';
+                section.insertBefore(noData, section.querySelector('.memory-add-form'));
+            }
+        }
+    }
+
+    // Add memory item - uses existing addGuestDetail from app.js
+    async function addMemory(btn) {
+        const form = btn.closest('.memory-add-form');
+        const detailType = form.dataset.detailType;
+        const noKey = form.dataset.noKey === 'true';
+
+        let detailKey, detailValue;
+
+        if (noKey) {
+            detailValue = form.querySelector('.memory-value-input').value.trim();
+            detailKey = detailType; // Use type as key for interests/requests
+        } else {
+            detailKey = form.querySelector('.memory-key-input').value.trim();
+            detailValue = form.querySelector('.memory-value-input').value.trim();
+        }
+
+        if (!detailValue || (!noKey && !detailKey)) {
+            showNotification('Please fill in all fields', 'error');
+            return;
+        }
+
+        const result = await addGuestDetail(guestId, detailType, detailKey, detailValue);
+        if (result) {
+            // Remove "no data" message if present
+            const section = form.closest('.memory-items');
+            const noData = section.querySelector('.no-data');
+            if (noData) noData.remove();
+
+            // Create new item element
+            const newItem = document.createElement('div');
+            newItem.className = 'memory-item';
+            newItem.dataset.id = result.id;
+
+            if (noKey) {
+                newItem.innerHTML = `
+                    <span class="memory-value" data-detail-id="${result.id}" data-editable="true">${escapeHtml(detailValue)}</span>
+                    <span class="memory-confidence">100%</span>
+                    <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                        <i class="fas fa-times"></i>
+                    </button>
+                `;
+            } else {
+                newItem.innerHTML = `
+                    <span class="memory-key">${escapeHtml(detailKey)}</span>
+                    <span class="memory-value" data-detail-id="${result.id}" data-editable="true">${escapeHtml(detailValue)}</span>
+                    <span class="memory-confidence">100%</span>
+                    <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                        <i class="fas fa-times"></i>
+                    </button>
+                `;
+            }
+
+            // Insert before add form
+            section.insertBefore(newItem, form);
+
+            // Clear inputs
+            form.querySelectorAll('input').forEach(input => input.value = '');
+
+            // Initialize inline editing on new element
+            initInlineEditing(newItem.querySelector('.memory-value'));
+        }
+    }
+
+    // Escape HTML for XSS prevention
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Inline editing
+    function initInlineEditing(el) {
+        if (!el) return;
+        el.addEventListener('click', startInlineEditing);
+    }
+
+    function startInlineEditing(e) {
+        const el = e.target;
+        if (el.contentEditable === 'true' || el.contentEditable === 'plaintext-only') return;
+
+        el.dataset.originalValue = el.textContent;
+        el.contentEditable = 'plaintext-only';
+        el.focus();
+
+        // Select all text
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+
+        el.addEventListener('blur', finishInlineEditing, { once: true });
+        el.addEventListener('keydown', handleInlineKeydown);
+    }
+
+    function handleInlineKeydown(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            e.target.blur();
+        } else if (e.key === 'Escape') {
+            e.target.textContent = e.target.dataset.originalValue;
+            e.target.blur();
+        }
+    }
+
+    async function finishInlineEditing(e) {
+        const el = e.target;
+        el.contentEditable = 'false';
+        el.removeEventListener('keydown', handleInlineKeydown);
+
+        const newValue = el.textContent.trim();
+        const originalValue = el.dataset.originalValue;
+
+        if (newValue === originalValue || !newValue) {
+            el.textContent = originalValue;
+            return;
+        }
+
+        const detailId = el.dataset.detailId;
+
+        try {
+            await apiRequest(`/chatbot/api/guests/${guestId}/details/${detailId}`, 'PATCH', {
+                detail_value: newValue
+            });
+            showNotification('Updated', 'success');
+        } catch (error) {
+            el.textContent = originalValue;
+            showNotification('Failed to update', 'error');
+        }
+    }
+
+    // Initialize inline editing on all editable elements
+    document.querySelectorAll('.memory-value[data-editable="true"]').forEach(initInlineEditing);
 </script>
 {% endblock %}
