@@ -119,11 +119,11 @@ Plans:
   3. Search works with active filters (search within filtered results)
   4. Search results highlight matching text in context preview
   5. Empty search results show helpful message with suggestions
-**Plans**: TBD
+**Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 07-01: SearchManager module and API
-- [ ] 07-02: Search UI with highlights and empty states
+- [ ] 07-01-PLAN.md — Search API endpoint and FilterState search extension (Wave 1)
+- [ ] 07-02-PLAN.md — Search UI with highlighting and empty states (Wave 2)
 
 ### Phase 8: Profile Editing
 **Goal**: Users can manually add, edit, and delete guest information and memories
