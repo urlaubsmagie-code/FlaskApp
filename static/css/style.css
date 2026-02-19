@@ -1345,3 +1345,202 @@ a {
         max-width: 95%;
     }
 }
+
+/* ============================================================================
+   Profile Editing Styles
+   ============================================================================ */
+
+/* Card header with edit button */
+.profile-card .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.profile-card .card-header .btn-sm {
+    padding: 6px 12px;
+    font-size: 0.8125rem;
+}
+
+/* Edit Modal */
+dialog.edit-modal {
+    border: none;
+    border-radius: 12px;
+    padding: 0;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+dialog.edit-modal::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+dialog.edit-modal .modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+dialog.edit-modal .modal-header h2 {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+dialog.edit-modal .btn-close {
+    background: none;
+    border: none;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+dialog.edit-modal .btn-close:hover {
+    background: #f3f4f6;
+    color: #374151;
+}
+
+dialog.edit-modal .modal-body {
+    padding: 20px;
+}
+
+dialog.edit-modal .form-group {
+    margin-bottom: 16px;
+}
+
+dialog.edit-modal .form-group:last-child {
+    margin-bottom: 0;
+}
+
+dialog.edit-modal .form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    font-size: 0.875rem;
+    color: #374151;
+}
+
+dialog.edit-modal .form-group input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 0.9375rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+dialog.edit-modal .form-group input:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+dialog.edit-modal .modal-footer {
+    padding: 16px 20px;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* Inline Editing */
+.memory-value[data-editable="true"] {
+    cursor: pointer;
+    padding: 2px 4px;
+    margin: -2px -4px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.memory-value[data-editable="true"]:hover {
+    background-color: rgba(37, 99, 235, 0.1);
+}
+
+.memory-value[contenteditable="true"],
+.memory-value[contenteditable="plaintext-only"] {
+    outline: 2px solid #2563eb;
+    background-color: white;
+    min-width: 50px;
+}
+
+/* Memory Item with Delete Button */
+.memory-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    margin: 4px 0;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+}
+
+.memory-item:hover {
+    background-color: #f9fafb;
+}
+
+.btn-delete-memory {
+    background: none;
+    border: none;
+    color: #9ca3af;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: all 0.2s;
+    margin-left: auto;
+}
+
+.memory-item:hover .btn-delete-memory {
+    opacity: 1;
+}
+
+.btn-delete-memory:hover {
+    color: #ef4444;
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
+/* Add Memory Form */
+.memory-add-form {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed #e5e7eb;
+}
+
+.memory-add-form input {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    transition: border-color 0.2s;
+}
+
+.memory-add-form input:focus {
+    outline: none;
+    border-color: #2563eb;
+}
+
+.memory-add-form input::placeholder {
+    color: #9ca3af;
+}
+
+.memory-add-form .add-memory-btn {
+    flex-shrink: 0;
+    padding: 8px 12px;
+}
+
+/* No data message adjustment for add form */
+.memory-items .no-data {
+    margin-bottom: 0;
+}
