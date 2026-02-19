@@ -110,6 +110,20 @@
                 <p>When guests message you, their conversations will appear here.</p>
             </div>
         {% endif %}
+        <div class="empty-state search-empty" id="searchEmptyState" style="display: none;">
+            <i class="fas fa-search"></i>
+            <h3>No results found</h3>
+            <p class="search-query-display">No matches for "<strong id="searchQueryText"></strong>"</p>
+            <p>Suggestions:</p>
+            <ul class="search-suggestions">
+                <li>Check your spelling</li>
+                <li>Try different keywords</li>
+                <li>Search for guest names or message content</li>
+            </ul>
+            <button class="btn btn-secondary" onclick="clearSearch()">
+                <i class="fas fa-times"></i> Clear Search
+            </button>
+        </div>
     </div>
 </div>
 
@@ -282,6 +296,9 @@
      * Main function to update the inbox list with new data
      */
     function updateInboxList(conversations) {
+        // If in search mode, don't update from polling (would clear search results)
+        if (typeof isSearchMode !== 'undefined' && isSearchMode) return;
+
         const container = document.getElementById('conversationList');
         if (!container) return;
 
@@ -399,10 +416,164 @@
         filterState.reset();
     });
 
-    // Search input handler - just trigger filter reapply
+    // Search input handler with debounce
+    let searchTimeout = null;
+    let isSearchMode = false;
+
     document.getElementById('searchInput').addEventListener('input', function() {
+        const query = this.value.trim();
+
+        // Clear previous timeout
+        if (searchTimeout) clearTimeout(searchTimeout);
+
+        // Immediate client-side filtering for quick feedback
         filterState.applyFilters();
+
+        // Debounced server search for accurate results
+        searchTimeout = setTimeout(async () => {
+            if (query.length >= 2) {
+                filterState.setSearch(query);
+                const results = await fetchSearchResults(query);
+                renderSearchResults(results);
+            } else if (query.length === 0) {
+                clearSearchMode();
+            }
+        }, 300);
     });
+
+    // =========================================================================
+    // Search Functions
+    // =========================================================================
+
+    /**
+     * Fetch search results from server API
+     */
+    async function fetchSearchResults(query) {
+        const params = new URLSearchParams({ q: query });
+
+        // Include active filters in search
+        if (filterState.state.platform) {
+            params.set('platform', filterState.state.platform);
+        }
+        if (filterState.state.status) {
+            params.set('status', filterState.state.status);
+        }
+
+        try {
+            const response = await fetch(`/chatbot/api/search?${params}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return await response.json();
+        } catch (error) {
+            console.error('Search error:', error);
+            return { results: [], query: query, total: 0 };
+        }
+    }
+
+    /**
+     * Render search results, replacing normal inbox view
+     */
+    function renderSearchResults(data) {
+        const container = document.getElementById('conversationList');
+        const emptyState = document.getElementById('searchEmptyState');
+        const normalEmpty = container.querySelector('.empty-state:not(.search-empty)');
+
+        isSearchMode = true;
+
+        // Hide normal empty state if present
+        if (normalEmpty) normalEmpty.style.display = 'none';
+
+        if (data.results.length === 0) {
+            // Show search empty state
+            document.getElementById('searchQueryText').textContent = data.query;
+            emptyState.style.display = 'block';
+
+            // Hide all cards
+            container.querySelectorAll('.conversation-card').forEach(card => {
+                card.style.display = 'none';
+            });
+            return;
+        }
+
+        // Hide search empty state
+        emptyState.style.display = 'none';
+
+        // Build set of matching conversation IDs
+        const matchingIds = new Set(data.results.map(r => String(r.conversation_id)));
+
+        // Update cards with search results
+        container.querySelectorAll('.conversation-card').forEach(card => {
+            const convId = card.dataset.conversationId;
+
+            if (matchingIds.has(convId)) {
+                card.style.display = 'flex';
+                card.classList.add('search-result');
+
+                // Find this conversation's result data
+                const result = data.results.find(r => String(r.conversation_id) === convId);
+
+                // Add or update snippet display
+                let snippetEl = card.querySelector('.search-snippet');
+                if (!snippetEl) {
+                    snippetEl = document.createElement('div');
+                    snippetEl.className = 'search-snippet';
+                    const previewEl = card.querySelector('.conversation-preview');
+                    if (previewEl) {
+                        previewEl.insertAdjacentElement('afterend', snippetEl);
+                    }
+                }
+
+                // Set snippet HTML (sanitized on server)
+                if (result.first_snippet) {
+                    snippetEl.innerHTML = result.first_snippet;
+                }
+
+                // Add match count indicator
+                let countEl = card.querySelector('.match-count');
+                if (!countEl && result.match_count > 1) {
+                    countEl = document.createElement('span');
+                    countEl.className = 'match-count';
+                    const headerEl = card.querySelector('.conversation-header');
+                    if (headerEl) headerEl.appendChild(countEl);
+                }
+                if (countEl) {
+                    countEl.textContent = result.match_count > 1 ? `(${result.match_count} matches)` : '';
+                }
+            } else {
+                card.style.display = 'none';
+            }
+        });
+    }
+
+    /**
+     * Clear search mode and restore normal inbox view
+     */
+    function clearSearchMode() {
+        isSearchMode = false;
+        filterState.setSearch(null);
+
+        const emptyState = document.getElementById('searchEmptyState');
+        emptyState.style.display = 'none';
+
+        // Remove search result decorations
+        document.querySelectorAll('.conversation-card').forEach(card => {
+            card.classList.remove('search-result');
+            const snippetEl = card.querySelector('.search-snippet');
+            if (snippetEl) snippetEl.remove();
+            const countEl = card.querySelector('.match-count');
+            if (countEl) countEl.remove();
+        });
+
+        // Re-apply filters (shows all cards matching current filters)
+        filterState.applyFilters();
+    }
+
+    /**
+     * Clear search (called from empty state button)
+     */
+    function clearSearch() {
+        document.getElementById('searchInput').value = '';
+        clearSearchMode();
+    }
 
     // =========================================================================
     // Guest Dropdown Population
@@ -489,6 +660,17 @@
         // Initialize filter state from URL and apply
         filterState.applyFilters();
         filterState.updateUI();
+
+        // Restore search input from URL state
+        const searchInput = document.getElementById('searchInput');
+        if (filterState.state.search && searchInput) {
+            searchInput.value = filterState.state.search;
+            // Trigger search to load results
+            setTimeout(async () => {
+                const results = await fetchSearchResults(filterState.state.search);
+                renderSearchResults(results);
+            }, 100);
+        }
 
         // Populate guest dropdown (after filters applied so counts are accurate)
         populateGuestDropdown();
