@@ -43,6 +43,10 @@
                         <span class="info-value">{{ guest.total_stays or 0 }}</span>
                     </div>
                     <div class="info-item">
+                        <span class="info-label" data-i18n="guest.language">Preferred Language</span>
+                        <span class="info-value">{{ profile.language or 'Not detected' }}</span>
+                    </div>
+                    <div class="info-item">
                         <span class="info-label">First Contact</span>
                         <span class="info-value">{{ guest.first_contact.strftime('%d.%m.%Y') if guest.first_contact else 'N/A' }}</span>
                     </div>

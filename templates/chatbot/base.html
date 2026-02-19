@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ChatBotAI{% endblock %} - Guest Messaging</title>
+
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('chatbot.static', filename='css/style.css') }}">
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-robot"></i>
+                    <span>ChatBotAI</span>
+                </div>
+            </div>
+
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="{{ url_for('chatbot.index') }}" class="nav-link {% if request.endpoint == 'chatbot.index' %}active{% endif %}">
+                        <i class="fas fa-inbox"></i>
+                        <span data-i18n="nav.inbox">Posteingang</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('chatbot.settings') }}" class="nav-link {% if request.endpoint == 'chatbot.settings' %}active{% endif %}">
+                        <i class="fas fa-cog"></i>
+                        <span data-i18n="nav.settings">Einstellungen</span>
+                    </a>
+                </li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <!-- Language Selector -->
+                <div class="language-selector">
+                    <select id="languageSelector" onchange="i18n.setLanguage(this.value)">
+                        <option value="de">🇩🇪 Deutsch</option>
+                        <option value="en">🇬🇧 English</option>
+                    </select>
+                </div>
+
+                <div class="ai-status" id="aiStatus">
+                    <span class="status-dot"></span>
+                    <span class="status-text">AI Status: Checking...</span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('chatbot.static', filename='js/i18n.js') }}"></script>
+    <script src="{{ url_for('chatbot.static', filename='js/app.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+
+    <script>
+        // Check AI status on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            checkAIStatus();
+        });
+
+        function checkAIStatus() {
+            fetch('{{ url_for("chatbot.health_check") }}')
+                .then(response => response.json())
+                .then(data => {
+                    const statusEl = document.getElementById('aiStatus');
+                    if (data.ai_service) {
+                        statusEl.classList.add('online');
+                        statusEl.querySelector('.status-text').textContent = 'AI Online';
+                    } else {
+                        statusEl.classList.add('offline');
+                        statusEl.querySelector('.status-text').textContent = 'AI Offline';
+                    }
+                })
+                .catch(() => {
+                    const statusEl = document.getElementById('aiStatus');
+                    statusEl.classList.add('offline');
+                    statusEl.querySelector('.status-text').textContent = 'AI Offline';
+                });
+        }
+    </script>
+</body>
+</html>

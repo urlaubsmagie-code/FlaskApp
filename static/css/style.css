@@ -171,6 +171,38 @@ a {
     background: var(--danger-color);
 }
 
+/* Language Selector */
+.language-selector {
+    margin-bottom: 12px;
+}
+
+.language-selector select {
+    width: 100%;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: var(--border-radius);
+    color: var(--text-white);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.language-selector select:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.language-selector select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.language-selector select option {
+    background: var(--bg-sidebar);
+    color: var(--text-white);
+}
+
 /* ============================================================================
    Page Header
    ============================================================================ */
