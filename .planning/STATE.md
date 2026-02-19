@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-17)
 
 **Core value:** The system remembers EVERYTHING about every guest permanently
-**Current focus:** Phase 5 - Status Filtering
+**Current focus:** Phase 6 - Guest Filtering
 
 ## Current Position
 
-Phase: 5 of 8 (Status Filtering)
+Phase: 6 of 8 (Guest Filtering)
 Plan: 1 of 1 in current phase
 Status: Phase Complete
-Last activity: 2026-02-18 — Completed 05-01-PLAN.md (Status Filter Verification)
+Last activity: 2026-02-19 — Completed 06-01-PLAN.md (Guest Filter Dropdown)
 
 Progress: [##########] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
+- Total plans completed: 12
 - Average duration: 3 min
-- Total execution time: 0.45 hours
+- Total execution time: 0.52 hours
 
 **By Phase:**
 
@@ -32,9 +32,10 @@ Progress: [##########] 100%
 | 03-unread-tracking | 3 | 4 min | 1.3 min |
 | 04-platform-filtering | 2 | 4 min | 2 min |
 | 05-status-filtering | 1 | 1 min | 1 min |
+| 06-guest-filtering | 1 | 4 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-02 (1 min), 03-03 (2 min), 04-01 (2 min), 04-02 (2 min), 05-01 (1 min)
+- Last 5 plans: 03-03 (2 min), 04-01 (2 min), 04-02 (2 min), 05-01 (1 min), 06-01 (4 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -78,6 +79,10 @@ Recent decisions affecting current work:
 - [04-02]: Role and aria-label attributes for filter group accessibility
 - [04-02]: Initialize filters before polling to apply URL state on page load
 - [05-01]: No code changes needed - Phase 4 implementation satisfies all FILT-02 requirements
+- [06-01]: Count conversations per guest from DOM rather than API for accuracy
+- [06-01]: Only show guests with conversations in dropdown
+- [06-01]: Sort guests alphabetically by name for easy scanning
+- [06-01]: Guest badge class uses just 'guest' (not 'guest-{id}') since ID is numeric
 
 ### Pending Todos
 
@@ -89,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-18
-Stopped at: Completed 05-01-PLAN.md (Status Filter Verification) - Phase 05 Complete
-Resume file: .planning/phases/06-*/06-01-PLAN.md
+Last session: 2026-02-19
+Stopped at: Completed 06-01-PLAN.md (Guest Filter Dropdown) - Phase 06 Complete
+Resume file: .planning/phases/07-*/07-01-PLAN.md
