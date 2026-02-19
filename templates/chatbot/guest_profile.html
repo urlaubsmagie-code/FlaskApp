@@ -1,0 +1,318 @@
+{% extends "chatbot/base.html" %}
+
+{% block title %}Guest Profile - {{ guest.name or 'Guest' }}{% endblock %}
+
+{% block content %}
+<div class="profile-container">
+    <!-- Header -->
+    <div class="page-header">
+        <a href="{{ url_for('chatbot.index') }}" class="back-btn">
+            <i class="fas fa-arrow-left"></i>
+        </a>
+        <h1><i class="fas fa-user"></i> Guest Profile</h1>
+    </div>
+
+    <div class="profile-grid">
+        <!-- Guest Info Card -->
+        <div class="profile-card">
+            <div class="card-header">
+                <h2>Contact Information</h2>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="openEditGuestModal()">
+                    <i class="fas fa-edit"></i> Edit
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="profile-avatar">
+                    <i class="fas fa-user-circle"></i>
+                </div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Name</span>
+                        <span class="info-value">{{ guest.name or 'Not provided' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Email</span>
+                        <span class="info-value">{{ guest.email or 'Not provided' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Phone</span>
+                        <span class="info-value">{{ guest.phone or 'Not provided' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Total Stays</span>
+                        <span class="info-value">{{ guest.total_stays or 0 }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">First Contact</span>
+                        <span class="info-value">{{ guest.first_contact.strftime('%d.%m.%Y') if guest.first_contact else 'N/A' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Last Contact</span>
+                        <span class="info-value">{{ guest.last_contact.strftime('%d.%m.%Y') if guest.last_contact else 'N/A' }}</span>
+                    </div>
+                </div>
+
+                <!-- Platform IDs -->
+                <div class="platform-ids">
+                    {% if guest.whatsapp_id %}
+                    <span class="platform-tag whatsapp"><i class="fab fa-whatsapp"></i> WhatsApp</span>
+                    {% endif %}
+                    {% if guest.airbnb_id %}
+                    <span class="platform-tag airbnb"><i class="fab fa-airbnb"></i> Airbnb</span>
+                    {% endif %}
+                    {% if guest.booking_id %}
+                    <span class="platform-tag booking"><i class="fas fa-calendar-check"></i> Booking</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Card - THE BREAKTHROUGH FEATURE! -->
+        <div class="profile-card memory-card">
+            <div class="card-header">
+                <h2><i class="fas fa-brain"></i> Guest Memory</h2>
+                <span class="memory-badge">AI-Extracted</span>
+            </div>
+            <div class="card-body">
+                <!-- Family -->
+                <div class="memory-section">
+                    <h3><i class="fas fa-users"></i> Family</h3>
+                    <div class="memory-items" id="familyItems">
+                        {% if profile.family %}
+                            {% for item in profile.family %}
+                            <div class="memory-item" data-id="{{ loop.index }}">
+                                <span class="memory-key">{{ item.key|title }}</span>
+                                <span class="memory-value">{{ item.value }}</span>
+                                <span class="memory-confidence" title="Confidence: {{ (item.confidence * 100)|round }}%">
+                                    {{ (item.confidence * 100)|round }}%
+                                </span>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="no-data">No family members recorded</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Pets -->
+                <div class="memory-section">
+                    <h3><i class="fas fa-paw"></i> Pets</h3>
+                    <div class="memory-items" id="petsItems">
+                        {% if profile.pets %}
+                            {% for item in profile.pets %}
+                            <div class="memory-item">
+                                <span class="memory-key">{{ item.key|title }}</span>
+                                <span class="memory-value">{{ item.value }}</span>
+                                <span class="memory-confidence">{{ (item.confidence * 100)|round }}%</span>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="no-data">No pets recorded</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Preferences -->
+                <div class="memory-section">
+                    <h3><i class="fas fa-heart"></i> Preferences</h3>
+                    <div class="memory-items" id="preferencesItems">
+                        {% if profile.preferences %}
+                            {% for item in profile.preferences %}
+                            <div class="memory-item">
+                                <span class="memory-key">{{ item.key|title }}</span>
+                                <span class="memory-value">{{ item.value }}</span>
+                                <span class="memory-confidence">{{ (item.confidence * 100)|round }}%</span>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="no-data">No preferences recorded</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Allergies (IMPORTANT!) -->
+                <div class="memory-section allergies">
+                    <h3><i class="fas fa-exclamation-triangle"></i> Allergies</h3>
+                    <div class="memory-items" id="allergiesItems">
+                        {% if profile.allergies %}
+                            {% for item in profile.allergies %}
+                            <div class="memory-item allergy-item">
+                                <span class="memory-key">{{ item.key|title }}</span>
+                                <span class="memory-value">{{ item.value }}</span>
+                                <span class="memory-confidence">{{ (item.confidence * 100)|round }}%</span>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="no-data">No allergies recorded</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Interests -->
+                <div class="memory-section">
+                    <h3><i class="fas fa-star"></i> Interests</h3>
+                    <div class="memory-items" id="interestsItems">
+                        {% if profile.interests %}
+                            {% for item in profile.interests %}
+                            <div class="memory-item">
+                                <span class="memory-value">{{ item.value }}</span>
+                                <span class="memory-confidence">{{ (item.confidence * 100)|round }}%</span>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="no-data">No interests recorded</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Special Requests -->
+                <div class="memory-section">
+                    <h3><i class="fas fa-clipboard-list"></i> Special Requests</h3>
+                    <div class="memory-items" id="requestsItems">
+                        {% if profile.special_requests %}
+                            {% for item in profile.special_requests %}
+                            <div class="memory-item">
+                                <span class="memory-value">{{ item.value }}</span>
+                                <span class="memory-confidence">{{ (item.confidence * 100)|round }}%</span>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="no-data">No special requests recorded</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Conversations Card -->
+        <div class="profile-card">
+            <div class="card-header">
+                <h2><i class="fas fa-comments"></i> Conversation History</h2>
+            </div>
+            <div class="card-body">
+                {% if conversations %}
+                <div class="conversations-list">
+                    {% for conv in conversations %}
+                    <a href="{{ url_for('chatbot.conversation_view', conversation_id=conv.id) }}" class="conversation-link">
+                        <div class="conv-platform">
+                            {% if conv.platform == 'email' %}
+                                <i class="fas fa-envelope"></i>
+                            {% elif conv.platform == 'whatsapp' %}
+                                <i class="fab fa-whatsapp"></i>
+                            {% elif conv.platform == 'airbnb' %}
+                                <i class="fab fa-airbnb"></i>
+                            {% else %}
+                                <i class="fas fa-comment"></i>
+                            {% endif %}
+                        </div>
+                        <div class="conv-info">
+                            <span class="conv-subject">{{ conv.subject or 'No subject' }}</span>
+                            <span class="conv-date">{{ conv.updated_at.strftime('%d.%m.%Y') if conv.updated_at else '' }}</span>
+                        </div>
+                        <div class="conv-messages">
+                            <span>{{ conv.message_count }} messages</span>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="no-data">No conversations yet</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Notes Card -->
+        <div class="profile-card">
+            <div class="card-header">
+                <h2><i class="fas fa-sticky-note"></i> Private Notes</h2>
+            </div>
+            <div class="card-body">
+                <textarea id="guestNotes" class="notes-textarea" placeholder="Add private notes about this guest...">{{ guest.notes or '' }}</textarea>
+                <button class="btn btn-primary" onclick="saveNotes()">
+                    <i class="fas fa-save"></i> Save Notes
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Guest Modal -->
+    <dialog id="editGuestModal" class="edit-modal" aria-labelledby="editGuestTitle">
+        <form id="editGuestForm">
+            <div class="modal-header">
+                <h2 id="editGuestTitle">Edit Guest Information</h2>
+                <button type="button" class="btn-close" onclick="closeEditGuestModal()" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="editGuestName">Name</label>
+                    <input type="text" id="editGuestName" name="name" value="{{ guest.name or '' }}">
+                </div>
+                <div class="form-group">
+                    <label for="editGuestEmail">Email</label>
+                    <input type="email" id="editGuestEmail" name="email" value="{{ guest.email or '' }}">
+                </div>
+                <div class="form-group">
+                    <label for="editGuestPhone">Phone</label>
+                    <input type="tel" id="editGuestPhone" name="phone" value="{{ guest.phone or '' }}">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeEditGuestModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+        </form>
+    </dialog>
+</div>
+
+<script>
+    const guestId = {{ guest.id }};
+
+    function saveNotes() {
+        // TODO: Implement notes saving via API
+        alert('Notes saved! (API endpoint to be implemented)');
+    }
+
+    // Guest edit modal
+    const editGuestModal = document.getElementById('editGuestModal');
+
+    function openEditGuestModal() {
+        editGuestModal.showModal();
+    }
+
+    function closeEditGuestModal() {
+        editGuestModal.close();
+    }
+
+    // Close on backdrop click
+    editGuestModal.addEventListener('click', (e) => {
+        if (e.target === editGuestModal) closeEditGuestModal();
+    });
+
+    // Handle form submission with specific error handling for 409 conflict
+    document.getElementById('editGuestForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = {
+            name: document.getElementById('editGuestName').value.trim() || null,
+            email: document.getElementById('editGuestEmail').value.trim() || null,
+            phone: document.getElementById('editGuestPhone').value.trim() || null
+        };
+
+        try {
+            await apiRequest(`/chatbot/api/guests/${guestId}`, 'PATCH', data);
+            showNotification('Guest updated successfully', 'success');
+            location.reload();
+        } catch (error) {
+            // Parse and display specific error message for 409 conflict
+            if (error.message && error.message.includes('already in use')) {
+                showNotification('Email already in use by another guest', 'error');
+            } else if (error.message) {
+                showNotification(error.message, 'error');
+            } else {
+                showNotification('Failed to update guest', 'error');
+            }
+        }
+    });
+</script>
+{% endblock %}
