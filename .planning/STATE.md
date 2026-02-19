@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-17)
 ## Current Position
 
 Phase: 7 of 8 (Search)
-Plan: 1 of 2 in current phase
-Status: In Progress
-Last activity: 2026-02-19 — Completed 07-01-PLAN.md (Search API and FilterState)
+Plan: 2 of 2 in current phase
+Status: Phase Complete
+Last activity: 2026-02-19 — Completed 07-02-PLAN.md (Search UI Implementation)
 
-Progress: [#######---] 70%
+Progress: [########--] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
+- Total plans completed: 14
 - Average duration: 3 min
-- Total execution time: 0.55 hours
+- Total execution time: 0.58 hours
 
 **By Phase:**
 
@@ -33,10 +33,10 @@ Progress: [#######---] 70%
 | 04-platform-filtering | 2 | 4 min | 2 min |
 | 05-status-filtering | 1 | 1 min | 1 min |
 | 06-guest-filtering | 1 | 4 min | 4 min |
-| 07-search | 1 | 2 min | 2 min |
+| 07-search | 2 | 4 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 04-01 (2 min), 04-02 (2 min), 05-01 (1 min), 06-01 (4 min), 07-01 (2 min)
+- Last 5 plans: 04-02 (2 min), 05-01 (1 min), 06-01 (4 min), 07-01 (2 min), 07-02 (2 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -88,6 +88,10 @@ Recent decisions affecting current work:
 - [07-01]: Group search results by conversation with first_snippet and match_count
 - [07-01]: setSearch() does not call applyFilters - search handler does server fetch
 - [07-01]: Search badge truncates queries longer than 20 characters
+- [07-02]: Debounce at 300ms with 2-char minimum for search trigger
+- [07-02]: Check isSearchMode in updateInboxList to prevent polling interference
+- [07-02]: Search snippets injected after .conversation-preview element
+- [07-02]: Restore search from URL on page load via setTimeout for async flow
 
 ### Pending Todos
 
@@ -100,5 +104,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Completed 07-01-PLAN.md (Search API and FilterState)
-Resume file: .planning/phases/07-search/07-02-PLAN.md
+Stopped at: Completed 07-02-PLAN.md (Search UI Implementation) - Phase 7 complete
+Resume file: .planning/phases/08-*/08-01-PLAN.md
