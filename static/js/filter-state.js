@@ -10,7 +10,8 @@ class FilterState {
         this.state = {
             platform: null,  // null = all, or 'email'|'whatsapp'|'airbnb'|'booking'
             status: null,    // null = all, or 'active'|'pending_owner'|'closed'
-            guest: null      // null = all, or guest ID string
+            guest: null,     // null = all, or guest ID string
+            search: null     // null = no search, or query string
         };
 
         // Load initial state from URL
@@ -21,6 +22,11 @@ class FilterState {
             this.loadFromURL();
             this.applyFilters();
             this.updateUI();
+            // Sync search input with URL state
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+                searchInput.value = this.state.search || '';
+            }
         });
     }
 
@@ -32,6 +38,7 @@ class FilterState {
         this.state.platform = params.get('platform') || null;
         this.state.status = params.get('status') || null;
         this.state.guest = params.get('guest') || null;
+        this.state.search = params.get('q') || null;
     }
 
     /**
@@ -60,6 +67,13 @@ class FilterState {
             url.searchParams.set('guest', this.state.guest);
         } else {
             url.searchParams.delete('guest');
+        }
+
+        // Set or delete search param
+        if (this.state.search) {
+            url.searchParams.set('q', this.state.search);
+        } else {
+            url.searchParams.delete('q');
         }
 
         // Update URL without creating history entry
@@ -107,12 +121,30 @@ class FilterState {
     }
 
     /**
+     * Set search query
+     * @param {string|null} query - Search query, or null to clear
+     */
+    setSearch(query) {
+        this.state.search = query || null;
+        this.saveToURL();
+        // Don't call applyFilters - search handler does server fetch
+    }
+
+    /**
+     * Clear search (shorthand)
+     */
+    clearSearch() {
+        this.setSearch(null);
+    }
+
+    /**
      * Reset all filters to default (no filtering)
      */
     reset() {
         this.state.platform = null;
         this.state.status = null;
         this.state.guest = null;
+        this.state.search = null;
         this.saveToURL();
         this.applyFilters();
         this.updateUI();
@@ -210,8 +242,13 @@ class FilterState {
             container.appendChild(this.createFilterBadge('guest', this.state.guest));
         }
 
+        // Add search badge if searching
+        if (this.state.search) {
+            container.appendChild(this.createFilterBadge('search', this.state.search));
+        }
+
         // Show/hide clear all button
-        const hasActiveFilters = this.state.platform || this.state.status || this.state.guest;
+        const hasActiveFilters = this.state.platform || this.state.status || this.state.guest || this.state.search;
         if (clearBtn) {
             clearBtn.style.display = hasActiveFilters ? 'inline-flex' : 'none';
         }
@@ -249,6 +286,10 @@ class FilterState {
                 this.clearStatus();
             } else if (type === 'guest') {
                 this.clearGuest();
+            } else if (type === 'search') {
+                this.clearSearch();
+                const searchInput = document.getElementById('searchInput');
+                if (searchInput) searchInput.value = '';
             }
         });
 
@@ -282,6 +323,9 @@ class FilterState {
                 }
             }
             return `Guest ${value}`;
+        } else if (type === 'search') {
+            // Show truncated search query
+            return value.length > 20 ? value.substring(0, 20) + '...' : value;
         }
         return value;
     }
@@ -299,7 +343,7 @@ class FilterState {
      * @returns {boolean} True if any filter is set
      */
     hasActiveFilters() {
-        return !!(this.state.platform || this.state.status || this.state.guest);
+        return !!(this.state.platform || this.state.status || this.state.guest || this.state.search);
     }
 }
 
