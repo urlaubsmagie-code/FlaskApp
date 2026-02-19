@@ -276,6 +276,35 @@ def api_get_guest(guest_id):
     return jsonify(profile)
 
 
+@chatbot_bp.route('/api/guests/<int:guest_id>', methods=['PATCH'])
+def api_update_guest(guest_id):
+    """Update guest basic info (name, email, phone)"""
+    guest = Guest.query.get_or_404(guest_id)
+    data = request.get_json()
+
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    # Check for email uniqueness if email is being updated
+    if 'email' in data and data['email'] != guest.email:
+        new_email = data['email'].strip() if data['email'] else None
+        if new_email:
+            existing = Guest.query.filter_by(email=new_email).first()
+            if existing and existing.id != guest_id:
+                return jsonify({'error': 'Email already in use'}), 409
+
+    # Update allowed fields (partial update support)
+    if 'name' in data:
+        guest.name = data['name'].strip() if data['name'] else None
+    if 'email' in data:
+        guest.email = data['email'].strip() if data['email'] else None
+    if 'phone' in data:
+        guest.phone = data['phone'].strip() if data['phone'] else None
+
+    db.session.commit()
+    return jsonify(guest.to_dict())
+
+
 @chatbot_bp.route('/api/guests/<int:guest_id>/details', methods=['POST'])
 def api_add_guest_detail(guest_id):
     """Manually add a guest detail"""
