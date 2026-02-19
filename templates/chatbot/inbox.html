@@ -1,15 +1,15 @@
 {% extends "chatbot/base.html" %}
 
-{% block title %}Inbox{% endblock %}
+{% block title %}{{ _('Inbox') if _ else 'Inbox' }}{% endblock %}
 
 {% block content %}
 <div class="inbox-container">
     <!-- Header -->
     <div class="page-header">
-        <h1><i class="fas fa-inbox"></i> Inbox</h1>
+        <h1><i class="fas fa-inbox"></i> <span data-i18n="inbox.title">Posteingang</span></h1>
         <div class="header-actions">
             <button class="btn btn-secondary" onclick="refreshConversations()">
-                <i class="fas fa-sync-alt"></i> Refresh
+                <i class="fas fa-sync-alt"></i> <span data-i18n="common.refresh">Aktualisieren</span>
             </button>
         </div>
     </div>
@@ -18,38 +18,38 @@
     <div class="filter-bar">
         <!-- Platform Filter Group -->
         <div class="filter-group" role="group" aria-label="Filter by platform">
-            <button class="filter-btn active" data-filter-platform="">All</button>
+            <button class="filter-btn active" data-filter-platform="" data-i18n="inbox.filter.all">Alle</button>
             <button class="filter-btn" data-filter-platform="email">
-                <i class="fas fa-envelope"></i> Email
+                <i class="fas fa-envelope"></i> <span data-i18n="platform.email">E-Mail</span>
             </button>
             <button class="filter-btn" data-filter-platform="whatsapp">
-                <i class="fab fa-whatsapp"></i> WhatsApp
+                <i class="fab fa-whatsapp"></i> <span data-i18n="platform.whatsapp">WhatsApp</span>
             </button>
             <button class="filter-btn" data-filter-platform="airbnb">
-                <i class="fab fa-airbnb"></i> Airbnb
+                <i class="fab fa-airbnb"></i> <span data-i18n="platform.airbnb">Airbnb</span>
             </button>
             <button class="filter-btn" data-filter-platform="booking">
-                <i class="fas fa-bed"></i> Booking
+                <i class="fas fa-bed"></i> <span data-i18n="platform.booking">Booking.com</span>
             </button>
         </div>
 
         <!-- Status Filter Group -->
         <div class="filter-group" role="group" aria-label="Filter by status">
-            <button class="filter-btn active" data-filter-status="">All</button>
-            <button class="filter-btn" data-filter-status="active">Active</button>
-            <button class="filter-btn" data-filter-status="pending_owner">Pending</button>
-            <button class="filter-btn" data-filter-status="closed">Closed</button>
+            <button class="filter-btn active" data-filter-status="" data-i18n="inbox.filter.all">Alle</button>
+            <button class="filter-btn" data-filter-status="active" data-i18n="inbox.filter.active">Aktiv</button>
+            <button class="filter-btn" data-filter-status="pending_owner" data-i18n="inbox.filter.pending">Ausstehend</button>
+            <button class="filter-btn" data-filter-status="closed" data-i18n="inbox.filter.closed">Geschlossen</button>
         </div>
 
         <!-- Guest Filter Dropdown -->
         <select id="guestFilter" class="guest-dropdown" aria-label="Filter by guest">
-            <option value="">All Guests</option>
+            <option value="" data-i18n="inbox.filter.allGuests">Alle Gäste</option>
             <!-- Options populated via JavaScript -->
         </select>
 
         <div class="search-box">
             <i class="fas fa-search"></i>
-            <input type="text" placeholder="Search conversations..." id="searchInput">
+            <input type="text" data-i18n-placeholder="inbox.search" placeholder="Konversationen durchsuchen..." id="searchInput">
         </div>
     </div>
 
@@ -57,7 +57,7 @@
     <div class="filter-indicators" style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
         <div id="activeFilters" class="active-filters"></div>
         <button id="clearFiltersBtn" class="btn btn-secondary btn-sm" style="display: none;">
-            <i class="fas fa-times"></i> Clear All
+            <i class="fas fa-times"></i> <span data-i18n="inbox.filter.clear">Filter löschen</span>
         </button>
     </div>
 
@@ -106,22 +106,22 @@
         {% else %}
             <div class="empty-state">
                 <i class="fas fa-inbox"></i>
-                <h3>No conversations yet</h3>
-                <p>When guests message you, their conversations will appear here.</p>
+                <h3 data-i18n="inbox.empty">Keine Konversationen gefunden</h3>
+                <p data-i18n="inbox.empty.hint">Wenn Gäste Ihnen schreiben, erscheinen ihre Konversationen hier.</p>
             </div>
         {% endif %}
         <div class="empty-state search-empty" id="searchEmptyState" style="display: none;">
             <i class="fas fa-search"></i>
-            <h3>No results found</h3>
-            <p class="search-query-display">No matches for "<strong id="searchQueryText"></strong>"</p>
-            <p>Suggestions:</p>
+            <h3 data-i18n="inbox.search.noResults">Keine Ergebnisse gefunden</h3>
+            <p class="search-query-display"><span data-i18n="inbox.search.noMatches">Keine Treffer für</span> "<strong id="searchQueryText"></strong>"</p>
+            <p data-i18n="inbox.search.suggestions">Vorschläge:</p>
             <ul class="search-suggestions">
-                <li>Check your spelling</li>
-                <li>Try different keywords</li>
-                <li>Search for guest names or message content</li>
+                <li data-i18n="inbox.search.suggestion1">Überprüfen Sie die Rechtschreibung</li>
+                <li data-i18n="inbox.search.suggestion2">Versuchen Sie andere Suchbegriffe</li>
+                <li data-i18n="inbox.search.suggestion3">Suchen Sie nach Gastnamen oder Nachrichteninhalt</li>
             </ul>
             <button class="btn btn-secondary" onclick="clearSearch()">
-                <i class="fas fa-times"></i> Clear Search
+                <i class="fas fa-times"></i> <span data-i18n="inbox.search.clear">Suche löschen</span>
             </button>
         </div>
     </div>

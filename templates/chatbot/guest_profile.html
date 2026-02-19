@@ -1,6 +1,6 @@
 {% extends "chatbot/base.html" %}
 
-{% block title %}Guest Profile - {{ guest.name or 'Guest' }}{% endblock %}
+{% block title %}{{ _('Guest Profile') if _ else 'Gästeprofil' }} - {{ guest.name or 'Gast' }}{% endblock %}
 
 {% block content %}
 <div class="profile-container">
@@ -9,16 +9,16 @@
         <a href="{{ url_for('chatbot.index') }}" class="back-btn">
             <i class="fas fa-arrow-left"></i>
         </a>
-        <h1><i class="fas fa-user"></i> Guest Profile</h1>
+        <h1><i class="fas fa-user"></i> <span data-i18n="guest.title">Gästeprofil</span></h1>
     </div>
 
     <div class="profile-grid">
         <!-- Guest Info Card -->
         <div class="profile-card">
             <div class="card-header">
-                <h2>Contact Information</h2>
+                <h2 data-i18n="guest.info">Kontaktinformationen</h2>
                 <button type="button" class="btn btn-sm btn-secondary" onclick="openEditGuestModal()">
-                    <i class="fas fa-edit"></i> Edit
+                    <i class="fas fa-edit"></i> <span data-i18n="common.edit">Bearbeiten</span>
                 </button>
             </div>
             <div class="card-body">
@@ -27,32 +27,32 @@
                 </div>
                 <div class="info-grid">
                     <div class="info-item">
-                        <span class="info-label">Name</span>
-                        <span class="info-value">{{ guest.name or 'Not provided' }}</span>
+                        <span class="info-label" data-i18n="guest.info.name">Name</span>
+                        <span class="info-value">{{ guest.name or 'Nicht angegeben' }}</span>
                     </div>
                     <div class="info-item">
-                        <span class="info-label">Email</span>
-                        <span class="info-value">{{ guest.email or 'Not provided' }}</span>
+                        <span class="info-label" data-i18n="guest.info.email">E-Mail</span>
+                        <span class="info-value">{{ guest.email or 'Nicht angegeben' }}</span>
                     </div>
                     <div class="info-item">
-                        <span class="info-label">Phone</span>
-                        <span class="info-value">{{ guest.phone or 'Not provided' }}</span>
+                        <span class="info-label" data-i18n="guest.info.phone">Telefon</span>
+                        <span class="info-value">{{ guest.phone or 'Nicht angegeben' }}</span>
                     </div>
                     <div class="info-item">
-                        <span class="info-label">Total Stays</span>
+                        <span class="info-label" data-i18n="guest.stats.stays">Aufenthalte</span>
                         <span class="info-value">{{ guest.total_stays or 0 }}</span>
                     </div>
                     <div class="info-item">
-                        <span class="info-label" data-i18n="guest.language">Preferred Language</span>
-                        <span class="info-value">{{ profile.language or 'Not detected' }}</span>
+                        <span class="info-label" data-i18n="guest.language">Bevorzugte Sprache</span>
+                        <span class="info-value">{{ profile.language or 'Nicht erkannt' }}</span>
                     </div>
                     <div class="info-item">
-                        <span class="info-label">First Contact</span>
-                        <span class="info-value">{{ guest.first_contact.strftime('%d.%m.%Y') if guest.first_contact else 'N/A' }}</span>
+                        <span class="info-label" data-i18n="guest.stats.first">Erster Kontakt</span>
+                        <span class="info-value">{{ guest.first_contact.strftime('%d.%m.%Y') if guest.first_contact else 'K.A.' }}</span>
                     </div>
                     <div class="info-item">
-                        <span class="info-label">Last Contact</span>
-                        <span class="info-value">{{ guest.last_contact.strftime('%d.%m.%Y') if guest.last_contact else 'N/A' }}</span>
+                        <span class="info-label" data-i18n="guest.stats.last">Letzter Kontakt</span>
+                        <span class="info-value">{{ guest.last_contact.strftime('%d.%m.%Y') if guest.last_contact else 'K.A.' }}</span>
                     </div>
                 </div>
 
@@ -74,13 +74,13 @@
         <!-- Memory Card - THE BREAKTHROUGH FEATURE! -->
         <div class="profile-card memory-card">
             <div class="card-header">
-                <h2><i class="fas fa-brain"></i> Guest Memory</h2>
-                <span class="memory-badge">AI-Extracted</span>
+                <h2><i class="fas fa-brain"></i> <span data-i18n="guest.memories">Erinnerungen</span></h2>
+                <span class="memory-badge" data-i18n="guest.memories.aiExtracted">KI-extrahiert</span>
             </div>
             <div class="card-body">
                 <!-- Family -->
                 <div class="memory-section">
-                    <h3><i class="fas fa-users"></i> Family</h3>
+                    <h3><i class="fas fa-users"></i> <span data-i18n="guest.memories.family">Familie</span></h3>
                     <div class="memory-items" id="familyItems">
                         {% if profile.family %}
                             {% for item in profile.family %}
@@ -96,7 +96,7 @@
                             </div>
                             {% endfor %}
                         {% else %}
-                            <p class="no-data">No family members recorded</p>
+                            <p class="no-data" data-i18n="guest.memories.noFamily">Keine Familienmitglieder erfasst</p>
                         {% endif %}
                         <div class="memory-add-form" data-detail-type="family">
                             <input type="text" class="memory-key-input" placeholder="Type (e.g., son)">
@@ -110,7 +110,7 @@
 
                 <!-- Pets -->
                 <div class="memory-section">
-                    <h3><i class="fas fa-paw"></i> Pets</h3>
+                    <h3><i class="fas fa-paw"></i> <span data-i18n="guest.memories.pets">Haustiere</span></h3>
                     <div class="memory-items" id="petsItems">
                         {% if profile.pets %}
                             {% for item in profile.pets %}
@@ -126,7 +126,7 @@
                             </div>
                             {% endfor %}
                         {% else %}
-                            <p class="no-data">No pets recorded</p>
+                            <p class="no-data" data-i18n="guest.memories.noPets">Keine Haustiere erfasst</p>
                         {% endif %}
                         <div class="memory-add-form" data-detail-type="pet">
                             <input type="text" class="memory-key-input" placeholder="Type (e.g., dog)">
@@ -140,7 +140,7 @@
 
                 <!-- Preferences -->
                 <div class="memory-section">
-                    <h3><i class="fas fa-heart"></i> Preferences</h3>
+                    <h3><i class="fas fa-heart"></i> <span data-i18n="guest.memories.preferences">Vorlieben</span></h3>
                     <div class="memory-items" id="preferencesItems">
                         {% if profile.preferences %}
                             {% for item in profile.preferences %}
@@ -156,7 +156,7 @@
                             </div>
                             {% endfor %}
                         {% else %}
-                            <p class="no-data">No preferences recorded</p>
+                            <p class="no-data" data-i18n="guest.memories.noPreferences">Keine Vorlieben erfasst</p>
                         {% endif %}
                         <div class="memory-add-form" data-detail-type="preference">
                             <input type="text" class="memory-key-input" placeholder="Type (e.g., room)">
@@ -170,7 +170,7 @@
 
                 <!-- Allergies (IMPORTANT!) -->
                 <div class="memory-section allergies">
-                    <h3><i class="fas fa-exclamation-triangle"></i> Allergies</h3>
+                    <h3><i class="fas fa-exclamation-triangle"></i> <span data-i18n="guest.memories.allergies">Allergien</span></h3>
                     <div class="memory-items" id="allergiesItems">
                         {% if profile.allergies %}
                             {% for item in profile.allergies %}
@@ -186,7 +186,7 @@
                             </div>
                             {% endfor %}
                         {% else %}
-                            <p class="no-data">No allergies recorded</p>
+                            <p class="no-data" data-i18n="guest.memories.noAllergies">Keine Allergien erfasst</p>
                         {% endif %}
                         <div class="memory-add-form" data-detail-type="allergy">
                             <input type="text" class="memory-key-input" placeholder="Type (e.g., food)">
@@ -200,7 +200,7 @@
 
                 <!-- Interests -->
                 <div class="memory-section">
-                    <h3><i class="fas fa-star"></i> Interests</h3>
+                    <h3><i class="fas fa-star"></i> <span data-i18n="guest.memories.interests">Interessen</span></h3>
                     <div class="memory-items" id="interestsItems">
                         {% if profile.interests %}
                             {% for item in profile.interests %}
@@ -215,7 +215,7 @@
                             </div>
                             {% endfor %}
                         {% else %}
-                            <p class="no-data">No interests recorded</p>
+                            <p class="no-data" data-i18n="guest.memories.noInterests">Keine Interessen erfasst</p>
                         {% endif %}
                         <div class="memory-add-form" data-detail-type="interest" data-no-key="true">
                             <input type="text" class="memory-value-input" placeholder="Add interest...">
@@ -228,7 +228,7 @@
 
                 <!-- Special Requests -->
                 <div class="memory-section">
-                    <h3><i class="fas fa-clipboard-list"></i> Special Requests</h3>
+                    <h3><i class="fas fa-clipboard-list"></i> <span data-i18n="guest.memories.requests">Sonderwünsche</span></h3>
                     <div class="memory-items" id="requestsItems">
                         {% if profile.special_requests %}
                             {% for item in profile.special_requests %}
@@ -243,7 +243,7 @@
                             </div>
                             {% endfor %}
                         {% else %}
-                            <p class="no-data">No special requests recorded</p>
+                            <p class="no-data" data-i18n="guest.memories.noRequests">Keine Sonderwünsche erfasst</p>
                         {% endif %}
                         <div class="memory-add-form" data-detail-type="special_request" data-no-key="true">
                             <input type="text" class="memory-value-input" placeholder="Add special request...">
@@ -259,7 +259,7 @@
         <!-- Conversations Card -->
         <div class="profile-card">
             <div class="card-header">
-                <h2><i class="fas fa-comments"></i> Conversation History</h2>
+                <h2><i class="fas fa-comments"></i> <span data-i18n="guest.conversations">Konversationen</span></h2>
             </div>
             <div class="card-body">
                 {% if conversations %}
@@ -288,7 +288,7 @@
                     {% endfor %}
                 </div>
                 {% else %}
-                <p class="no-data">No conversations yet</p>
+                <p class="no-data" data-i18n="guest.conversations.empty">Noch keine Konversationen</p>
                 {% endif %}
             </div>
         </div>
@@ -296,12 +296,12 @@
         <!-- Notes Card -->
         <div class="profile-card">
             <div class="card-header">
-                <h2><i class="fas fa-sticky-note"></i> Private Notes</h2>
+                <h2><i class="fas fa-sticky-note"></i> <span data-i18n="guest.notes">Private Notizen</span></h2>
             </div>
             <div class="card-body">
-                <textarea id="guestNotes" class="notes-textarea" placeholder="Add private notes about this guest...">{{ guest.notes or '' }}</textarea>
+                <textarea id="guestNotes" class="notes-textarea" data-i18n-placeholder="guest.notes.placeholder" placeholder="Private Notizen über diesen Gast hinzufügen...">{{ guest.notes or '' }}</textarea>
                 <button class="btn btn-primary" onclick="saveNotes()">
-                    <i class="fas fa-save"></i> Save Notes
+                    <i class="fas fa-save"></i> <span data-i18n="guest.notes.save">Notizen speichern</span>
                 </button>
             </div>
         </div>
@@ -311,28 +311,28 @@
     <dialog id="editGuestModal" class="edit-modal" aria-labelledby="editGuestTitle">
         <form id="editGuestForm">
             <div class="modal-header">
-                <h2 id="editGuestTitle">Edit Guest Information</h2>
+                <h2 id="editGuestTitle" data-i18n="guest.edit.title">Gastinformationen bearbeiten</h2>
                 <button type="button" class="btn-close" onclick="closeEditGuestModal()" aria-label="Close">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label for="editGuestName">Name</label>
+                    <label for="editGuestName" data-i18n="guest.info.name">Name</label>
                     <input type="text" id="editGuestName" name="name" value="{{ guest.name or '' }}">
                 </div>
                 <div class="form-group">
-                    <label for="editGuestEmail">Email</label>
+                    <label for="editGuestEmail" data-i18n="guest.info.email">E-Mail</label>
                     <input type="email" id="editGuestEmail" name="email" value="{{ guest.email or '' }}">
                 </div>
                 <div class="form-group">
-                    <label for="editGuestPhone">Phone</label>
+                    <label for="editGuestPhone" data-i18n="guest.info.phone">Telefon</label>
                     <input type="tel" id="editGuestPhone" name="phone" value="{{ guest.phone or '' }}">
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeEditGuestModal()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <button type="button" class="btn btn-secondary" onclick="closeEditGuestModal()" data-i18n="common.cancel">Abbrechen</button>
+                <button type="submit" class="btn btn-primary" data-i18n="guest.info.save">Änderungen speichern</button>
             </div>
         </form>
     </dialog>

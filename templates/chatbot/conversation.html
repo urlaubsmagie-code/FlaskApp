@@ -1,6 +1,6 @@
 {% extends "chatbot/base.html" %}
 
-{% block title %}Conversation - {{ guest.name or 'Guest' }}{% endblock %}
+{% block title %}{{ _('Conversation') if _ else 'Konversation' }} - {{ guest.name or 'Gast' }}{% endblock %}
 
 {% block content %}
 <div class="conversation-container">
@@ -23,7 +23,7 @@
             </div>
             <div class="guest-info">
                 <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="guest-name-link">
-                    {{ guest.name or guest.email or 'Unknown Guest' }}
+                    {{ guest.name or guest.email or 'Unbekannter Gast' }}
                 </a>
                 <span class="conversation-meta-text">
                     {{ conversation.platform|capitalize }}
@@ -32,11 +32,11 @@
             </div>
         </div>
         <div class="conversation-actions">
-            <button class="btn btn-icon" onclick="toggleAI()" title="Toggle AI" id="aiToggleBtn">
+            <button class="btn btn-icon" onclick="toggleAI()" data-i18n-title="conversation.ai.toggle" title="KI-Antworten" id="aiToggleBtn">
                 <i class="fas fa-robot"></i>
-                <span class="toggle-status">{{ 'ON' if conversation.ai_enabled else 'OFF' }}</span>
+                <span class="toggle-status" data-ai-on="{{ 'AN' }}" data-ai-off="{{ 'AUS' }}">{{ 'AN' if conversation.ai_enabled else 'AUS' }}</span>
             </button>
-            <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="btn btn-icon" title="Guest Profile">
+            <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="btn btn-icon" data-i18n-title="conversation.guest.profile" title="Gästeprofil anzeigen">
                 <i class="fas fa-user"></i>
             </a>
         </div>
@@ -58,9 +58,9 @@
             <div class="message-content">
                 <div class="message-header">
                     <span class="sender-name">
-                        {% if message.sender_type == 'guest' %}{{ guest.name or 'Guest' }}
-                        {% elif message.sender_type == 'owner' %}You
-                        {% else %}AI Assistant{% endif %}
+                        {% if message.sender_type == 'guest' %}{{ guest.name or 'Gast' }}
+                        {% elif message.sender_type == 'owner' %}<span data-i18n="conversation.you">Sie</span>
+                        {% else %}<span data-i18n="conversation.ai">KI-Assistent</span>{% endif %}
                     </span>
                     <span class="message-time">{{ message.sent_at.strftime('%d.%m.%Y %H:%M') if message.sent_at else '' }}</span>
                 </div>
@@ -72,7 +72,7 @@
         {% if not messages %}
         <div class="empty-messages">
             <i class="fas fa-comments"></i>
-            <p>No messages in this conversation yet.</p>
+            <p data-i18n="conversation.empty">Noch keine Nachrichten in dieser Konversation.</p>
         </div>
         {% endif %}
     </div>
@@ -81,18 +81,19 @@
     <div class="message-input-container">
         <div class="input-actions">
             <button class="btn btn-secondary" onclick="generateAIResponse()" id="generateAiBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
-                <i class="fas fa-magic"></i> Generate AI Response
+                <i class="fas fa-magic"></i> <span data-i18n="conversation.ai.generate">KI-Antwort generieren</span>
             </button>
         </div>
         <form class="message-form" id="messageForm" onsubmit="sendMessage(event)">
             <textarea
                 id="messageInput"
-                placeholder="Type your message..."
+                data-i18n-placeholder="conversation.placeholder"
+                placeholder="Nachricht eingeben..."
                 rows="2"
                 required
             ></textarea>
             <button type="submit" class="btn btn-primary">
-                <i class="fas fa-paper-plane"></i> Send
+                <i class="fas fa-paper-plane"></i> <span data-i18n="conversation.send">Senden</span>
             </button>
         </form>
     </div>

@@ -1,26 +1,26 @@
 {% extends "chatbot/base.html" %}
 
-{% block title %}Settings{% endblock %}
+{% block title %}{{ _('Settings') if _ else 'Einstellungen' }}{% endblock %}
 
 {% block content %}
 <div class="settings-container">
     <!-- Header -->
     <div class="page-header">
-        <h1><i class="fas fa-cog"></i> Settings</h1>
+        <h1><i class="fas fa-cog"></i> <span data-i18n="settings.title">Einstellungen</span></h1>
     </div>
 
     <div class="settings-grid">
         <!-- AI Settings -->
         <div class="settings-card">
             <div class="card-header">
-                <h2><i class="fas fa-robot"></i> AI Configuration</h2>
+                <h2><i class="fas fa-robot"></i> <span data-i18n="settings.ai.title">KI-Konfiguration</span></h2>
             </div>
             <div class="card-body">
                 <form id="aiSettingsForm">
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label for="autoResponse">Auto Response</label>
-                            <p class="setting-description">Automatically generate AI responses to guest messages</p>
+                            <label for="autoResponse" data-i18n="settings.ai.autoResponse">Automatische Antwort</label>
+                            <p class="setting-description" data-i18n="settings.ai.autoResponse.desc">Automatisch KI-Antworten auf Gastnachrichten generieren</p>
                         </div>
                         <label class="toggle-switch">
                             <input type="checkbox" id="autoResponse" name="auto_response_enabled"
@@ -31,8 +31,8 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label for="memoryExtraction">Memory Extraction</label>
-                            <p class="setting-description">Extract and remember guest information from messages</p>
+                            <label for="memoryExtraction" data-i18n="settings.ai.memoryExtraction">Erinnerungsextraktion</label>
+                            <p class="setting-description" data-i18n="settings.ai.memoryExtraction.desc">Gästeinformationen aus Nachrichten extrahieren und speichern</p>
                         </div>
                         <label class="toggle-switch">
                             <input type="checkbox" id="memoryExtraction" name="memory_extraction_enabled"
@@ -43,22 +43,22 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label for="responseTone">Response Tone</label>
-                            <p class="setting-description">Select the tone for AI-generated responses</p>
+                            <label for="responseTone" data-i18n="settings.ai.tone">Antwortton</label>
+                            <p class="setting-description" data-i18n="settings.ai.tone.desc">Ton für KI-generierte Antworten auswählen</p>
                         </div>
                         <select id="responseTone" name="ai_response_tone" class="setting-select">
                             {% set current_tone = settings|selectattr('key', 'equalto', 'ai_response_tone')|map(attribute='value')|first or 'friendly_professional' %}
-                            <option value="friendly_professional" {% if current_tone == 'friendly_professional' %}selected{% endif %}>Friendly & Professional</option>
-                            <option value="formal" {% if current_tone == 'formal' %}selected{% endif %}>Formal</option>
-                            <option value="casual" {% if current_tone == 'casual' %}selected{% endif %}>Casual</option>
-                            <option value="concise" {% if current_tone == 'concise' %}selected{% endif %}>Concise</option>
+                            <option value="friendly_professional" {% if current_tone == 'friendly_professional' %}selected{% endif %} data-i18n="settings.ai.tone.friendly">Freundlich & Professionell</option>
+                            <option value="formal" {% if current_tone == 'formal' %}selected{% endif %} data-i18n="settings.ai.tone.formal">Formell</option>
+                            <option value="casual" {% if current_tone == 'casual' %}selected{% endif %} data-i18n="settings.ai.tone.casual">Locker</option>
+                            <option value="concise" {% if current_tone == 'concise' %}selected{% endif %} data-i18n="settings.ai.tone.concise">Prägnant</option>
                         </select>
                     </div>
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label for="maxHistory">Conversation History</label>
-                            <p class="setting-description">Number of previous messages to include in AI context</p>
+                            <label for="maxHistory" data-i18n="settings.ai.history">Konversationsverlauf</label>
+                            <p class="setting-description" data-i18n="settings.ai.history.desc">Anzahl der vorherigen Nachrichten für KI-Kontext</p>
                         </div>
                         <input type="number" id="maxHistory" name="max_conversation_history"
                             value="{{ settings|selectattr('key', 'equalto', 'max_conversation_history')|map(attribute='value')|first or '10' }}"
@@ -66,7 +66,7 @@
                     </div>
 
                     <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-save"></i> Save Settings
+                        <i class="fas fa-save"></i> <span data-i18n="settings.ai.save">Einstellungen speichern</span>
                     </button>
                 </form>
             </div>
@@ -75,29 +75,29 @@
         <!-- Ollama Status -->
         <div class="settings-card">
             <div class="card-header">
-                <h2><i class="fas fa-server"></i> AI Server Status</h2>
+                <h2><i class="fas fa-server"></i> <span data-i18n="settings.server.title">KI-Server Status</span></h2>
             </div>
             <div class="card-body">
                 <div class="status-display" id="ollamaStatus">
                     <div class="status-indicator checking">
                         <i class="fas fa-spinner fa-spin"></i>
-                        <span>Checking connection...</span>
+                        <span data-i18n="settings.server.checking">Verbindung wird geprüft...</span>
                     </div>
                 </div>
 
                 <div class="server-info">
                     <div class="info-row">
-                        <span class="info-label">Server URL</span>
+                        <span class="info-label" data-i18n="settings.server.url">Server-URL</span>
                         <span class="info-value">http://localhost:11434</span>
                     </div>
                     <div class="info-row">
-                        <span class="info-label">Model</span>
+                        <span class="info-label" data-i18n="settings.server.model">Modell</span>
                         <span class="info-value">mistral:7b-instruct</span>
                     </div>
                 </div>
 
                 <button class="btn btn-secondary" onclick="testAI()">
-                    <i class="fas fa-vial"></i> Test AI Connection
+                    <i class="fas fa-vial"></i> <span data-i18n="settings.server.test">KI-Verbindung testen</span>
                 </button>
             </div>
         </div>
@@ -105,7 +105,7 @@
         <!-- Properties -->
         <div class="settings-card">
             <div class="card-header">
-                <h2><i class="fas fa-home"></i> Properties</h2>
+                <h2><i class="fas fa-home"></i> <span data-i18n="settings.properties.title">Unterkünfte</span></h2>
             </div>
             <div class="card-body">
                 {% if properties %}
@@ -114,7 +114,7 @@
                     <div class="property-item">
                         <div class="property-info">
                             <span class="property-name">{{ prop.name }}</span>
-                            <span class="property-address">{{ prop.address or 'No address' }}</span>
+                            <span class="property-address">{{ prop.address or 'Keine Adresse' }}</span>
                         </div>
                         <div class="property-meta">
                             <span><i class="fas fa-bed"></i> {{ prop.bedrooms }}</span>
@@ -124,11 +124,11 @@
                     {% endfor %}
                 </div>
                 {% else %}
-                <p class="no-data">No properties configured yet</p>
-                <p class="help-text">Properties help the AI provide more relevant responses about your rentals.</p>
+                <p class="no-data" data-i18n="settings.properties.empty">Noch keine Unterkünfte konfiguriert</p>
+                <p class="help-text" data-i18n="settings.properties.help">Unterkünfte helfen der KI, relevantere Antworten zu geben.</p>
                 {% endif %}
                 <button class="btn btn-secondary" onclick="addProperty()">
-                    <i class="fas fa-plus"></i> Add Property
+                    <i class="fas fa-plus"></i> <span data-i18n="settings.properties.add">Unterkunft hinzufügen</span>
                 </button>
             </div>
         </div>
@@ -136,7 +136,7 @@
         <!-- Platform Integrations -->
         <div class="settings-card">
             <div class="card-header">
-                <h2><i class="fas fa-plug"></i> Platform Integrations</h2>
+                <h2><i class="fas fa-plug"></i> <span data-i18n="settings.integrations.title">Plattform-Integrationen</span></h2>
             </div>
             <div class="card-body">
                 <!-- Gmail Integration -->
@@ -145,12 +145,12 @@
                         <i class="fas fa-envelope"></i>
                     </div>
                     <div class="integration-info">
-                        <span class="integration-name">Gmail</span>
-                        <span class="integration-status" id="gmailStatus">Checking...</span>
+                        <span class="integration-name" data-i18n="settings.integrations.gmail">Gmail</span>
+                        <span class="integration-status" id="gmailStatus" data-i18n="common.loading">Laden...</span>
                         <span class="integration-email" id="gmailEmail"></span>
                     </div>
                     <button class="btn btn-secondary btn-sm" id="gmailButton" onclick="handleGmailAction()">
-                        Connect
+                        <span data-i18n="settings.integrations.connect">Verbinden</span>
                     </button>
                 </div>
 
@@ -158,13 +158,13 @@
                 <div class="gmail-actions" id="gmailActions" style="display: none;">
                     <div class="action-buttons">
                         <button class="btn btn-primary btn-sm" onclick="fetchEmails()">
-                            <i class="fas fa-download"></i> Fetch Emails
+                            <i class="fas fa-download"></i> <span data-i18n="settings.integrations.fetchEmails">E-Mails abrufen</span>
                         </button>
                         <button class="btn btn-secondary btn-sm" onclick="processEmails()">
-                            <i class="fas fa-cogs"></i> Process Unread
+                            <i class="fas fa-cogs"></i> <span data-i18n="settings.integrations.processUnread">Ungelesene verarbeiten</span>
                         </button>
                     </div>
-                    <p class="help-text">Fetch imports emails into inbox. Process runs AI on unread emails.</p>
+                    <p class="help-text" data-i18n="settings.integrations.gmailHelp">Abrufen importiert E-Mails in den Posteingang. Verarbeiten führt KI auf ungelesene E-Mails aus.</p>
                 </div>
 
                 <div class="integration-item">
@@ -172,10 +172,10 @@
                         <i class="fab fa-whatsapp"></i>
                     </div>
                     <div class="integration-info">
-                        <span class="integration-name">WhatsApp</span>
-                        <span class="integration-status not-configured">Coming soon</span>
+                        <span class="integration-name" data-i18n="settings.integrations.whatsapp">WhatsApp</span>
+                        <span class="integration-status not-configured" data-i18n="settings.integrations.comingSoon">Demnächst verfügbar</span>
                     </div>
-                    <button class="btn btn-secondary btn-sm" disabled>Configure</button>
+                    <button class="btn btn-secondary btn-sm" disabled data-i18n="settings.integrations.configure">Konfigurieren</button>
                 </div>
 
                 <div class="integration-item">
@@ -183,10 +183,10 @@
                         <i class="fab fa-airbnb"></i>
                     </div>
                     <div class="integration-info">
-                        <span class="integration-name">Airbnb</span>
-                        <span class="integration-status not-configured">Coming soon</span>
+                        <span class="integration-name" data-i18n="settings.integrations.airbnb">Airbnb</span>
+                        <span class="integration-status not-configured" data-i18n="settings.integrations.comingSoon">Demnächst verfügbar</span>
                     </div>
-                    <button class="btn btn-secondary btn-sm" disabled>Configure</button>
+                    <button class="btn btn-secondary btn-sm" disabled data-i18n="settings.integrations.configure">Konfigurieren</button>
                 </div>
 
                 <div class="integration-item">
@@ -194,10 +194,10 @@
                         <i class="fas fa-calendar-check"></i>
                     </div>
                     <div class="integration-info">
-                        <span class="integration-name">Booking.com</span>
-                        <span class="integration-status not-configured">Coming soon</span>
+                        <span class="integration-name" data-i18n="settings.integrations.booking">Booking.com</span>
+                        <span class="integration-status not-configured" data-i18n="settings.integrations.comingSoon">Demnächst verfügbar</span>
                     </div>
-                    <button class="btn btn-secondary btn-sm" disabled>Configure</button>
+                    <button class="btn btn-secondary btn-sm" disabled data-i18n="settings.integrations.configure">Konfigurieren</button>
                 </div>
             </div>
         </div>
@@ -205,31 +205,31 @@
         <!-- Email Filtering -->
         <div class="settings-card">
             <div class="card-header">
-                <h2><i class="fas fa-filter"></i> Email Filtering</h2>
+                <h2><i class="fas fa-filter"></i> <span data-i18n="settings.filter.title">E-Mail-Filterung</span></h2>
             </div>
             <div class="card-body">
-                <p class="help-text" style="margin-bottom: 15px;">
-                    Only emails matching these filters will be processed. This prevents personal emails from being handled by the AI.
+                <p class="help-text" style="margin-bottom: 15px;" data-i18n="settings.filter.desc">
+                    Nur E-Mails, die diesen Filtern entsprechen, werden verarbeitet. Dies verhindert, dass persönliche E-Mails von der KI bearbeitet werden.
                 </p>
 
                 <form id="emailFilterForm">
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label for="filterMode">Filter Mode</label>
-                            <p class="setting-description">How to apply domain and keyword filters</p>
+                            <label for="filterMode" data-i18n="settings.filter.mode">Filtermodus</label>
+                            <p class="setting-description" data-i18n="settings.filter.mode.desc">Wie Domain- und Schlüsselwortfilter angewendet werden</p>
                         </div>
                         <select id="filterMode" name="filter_mode" class="setting-select">
-                            <option value="either" selected>Either (domain OR keyword)</option>
-                            <option value="domain">Domain only</option>
-                            <option value="keyword">Keyword only</option>
-                            <option value="both">Both (domain AND keyword)</option>
+                            <option value="either" selected data-i18n="settings.filter.mode.either">Entweder (Domain ODER Schlüsselwort)</option>
+                            <option value="domain" data-i18n="settings.filter.mode.domain">Nur Domain</option>
+                            <option value="keyword" data-i18n="settings.filter.mode.keyword">Nur Schlüsselwort</option>
+                            <option value="both" data-i18n="settings.filter.mode.both">Beides (Domain UND Schlüsselwort)</option>
                         </select>
                     </div>
 
                     <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
                         <div class="setting-info" style="margin-bottom: 10px;">
-                            <label for="allowedDomains">Allowed Domains</label>
-                            <p class="setting-description">Only process emails FROM these domains (one per line)</p>
+                            <label for="allowedDomains" data-i18n="settings.filter.domains">Erlaubte Domains</label>
+                            <p class="setting-description" data-i18n="settings.filter.domains.desc">Nur E-Mails VON diesen Domains verarbeiten (eine pro Zeile)</p>
                         </div>
                         <textarea id="allowedDomains" name="allowed_domains" class="setting-textarea" rows="6" placeholder="airbnb.com
 booking.com
@@ -244,8 +244,8 @@ guest.booking.com</textarea>
 
                     <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
                         <div class="setting-info" style="margin-bottom: 10px;">
-                            <label for="subjectKeywords">Subject Keywords</label>
-                            <p class="setting-description">Only process emails with these words in subject (one per line)</p>
+                            <label for="subjectKeywords" data-i18n="settings.filter.keywords">Betreff-Schlüsselwörter</label>
+                            <p class="setting-description" data-i18n="settings.filter.keywords.desc">Nur E-Mails mit diesen Wörtern im Betreff verarbeiten (eines pro Zeile)</p>
                         </div>
                         <textarea id="subjectKeywords" name="subject_keywords" class="setting-textarea" rows="8" placeholder="booking
 reservation
@@ -263,7 +263,7 @@ confirmation</textarea>
                     </div>
 
                     <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-save"></i> Save Filters
+                        <i class="fas fa-save"></i> <span data-i18n="settings.filter.save">Filter speichern</span>
                     </button>
                 </form>
             </div>
