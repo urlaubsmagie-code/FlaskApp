@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 1: Infrastructure Foundation** - Database schema changes and search index setup
 - [ ] **Phase 2: Polling Core** - Real-time inbox and conversation updates via polling
 - [ ] **Phase 3: Unread Tracking** - Visual indicators for unread conversations
-- [x] **Phase 4: Platform Filtering** - Filter inbox by communication platform (completed 2026-02-18)
+- [x] **Phase 4: Platform Filtering** - Filter inbox by communication platform (completed 2026-02-18)
 - [ ] **Phase 5: Status Filtering** - Filter inbox by conversation status
 - [ ] **Phase 6: Guest Filtering** - Filter inbox by specific guest
 - [ ] **Phase 7: Search** - Search conversations by name and message content
@@ -134,11 +134,11 @@ Plans:
   2. User can add new memory items to any guest profile
   3. User can delete existing memory items from guest profile
   4. User can edit memory items inline (click to edit, save on blur/enter)
-**Plans**: TBD
+**Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 08-01: Guest basic info editing
-- [ ] 08-02: Memory item CRUD
+- [ ] 08-01-PLAN.md — Backend PATCH endpoints for guest and detail updates (Wave 1)
+- [ ] 08-02-PLAN.md — Profile editing UI with modal, inline editing, and memory CRUD (Wave 2)
 
 ## Progress
 
