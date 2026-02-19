@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-17)
 
 **Core value:** The system remembers EVERYTHING about every guest permanently
-**Current focus:** Phase 6 - Guest Filtering
+**Current focus:** Phase 7 - Search
 
 ## Current Position
 
-Phase: 6 of 8 (Guest Filtering)
-Plan: 1 of 1 in current phase
-Status: Phase Complete
-Last activity: 2026-02-19 — Completed 06-01-PLAN.md (Guest Filter Dropdown)
+Phase: 7 of 8 (Search)
+Plan: 1 of 2 in current phase
+Status: In Progress
+Last activity: 2026-02-19 — Completed 07-01-PLAN.md (Search API and FilterState)
 
-Progress: [##########] 100%
+Progress: [#######---] 70%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
+- Total plans completed: 13
 - Average duration: 3 min
-- Total execution time: 0.52 hours
+- Total execution time: 0.55 hours
 
 **By Phase:**
 
@@ -33,9 +33,10 @@ Progress: [##########] 100%
 | 04-platform-filtering | 2 | 4 min | 2 min |
 | 05-status-filtering | 1 | 1 min | 1 min |
 | 06-guest-filtering | 1 | 4 min | 4 min |
+| 07-search | 1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-03 (2 min), 04-01 (2 min), 04-02 (2 min), 05-01 (1 min), 06-01 (4 min)
+- Last 5 plans: 04-01 (2 min), 04-02 (2 min), 05-01 (1 min), 06-01 (4 min), 07-01 (2 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -83,6 +84,10 @@ Recent decisions affecting current work:
 - [06-01]: Only show guests with conversations in dropdown
 - [06-01]: Sort guests alphabetically by name for easy scanning
 - [06-01]: Guest badge class uses just 'guest' (not 'guest-{id}') since ID is numeric
+- [07-01]: Sanitize snippets by escaping HTML then restoring only <mark> tags
+- [07-01]: Group search results by conversation with first_snippet and match_count
+- [07-01]: setSearch() does not call applyFilters - search handler does server fetch
+- [07-01]: Search badge truncates queries longer than 20 characters
 
 ### Pending Todos
 
@@ -95,5 +100,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Completed 06-01-PLAN.md (Guest Filter Dropdown) - Phase 06 Complete
-Resume file: .planning/phases/07-*/07-01-PLAN.md
+Stopped at: Completed 07-01-PLAN.md (Search API and FilterState)
+Resume file: .planning/phases/07-search/07-02-PLAN.md
