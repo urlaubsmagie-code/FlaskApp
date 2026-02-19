@@ -518,6 +518,68 @@ a {
 /* Guest-specific active filter badge */
 .active-filter-badge.guest { background: #f3e8ff; color: #7c3aed; border-color: #ddd6fe; }
 
+/* Search-specific active filter badge */
+.active-filter-badge.search {
+    background-color: #e9ecef;
+    color: #495057;
+}
+
+/* ============================================================================
+   Search Results
+   ============================================================================ */
+.search-result .conversation-preview {
+    display: none;
+}
+
+.search-result .search-snippet {
+    display: block;
+    font-size: 0.875rem;
+    color: var(--text-secondary, #6c757d);
+    margin-top: 4px;
+    line-height: 1.4;
+}
+
+.search-result .search-snippet mark {
+    background-color: #fff3cd;
+    color: inherit;
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+.search-result .match-count {
+    font-size: 0.75rem;
+    color: var(--text-muted, #8c8c8c);
+    margin-left: 8px;
+}
+
+/* Search Empty State */
+.empty-state.search-empty {
+    text-align: center;
+    padding: 48px 24px;
+}
+
+.empty-state.search-empty .search-query-display {
+    color: var(--text-secondary, #6c757d);
+    margin-bottom: 16px;
+}
+
+.empty-state.search-empty .search-query-display strong {
+    color: var(--text-primary, #333);
+}
+
+.empty-state.search-empty .search-suggestions {
+    list-style: disc;
+    text-align: left;
+    display: inline-block;
+    margin: 16px 0;
+    padding-left: 20px;
+}
+
+.empty-state.search-empty .search-suggestions li {
+    margin-bottom: 8px;
+    color: var(--text-secondary, #6c757d);
+}
+
 /* Guest dropdown styling */
 .guest-dropdown {
     padding: 8px 12px;
