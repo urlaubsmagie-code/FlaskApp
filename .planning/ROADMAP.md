@@ -104,10 +104,10 @@ Plans:
   1. User can select a specific guest from dropdown to filter inbox
   2. Guest filter works alongside platform and status filters
   3. Dropdown shows guest names with conversation count
-**Plans**: TBD
+**Plans**: 1 plan in 1 wave
 
 Plans:
-- [ ] 06-01: Guest filter dropdown and API
+- [ ] 06-01-PLAN.md -- Guest dropdown UI and FilterState extension (Wave 1)
 
 ### Phase 7: Search
 **Goal**: Users can find conversations by searching guest names and message content
