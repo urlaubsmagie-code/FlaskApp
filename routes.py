@@ -87,6 +87,77 @@ def api_get_conversations():
     })
 
 
+@chatbot_bp.route('/api/search', methods=['GET'])
+def api_search():
+    """
+    Search messages using FTS5 with BM25 ranking.
+    Returns results grouped by conversation with snippets.
+    """
+    import html
+    from .utils.search import search_messages, get_search_snippet
+
+    def sanitize_snippet(snippet):
+        """Sanitize snippet to prevent XSS while allowing <mark> tags."""
+        if not snippet:
+            return None
+        escaped = html.escape(snippet)
+        escaped = escaped.replace('&lt;mark&gt;', '<mark>')
+        escaped = escaped.replace('&lt;/mark&gt;', '</mark>')
+        return escaped
+
+    query = request.args.get('q', '').strip()
+    platform = request.args.get('platform')
+    status = request.args.get('status')
+
+    # Handle empty query
+    if not query:
+        return jsonify({'results': [], 'query': '', 'total': 0})
+
+    # Get FTS5 results
+    results = search_messages(query, limit=100)
+
+    # Get snippets and sanitize
+    for r in results:
+        snippet = get_search_snippet(query, r['message_id'])
+        r['snippet'] = sanitize_snippet(snippet)
+
+    # Optionally filter by platform/status
+    if platform:
+        results = [r for r in results if r['platform'] == platform]
+    if status:
+        # Need to get conversation status - fetch from DB
+        conv_statuses = {}
+        conv_ids = list(set(r['conversation_id'] for r in results))
+        if conv_ids:
+            convs = Conversation.query.filter(Conversation.id.in_(conv_ids)).all()
+            conv_statuses = {c.id: c.status for c in convs}
+        results = [r for r in results if conv_statuses.get(r['conversation_id']) == status]
+
+    # Group results by conversation
+    grouped = {}
+    for r in results:
+        conv_id = r['conversation_id']
+        if conv_id not in grouped:
+            grouped[conv_id] = {
+                'conversation_id': conv_id,
+                'guest_name': r['guest_name'],
+                'guest_id': r['guest_id'],
+                'subject': r['subject'],
+                'platform': r['platform'],
+                'match_count': 0,
+                'first_snippet': None
+            }
+        grouped[conv_id]['match_count'] += 1
+        if grouped[conv_id]['first_snippet'] is None:
+            grouped[conv_id]['first_snippet'] = r.get('snippet')
+
+    return jsonify({
+        'results': list(grouped.values()),
+        'query': query,
+        'total': len(grouped)
+    })
+
+
 @chatbot_bp.route('/api/conversations/<int:conversation_id>/messages', methods=['GET'])
 def api_get_messages(conversation_id):
     """Get messages for a specific conversation"""
