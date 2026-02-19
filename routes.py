@@ -377,6 +377,41 @@ def api_update_settings():
     return jsonify({'success': True})
 
 
+@chatbot_bp.route('/api/settings/email-filter', methods=['GET'])
+def api_get_email_filter():
+    """Get email filter settings"""
+    from .services.gmail_service import get_gmail_service
+    gmail = get_gmail_service()
+    return jsonify(gmail.get_filter_settings())
+
+
+@chatbot_bp.route('/api/settings/email-filter', methods=['PUT'])
+def api_update_email_filter():
+    """Update email filter settings"""
+    from .services.gmail_service import get_gmail_service
+    import json
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    gmail = get_gmail_service()
+
+    # Update filter settings
+    gmail.update_filter_settings(
+        allowed_domains=data.get('allowed_domains'),
+        subject_keywords=data.get('subject_keywords'),
+        filter_mode=data.get('filter_mode')
+    )
+
+    # Persist to database for future sessions
+    AISettings.set('email_allowed_domains', json.dumps(gmail.allowed_domains))
+    AISettings.set('email_subject_keywords', json.dumps(gmail.subject_keywords))
+    AISettings.set('email_filter_mode', gmail.filter_mode)
+
+    return jsonify({'success': True})
+
+
 @chatbot_bp.route('/api/conversations/<int:conversation_id>/toggle-ai', methods=['POST'])
 def api_toggle_ai(conversation_id):
     """Toggle AI for a specific conversation"""

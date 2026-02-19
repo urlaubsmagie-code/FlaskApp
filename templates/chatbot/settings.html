@@ -1,0 +1,656 @@
+{% extends "chatbot/base.html" %}
+
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<div class="settings-container">
+    <!-- Header -->
+    <div class="page-header">
+        <h1><i class="fas fa-cog"></i> Settings</h1>
+    </div>
+
+    <div class="settings-grid">
+        <!-- AI Settings -->
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i class="fas fa-robot"></i> AI Configuration</h2>
+            </div>
+            <div class="card-body">
+                <form id="aiSettingsForm">
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="autoResponse">Auto Response</label>
+                            <p class="setting-description">Automatically generate AI responses to guest messages</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="autoResponse" name="auto_response_enabled"
+                                {% if settings|selectattr('key', 'equalto', 'auto_response_enabled')|map(attribute='value')|first == 'true' %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="memoryExtraction">Memory Extraction</label>
+                            <p class="setting-description">Extract and remember guest information from messages</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="memoryExtraction" name="memory_extraction_enabled"
+                                {% if settings|selectattr('key', 'equalto', 'memory_extraction_enabled')|map(attribute='value')|first == 'true' %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="responseTone">Response Tone</label>
+                            <p class="setting-description">Select the tone for AI-generated responses</p>
+                        </div>
+                        <select id="responseTone" name="ai_response_tone" class="setting-select">
+                            {% set current_tone = settings|selectattr('key', 'equalto', 'ai_response_tone')|map(attribute='value')|first or 'friendly_professional' %}
+                            <option value="friendly_professional" {% if current_tone == 'friendly_professional' %}selected{% endif %}>Friendly & Professional</option>
+                            <option value="formal" {% if current_tone == 'formal' %}selected{% endif %}>Formal</option>
+                            <option value="casual" {% if current_tone == 'casual' %}selected{% endif %}>Casual</option>
+                            <option value="concise" {% if current_tone == 'concise' %}selected{% endif %}>Concise</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="maxHistory">Conversation History</label>
+                            <p class="setting-description">Number of previous messages to include in AI context</p>
+                        </div>
+                        <input type="number" id="maxHistory" name="max_conversation_history"
+                            value="{{ settings|selectattr('key', 'equalto', 'max_conversation_history')|map(attribute='value')|first or '10' }}"
+                            min="1" max="50" class="setting-input">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Save Settings
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Ollama Status -->
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i class="fas fa-server"></i> AI Server Status</h2>
+            </div>
+            <div class="card-body">
+                <div class="status-display" id="ollamaStatus">
+                    <div class="status-indicator checking">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span>Checking connection...</span>
+                    </div>
+                </div>
+
+                <div class="server-info">
+                    <div class="info-row">
+                        <span class="info-label">Server URL</span>
+                        <span class="info-value">http://localhost:11434</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Model</span>
+                        <span class="info-value">mistral:7b-instruct</span>
+                    </div>
+                </div>
+
+                <button class="btn btn-secondary" onclick="testAI()">
+                    <i class="fas fa-vial"></i> Test AI Connection
+                </button>
+            </div>
+        </div>
+
+        <!-- Properties -->
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i class="fas fa-home"></i> Properties</h2>
+            </div>
+            <div class="card-body">
+                {% if properties %}
+                <div class="properties-list">
+                    {% for prop in properties %}
+                    <div class="property-item">
+                        <div class="property-info">
+                            <span class="property-name">{{ prop.name }}</span>
+                            <span class="property-address">{{ prop.address or 'No address' }}</span>
+                        </div>
+                        <div class="property-meta">
+                            <span><i class="fas fa-bed"></i> {{ prop.bedrooms }}</span>
+                            <span><i class="fas fa-users"></i> {{ prop.max_guests }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="no-data">No properties configured yet</p>
+                <p class="help-text">Properties help the AI provide more relevant responses about your rentals.</p>
+                {% endif %}
+                <button class="btn btn-secondary" onclick="addProperty()">
+                    <i class="fas fa-plus"></i> Add Property
+                </button>
+            </div>
+        </div>
+
+        <!-- Platform Integrations -->
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i class="fas fa-plug"></i> Platform Integrations</h2>
+            </div>
+            <div class="card-body">
+                <!-- Gmail Integration -->
+                <div class="integration-item" id="gmailIntegration">
+                    <div class="integration-icon email">
+                        <i class="fas fa-envelope"></i>
+                    </div>
+                    <div class="integration-info">
+                        <span class="integration-name">Gmail</span>
+                        <span class="integration-status" id="gmailStatus">Checking...</span>
+                        <span class="integration-email" id="gmailEmail"></span>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" id="gmailButton" onclick="handleGmailAction()">
+                        Connect
+                    </button>
+                </div>
+
+                <!-- Gmail Actions (shown when connected) -->
+                <div class="gmail-actions" id="gmailActions" style="display: none;">
+                    <div class="action-buttons">
+                        <button class="btn btn-primary btn-sm" onclick="fetchEmails()">
+                            <i class="fas fa-download"></i> Fetch Emails
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="processEmails()">
+                            <i class="fas fa-cogs"></i> Process Unread
+                        </button>
+                    </div>
+                    <p class="help-text">Fetch imports emails into inbox. Process runs AI on unread emails.</p>
+                </div>
+
+                <div class="integration-item">
+                    <div class="integration-icon whatsapp">
+                        <i class="fab fa-whatsapp"></i>
+                    </div>
+                    <div class="integration-info">
+                        <span class="integration-name">WhatsApp</span>
+                        <span class="integration-status not-configured">Coming soon</span>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" disabled>Configure</button>
+                </div>
+
+                <div class="integration-item">
+                    <div class="integration-icon airbnb">
+                        <i class="fab fa-airbnb"></i>
+                    </div>
+                    <div class="integration-info">
+                        <span class="integration-name">Airbnb</span>
+                        <span class="integration-status not-configured">Coming soon</span>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" disabled>Configure</button>
+                </div>
+
+                <div class="integration-item">
+                    <div class="integration-icon booking">
+                        <i class="fas fa-calendar-check"></i>
+                    </div>
+                    <div class="integration-info">
+                        <span class="integration-name">Booking.com</span>
+                        <span class="integration-status not-configured">Coming soon</span>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" disabled>Configure</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Email Filtering -->
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i class="fas fa-filter"></i> Email Filtering</h2>
+            </div>
+            <div class="card-body">
+                <p class="help-text" style="margin-bottom: 15px;">
+                    Only emails matching these filters will be processed. This prevents personal emails from being handled by the AI.
+                </p>
+
+                <form id="emailFilterForm">
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="filterMode">Filter Mode</label>
+                            <p class="setting-description">How to apply domain and keyword filters</p>
+                        </div>
+                        <select id="filterMode" name="filter_mode" class="setting-select">
+                            <option value="either" selected>Either (domain OR keyword)</option>
+                            <option value="domain">Domain only</option>
+                            <option value="keyword">Keyword only</option>
+                            <option value="both">Both (domain AND keyword)</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                        <div class="setting-info" style="margin-bottom: 10px;">
+                            <label for="allowedDomains">Allowed Domains</label>
+                            <p class="setting-description">Only process emails FROM these domains (one per line)</p>
+                        </div>
+                        <textarea id="allowedDomains" name="allowed_domains" class="setting-textarea" rows="6" placeholder="airbnb.com
+booking.com
+guest.booking.com">airbnb.com
+airbnb.de
+airbnb.es
+airbnb.fr
+airbnb.it
+booking.com
+guest.booking.com</textarea>
+                    </div>
+
+                    <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                        <div class="setting-info" style="margin-bottom: 10px;">
+                            <label for="subjectKeywords">Subject Keywords</label>
+                            <p class="setting-description">Only process emails with these words in subject (one per line)</p>
+                        </div>
+                        <textarea id="subjectKeywords" name="subject_keywords" class="setting-textarea" rows="8" placeholder="booking
+reservation
+inquiry">booking
+reservation
+buchung
+reservierung
+inquiry
+anfrage
+check-in
+check-out
+guest
+gast
+confirmation</textarea>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Save Filters
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Check AI status on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        checkOllamaStatus();
+    });
+
+    function checkOllamaStatus() {
+        fetch('/chatbot/health')
+            .then(response => response.json())
+            .then(data => {
+                const statusEl = document.getElementById('ollamaStatus');
+                if (data.ai_service) {
+                    statusEl.innerHTML = `
+                        <div class="status-indicator online">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Connected and running</span>
+                        </div>
+                    `;
+                } else {
+                    statusEl.innerHTML = `
+                        <div class="status-indicator offline">
+                            <i class="fas fa-times-circle"></i>
+                            <span>Not connected</span>
+                        </div>
+                    `;
+                }
+            })
+            .catch(() => {
+                document.getElementById('ollamaStatus').innerHTML = `
+                    <div class="status-indicator offline">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <span>Error checking status</span>
+                    </div>
+                `;
+            });
+    }
+
+    function testAI() {
+        const testMessage = "Hello, I'm interested in booking your property for next weekend. I'll be traveling with my wife and our dog Max.";
+
+        fetch('/chatbot/api/test-ai', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: testMessage })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('AI Test Failed: ' + data.error);
+            } else {
+                alert('AI Test Successful!\n\nExtracted Info:\n' + JSON.stringify(data.extracted_info, null, 2));
+            }
+        })
+        .catch(err => {
+            alert('AI Test Failed: ' + err.message);
+        });
+    }
+
+    // Settings form submission
+    document.getElementById('aiSettingsForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const settings = {
+            auto_response_enabled: document.getElementById('autoResponse').checked ? 'true' : 'false',
+            memory_extraction_enabled: document.getElementById('memoryExtraction').checked ? 'true' : 'false',
+            ai_response_tone: document.getElementById('responseTone').value,
+            max_conversation_history: document.getElementById('maxHistory').value
+        };
+
+        fetch('/chatbot/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Settings saved successfully!');
+            } else {
+                alert('Failed to save settings');
+            }
+        })
+        .catch(err => {
+            alert('Error saving settings: ' + err.message);
+        });
+    });
+
+    function addProperty() {
+        alert('Property management UI coming soon!');
+    }
+
+    // ============================================
+    // Gmail Integration Functions
+    // ============================================
+
+    let gmailConnected = false;
+
+    // Check Gmail status on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        checkGmailStatus();
+
+        // Check if we just connected (redirect from OAuth)
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('gmail') === 'connected') {
+            showNotification('Gmail connected successfully!', 'success');
+            // Remove the query parameter
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    });
+
+    function checkGmailStatus() {
+        fetch('/chatbot/gmail/status')
+            .then(response => response.json())
+            .then(data => {
+                const statusEl = document.getElementById('gmailStatus');
+                const buttonEl = document.getElementById('gmailButton');
+                const emailEl = document.getElementById('gmailEmail');
+                const actionsEl = document.getElementById('gmailActions');
+
+                if (data.authenticated) {
+                    gmailConnected = true;
+                    statusEl.textContent = 'Connected';
+                    statusEl.className = 'integration-status connected';
+                    emailEl.textContent = data.email || '';
+                    emailEl.style.display = 'block';
+                    buttonEl.textContent = 'Disconnect';
+                    buttonEl.className = 'btn btn-danger btn-sm';
+                    actionsEl.style.display = 'block';
+                } else if (data.configured) {
+                    gmailConnected = false;
+                    statusEl.textContent = 'Not connected';
+                    statusEl.className = 'integration-status not-configured';
+                    emailEl.style.display = 'none';
+                    buttonEl.textContent = 'Connect';
+                    buttonEl.className = 'btn btn-primary btn-sm';
+                    actionsEl.style.display = 'none';
+                } else {
+                    gmailConnected = false;
+                    statusEl.textContent = 'Not configured';
+                    statusEl.className = 'integration-status not-configured';
+                    emailEl.style.display = 'none';
+                    buttonEl.textContent = 'Setup';
+                    buttonEl.className = 'btn btn-secondary btn-sm';
+                    actionsEl.style.display = 'none';
+                }
+            })
+            .catch(err => {
+                console.error('Error checking Gmail status:', err);
+                document.getElementById('gmailStatus').textContent = 'Error';
+            });
+    }
+
+    function handleGmailAction() {
+        if (gmailConnected) {
+            disconnectGmail();
+        } else {
+            connectGmail();
+        }
+    }
+
+    function connectGmail() {
+        // Redirect to OAuth flow
+        window.location.href = '/chatbot/gmail/authorize/redirect';
+    }
+
+    function disconnectGmail() {
+        if (!confirm('Are you sure you want to disconnect Gmail?')) {
+            return;
+        }
+
+        fetch('/chatbot/gmail/disconnect', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification('Gmail disconnected', 'info');
+                    checkGmailStatus();
+                } else {
+                    showNotification('Failed to disconnect Gmail', 'error');
+                }
+            })
+            .catch(err => {
+                showNotification('Error: ' + err.message, 'error');
+            });
+    }
+
+    function fetchEmails() {
+        showNotification('Fetching emails...', 'info');
+
+        fetch('/chatbot/api/gmail/emails/unread?max_results=10')
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showNotification('Error: ' + data.error, 'error');
+                } else {
+                    showNotification(`Found ${data.count} unread emails`, 'success');
+                    if (data.count > 0) {
+                        console.log('Emails:', data.emails);
+                    }
+                }
+            })
+            .catch(err => {
+                showNotification('Error fetching emails: ' + err.message, 'error');
+            });
+    }
+
+    function processEmails() {
+        if (!confirm('Process unread emails and generate AI responses?')) {
+            return;
+        }
+
+        showNotification('Processing emails with AI...', 'info');
+
+        fetch('/chatbot/api/gmail/process?auto_respond=true', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showNotification('Error: ' + data.error, 'error');
+                } else {
+                    showNotification(`Processed ${data.processed} emails`, 'success');
+                    console.log('Process results:', data.results);
+                    // Redirect to inbox to see new conversations
+                    if (data.processed > 0) {
+                        setTimeout(() => {
+                            window.location.href = '/chatbot/';
+                        }, 1500);
+                    }
+                }
+            })
+            .catch(err => {
+                showNotification('Error processing emails: ' + err.message, 'error');
+            });
+    }
+
+    function showNotification(message, type) {
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.className = `notification-toast ${type}`;
+        toast.innerHTML = `
+            <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+            <span>${message}</span>
+        `;
+
+        document.body.appendChild(toast);
+        setTimeout(() => toast.classList.add('show'), 10);
+
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    // Email Filter Settings
+    document.getElementById('emailFilterForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const formData = {
+            filter_mode: document.getElementById('filterMode').value,
+            allowed_domains: document.getElementById('allowedDomains').value
+                .split('\n')
+                .map(d => d.trim())
+                .filter(d => d.length > 0),
+            subject_keywords: document.getElementById('subjectKeywords').value
+                .split('\n')
+                .map(k => k.trim())
+                .filter(k => k.length > 0)
+        };
+
+        fetch('/chatbot/api/settings/email-filter', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification('Email filters saved successfully', 'success');
+            } else {
+                showNotification('Failed to save filters: ' + (data.error || 'Unknown error'), 'error');
+            }
+        })
+        .catch(err => {
+            showNotification('Error saving filters: ' + err.message, 'error');
+        });
+    });
+
+    // Load email filter settings on page load
+    function loadEmailFilterSettings() {
+        fetch('/chatbot/api/settings/email-filter')
+            .then(response => response.json())
+            .then(data => {
+                if (data.filter_mode) {
+                    document.getElementById('filterMode').value = data.filter_mode;
+                }
+                if (data.allowed_domains && data.allowed_domains.length > 0) {
+                    document.getElementById('allowedDomains').value = data.allowed_domains.join('\n');
+                }
+                if (data.subject_keywords && data.subject_keywords.length > 0) {
+                    document.getElementById('subjectKeywords').value = data.subject_keywords.join('\n');
+                }
+            })
+            .catch(err => {
+                console.log('Using default email filter settings');
+            });
+    }
+
+    // Load settings on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadEmailFilterSettings();
+    });
+</script>
+
+<style>
+    .integration-status.connected {
+        color: #22c55e;
+    }
+    .integration-email {
+        display: block;
+        font-size: 0.75rem;
+        color: #64748b;
+    }
+    .btn-danger {
+        background: #ef4444;
+        color: white;
+        border: none;
+    }
+    .btn-danger:hover {
+        background: #dc2626;
+    }
+    .gmail-actions {
+        padding: 16px;
+        background: #f8fafc;
+        border-radius: 8px;
+        margin: 12px 0;
+    }
+    .action-buttons {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+    .setting-textarea {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        font-family: monospace;
+        font-size: 0.875rem;
+        resize: vertical;
+        background: #f8fafc;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .setting-textarea:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        background: white;
+    }
+    .setting-textarea::placeholder {
+        color: #94a3b8;
+    }
+    .notification-toast {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        background: #1e293b;
+        color: white;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transform: translateX(120%);
+        transition: transform 0.3s ease;
+        z-index: 9999;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    .notification-toast.show {
+        transform: translateX(0);
+    }
+    .notification-toast.success { background: #166534; }
+    .notification-toast.error { background: #991b1b; }
+    .notification-toast.info { background: #1e40af; }
+</style>
+{% endblock %}
