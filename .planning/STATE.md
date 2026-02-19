@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-17)
 
 **Core value:** The system remembers EVERYTHING about every guest permanently
-**Current focus:** Phase 7 - Search
+**Current focus:** Phase 8 - Profile Editing
 
 ## Current Position
 
-Phase: 7 of 8 (Search)
-Plan: 2 of 2 in current phase
-Status: Phase Complete
-Last activity: 2026-02-19 — Completed 07-02-PLAN.md (Search UI Implementation)
+Phase: 8 of 8 (Profile Editing)
+Plan: 1 of 2 in current phase
+Status: In Progress
+Last activity: 2026-02-19 — Completed 08-01-PLAN.md (API Update Endpoints)
 
-Progress: [########--] 80%
+Progress: [########=-] 85%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
-- Average duration: 3 min
-- Total execution time: 0.58 hours
+- Total plans completed: 15
+- Average duration: 2.5 min
+- Total execution time: 0.60 hours
 
 **By Phase:**
 
@@ -34,9 +34,10 @@ Progress: [########--] 80%
 | 05-status-filtering | 1 | 1 min | 1 min |
 | 06-guest-filtering | 1 | 4 min | 4 min |
 | 07-search | 2 | 4 min | 2 min |
+| 08-profile-editing | 1 | 1 min | 1 min |
 
 **Recent Trend:**
-- Last 5 plans: 04-02 (2 min), 05-01 (1 min), 06-01 (4 min), 07-01 (2 min), 07-02 (2 min)
+- Last 5 plans: 05-01 (1 min), 06-01 (4 min), 07-01 (2 min), 07-02 (2 min), 08-01 (1 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -92,6 +93,9 @@ Recent decisions affecting current work:
 - [07-02]: Check isSearchMode in updateInboxList to prevent polling interference
 - [07-02]: Search snippets injected after .conversation-preview element
 - [07-02]: Restore search from URL on page load via setTimeout for async flow
+- [08-01]: Use 409 Conflict for duplicate email (standard HTTP semantics)
+- [08-01]: Set confidence=1.0 for manual edits (user corrections are authoritative)
+- [08-01]: Trim whitespace on all input fields (prevent accidental trailing spaces)
 
 ### Pending Todos
 
@@ -104,5 +108,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Completed 07-02-PLAN.md (Search UI Implementation) - Phase 7 complete
-Resume file: .planning/phases/08-*/08-01-PLAN.md
+Stopped at: Completed 08-01-PLAN.md (API Update Endpoints)
+Resume file: .planning/phases/08-profile-editing/08-02-PLAN.md
