@@ -713,6 +713,7 @@ a {
     display: flex;
     flex-direction: column;
     gap: 16px;
+    scroll-behavior: smooth;
 }
 
 .message {
@@ -798,6 +799,30 @@ a {
     font-size: 0.9375rem;
     line-height: 1.5;
     white-space: pre-wrap;
+}
+
+/* Message Entrance Animation */
+@keyframes messageSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.message-slide-in {
+    animation: messageSlideIn 0.3s ease-out;
+}
+
+/* Send Hint */
+.send-hint {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    margin-top: 4px;
+    text-align: right;
 }
 
 /* Message Input */

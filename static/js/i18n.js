@@ -39,8 +39,10 @@ const translations = {
         'conversation.title': 'Konversation',
         'conversation.send': 'Senden',
         'conversation.placeholder': 'Nachricht eingeben...',
-        'conversation.ai.generate': 'KI-Antwort generieren',
+        'conversation.ai.suggest': 'KI-Vorschlag',
+        'conversation.ai.generate': 'KI-Antwort senden',
         'conversation.ai.generating': 'Generiere...',
+        'conversation.ai.error': 'KI nicht erreichbar. Läuft Ollama?',
         'conversation.ai.toggle': 'KI-Antworten',
         'conversation.ai.on': 'AN',
         'conversation.ai.off': 'AUS',
@@ -49,6 +51,8 @@ const translations = {
         'conversation.guest': 'Gast',
         'conversation.ai': 'KI-Assistent',
         'conversation.empty': 'Noch keine Nachrichten',
+        'conversation.sendHint': 'Strg+Enter zum Senden',
+        'conversation.sendFailed': 'Nachricht konnte nicht gesendet werden. Bitte versuchen Sie es erneut.',
 
         // Guest Profile
         'guest.title': 'Gästeprofil',
@@ -208,8 +212,10 @@ const translations = {
         'conversation.title': 'Conversation',
         'conversation.send': 'Send',
         'conversation.placeholder': 'Type a message...',
-        'conversation.ai.generate': 'Generate AI Response',
+        'conversation.ai.suggest': 'AI Suggest',
+        'conversation.ai.generate': 'Send AI Response',
         'conversation.ai.generating': 'Generating...',
+        'conversation.ai.error': 'AI not reachable. Is Ollama running?',
         'conversation.ai.toggle': 'AI Responses',
         'conversation.ai.on': 'ON',
         'conversation.ai.off': 'OFF',
@@ -218,6 +224,8 @@ const translations = {
         'conversation.guest': 'Guest',
         'conversation.ai': 'AI Assistant',
         'conversation.empty': 'No messages yet',
+        'conversation.sendHint': 'Ctrl+Enter to send',
+        'conversation.sendFailed': 'Failed to send message. Please try again.',
 
         // Guest Profile
         'guest.title': 'Guest Profile',

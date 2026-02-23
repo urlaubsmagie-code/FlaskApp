@@ -80,8 +80,11 @@
     <!-- Message Input -->
     <div class="message-input-container">
         <div class="input-actions">
+            <button class="btn btn-secondary" onclick="suggestAIResponse()" id="suggestAiBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
+                <i class="fas fa-lightbulb"></i> <span data-i18n="conversation.ai.suggest">KI-Vorschlag</span>
+            </button>
             <button class="btn btn-secondary" onclick="generateAIResponse()" id="generateAiBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
-                <i class="fas fa-magic"></i> <span data-i18n="conversation.ai.generate">KI-Antwort generieren</span>
+                <i class="fas fa-magic"></i> <span data-i18n="conversation.ai.generate">KI-Antwort senden</span>
             </button>
         </div>
         <form class="message-form" id="messageForm" onsubmit="sendMessage(event)">
@@ -96,10 +99,11 @@
                 <i class="fas fa-paper-plane"></i> <span data-i18n="conversation.send">Senden</span>
             </button>
         </form>
+        <div class="send-hint" data-i18n="conversation.sendHint">Strg+Enter zum Senden</div>
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/polling.js') }}"></script>
+<script src="{{ url_for('chatbot.static', filename='js/polling.js') }}"></script>
 <script>
     const conversationId = {{ conversation.id }};
     let aiEnabled = {{ 'true' if conversation.ai_enabled else 'false' }};
@@ -112,9 +116,22 @@
         knownMessageIds.add(parseInt(el.dataset.messageId));
     });
 
+    // Ctrl+Enter / Cmd+Enter to send
+    document.getElementById('messageInput').addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            sendMessage(e);
+        }
+    });
+
     function scrollToBottom() {
         const container = document.getElementById('messagesContainer');
-        container.scrollTop = container.scrollHeight;
+        const lastMessage = container.querySelector('.message:last-child');
+        if (lastMessage) {
+            lastMessage.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        } else {
+            container.scrollTop = container.scrollHeight;
+        }
     }
 
     function sendMessage(e) {
@@ -141,25 +158,50 @@
         })
         .catch(err => {
             console.error('Failed to send message:', err);
-            alert('Failed to send message. Please try again.');
+            showNotification(i18n.t('conversation.sendFailed'), 'error');
         });
+    }
+
+    // Active AbortControllers for AI requests
+    let activeAiController = null;
+
+    function showAiError(message) {
+        // Show error as a temporary banner above the input area
+        const container = document.querySelector('.message-input-container');
+        // Remove any existing error banner
+        const existing = container.querySelector('.ai-error-banner');
+        if (existing) existing.remove();
+
+        const banner = document.createElement('div');
+        banner.className = 'ai-error-banner';
+        banner.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${message}`;
+        banner.style.cssText = 'background:#991b1b;color:#fff;padding:8px 16px;border-radius:6px;margin-bottom:8px;font-size:0.9em;display:flex;align-items:center;gap:8px;';
+        container.insertBefore(banner, container.firstChild);
+        setTimeout(() => banner.remove(), 6000);
     }
 
     function generateAIResponse() {
         const btn = document.getElementById('generateAiBtn');
+        const suggestBtn = document.getElementById('suggestAiBtn');
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+        suggestBtn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span data-i18n="conversation.ai.generating">${i18n.t('conversation.ai.generating')}</span>`;
+
+        // Abort any previous AI request
+        if (activeAiController) activeAiController.abort();
+        activeAiController = new AbortController();
+        const signal = activeAiController.signal;
 
         fetch(`/chatbot/api/conversations/${conversationId}/ai-response`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            signal: signal
         })
         .then(response => response.json())
         .then(data => {
             if (data.error) {
-                alert(data.error);
+                showAiError(data.error);
             } else {
-                // Add to known IDs immediately to prevent duplicate on next poll
                 if (data.id) {
                     knownMessageIds.add(data.id);
                 }
@@ -168,12 +210,57 @@
             }
         })
         .catch(err => {
+            if (err.name === 'AbortError') return;
             console.error('Failed to generate AI response:', err);
-            alert('Failed to generate AI response. Please try again.');
+            showAiError(i18n.t('conversation.ai.error') || 'AI not reachable. Is Ollama running?');
         })
         .finally(() => {
+            activeAiController = null;
             btn.disabled = !aiEnabled;
-            btn.innerHTML = '<i class="fas fa-magic"></i> Generate AI Response';
+            suggestBtn.disabled = !aiEnabled;
+            btn.innerHTML = `<i class="fas fa-magic"></i> <span data-i18n="conversation.ai.generate">${i18n.t('conversation.ai.generate')}</span>`;
+        });
+    }
+
+    function suggestAIResponse() {
+        const btn = document.getElementById('suggestAiBtn');
+        const generateBtn = document.getElementById('generateAiBtn');
+        const input = document.getElementById('messageInput');
+        btn.disabled = true;
+        generateBtn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span data-i18n="conversation.ai.generating">${i18n.t('conversation.ai.generating')}</span>`;
+
+        // Abort any previous AI request
+        if (activeAiController) activeAiController.abort();
+        activeAiController = new AbortController();
+        const signal = activeAiController.signal;
+
+        fetch(`/chatbot/api/conversations/${conversationId}/ai-suggest`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: signal
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showAiError(data.error);
+            } else {
+                input.value = data.suggestion;
+                input.focus();
+                input.style.height = 'auto';
+                input.style.height = Math.min(input.scrollHeight, 200) + 'px';
+            }
+        })
+        .catch(err => {
+            if (err.name === 'AbortError') return;
+            console.error('Failed to generate AI suggestion:', err);
+            showAiError(i18n.t('conversation.ai.error') || 'AI not reachable. Is Ollama running?');
+        })
+        .finally(() => {
+            activeAiController = null;
+            btn.disabled = !aiEnabled;
+            generateBtn.disabled = !aiEnabled;
+            btn.innerHTML = `<i class="fas fa-lightbulb"></i> <span data-i18n="conversation.ai.suggest">${i18n.t('conversation.ai.suggest')}</span>`;
         });
     }
 
@@ -187,6 +274,7 @@
             const btn = document.getElementById('aiToggleBtn');
             btn.querySelector('.toggle-status').textContent = aiEnabled ? 'ON' : 'OFF';
             document.getElementById('generateAiBtn').disabled = !aiEnabled;
+            document.getElementById('suggestAiBtn').disabled = !aiEnabled;
         })
         .catch(err => console.error('Failed to toggle AI:', err));
     }
@@ -242,6 +330,7 @@
             </div>
         `;
 
+        messageDiv.classList.add('message-slide-in');
         container.appendChild(messageDiv);
     }
 
