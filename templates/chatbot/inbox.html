@@ -69,7 +69,7 @@
                 {% if not conv.is_read %}
                 <span class="sr-only">Unread</span>
                 {% endif %}
-                <div class="conversation-avatar">
+                <div class="conversation-avatar" data-guest-name="{{ conv.guest.name or conv.guest.email or '' }}">
                     {% if conv.platform == 'email' %}
                         <i class="fas fa-envelope"></i>
                     {% elif conv.platform == 'whatsapp' %}
@@ -211,7 +211,7 @@
 
         card.innerHTML = `
             ${srText}
-            <div class="conversation-avatar">
+            <div class="conversation-avatar" data-guest-name="${escapeHtml(guestName)}" style="background: ${getAvatarColor(guestName)}">
                 <i class="${getPlatformIcon(conv.platform)}"></i>
             </div>
             <div class="conversation-info">
@@ -379,6 +379,17 @@
                 // Create new card
                 const newCard = createConversationCard(conv);
 
+                // Browser notification for new unread conversations
+                if (!conv.is_read) {
+                    const gName = (conv.guest && (conv.guest.name || conv.guest.email)) || 'Guest';
+                    const preview = (conv.last_message && conv.last_message.content) || '';
+                    showBrowserNotification(
+                        gName,
+                        preview.substring(0, 80),
+                        `/chatbot/conversation/${conv.id}`
+                    );
+                }
+
                 // Insert at correct position
                 const cards = container.querySelectorAll('.conversation-card');
                 if (index === 0 || cards.length === 0) {
@@ -400,6 +411,9 @@
 
         // Re-apply filters after update (handles platform, status, and search)
         filterState.applyFilters();
+
+        // Apply avatar colors to any new cards
+        applyAvatarColors();
     }
 
     // =========================================================================

@@ -10,7 +10,7 @@
             <i class="fas fa-arrow-left"></i>
         </a>
         <div class="conversation-title">
-            <div class="guest-avatar">
+            <div class="guest-avatar" data-guest-name="{{ guest.name or guest.email or '' }}">
                 {% if conversation.platform == 'email' %}
                     <i class="fas fa-envelope"></i>
                 {% elif conversation.platform == 'whatsapp' %}
@@ -180,12 +180,36 @@
         setTimeout(() => banner.remove(), 6000);
     }
 
+    function showTypingIndicator() {
+        removeTypingIndicator();
+        const container = document.getElementById('messagesContainer');
+        const typing = document.createElement('div');
+        typing.className = 'message typing-indicator message-slide-in';
+        typing.id = 'aiTypingIndicator';
+        typing.innerHTML = `
+            <div class="message-avatar"><i class="fas fa-robot"></i></div>
+            <div class="message-content">
+                <div class="typing-dots"><span></span><span></span><span></span></div>
+                <div class="typing-label" data-i18n="conversation.ai.thinking">${i18n.t('conversation.ai.thinking')}</div>
+            </div>
+        `;
+        container.appendChild(typing);
+        scrollToBottom();
+    }
+
+    function removeTypingIndicator() {
+        const el = document.getElementById('aiTypingIndicator');
+        if (el) el.remove();
+    }
+
     function generateAIResponse() {
         const btn = document.getElementById('generateAiBtn');
         const suggestBtn = document.getElementById('suggestAiBtn');
         btn.disabled = true;
         suggestBtn.disabled = true;
         btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span data-i18n="conversation.ai.generating">${i18n.t('conversation.ai.generating')}</span>`;
+
+        showTypingIndicator();
 
         // Abort any previous AI request
         if (activeAiController) activeAiController.abort();
@@ -199,6 +223,7 @@
         })
         .then(response => response.json())
         .then(data => {
+            removeTypingIndicator();
             if (data.error) {
                 showAiError(data.error);
             } else {
@@ -210,6 +235,7 @@
             }
         })
         .catch(err => {
+            removeTypingIndicator();
             if (err.name === 'AbortError') return;
             console.error('Failed to generate AI response:', err);
             showAiError(i18n.t('conversation.ai.error') || 'AI not reachable. Is Ollama running?');
@@ -347,6 +373,16 @@
                 addMessageToUI(msg, msg.sender_type);
                 knownMessageIds.add(msg.id);
                 hasNewMessages = true;
+
+                // Browser notification for new guest messages
+                if (msg.sender_type === 'guest') {
+                    const preview = (msg.content || '').substring(0, 80);
+                    showBrowserNotification(
+                        '{{ guest.name or guest.email or "New Message" }}',
+                        preview,
+                        window.location.href
+                    );
+                }
             }
         });
 

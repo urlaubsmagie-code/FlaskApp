@@ -41,6 +41,65 @@
     --whatsapp-color: #25d366;
     --airbnb-color: #ff5a5f;
     --booking-color: #003580;
+
+    /* Avatar Color Palette */
+    --avatar-0: #2563eb;
+    --avatar-1: #16a34a;
+    --avatar-2: #ea580c;
+    --avatar-3: #9333ea;
+    --avatar-4: #0d9488;
+    --avatar-5: #db2777;
+    --avatar-6: #dc2626;
+    --avatar-7: #4f46e5;
+}
+
+/* ============================================================================
+   Dark Mode
+   ============================================================================ */
+:root[data-theme="dark"] {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-light: #64748b;
+    --border-color: #334155;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme="dark"] .search-box input,
+:root[data-theme="dark"] .guest-dropdown,
+:root[data-theme="dark"] .setting-select,
+:root[data-theme="dark"] .setting-input,
+:root[data-theme="dark"] .notes-textarea,
+:root[data-theme="dark"] .message-form textarea {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+:root[data-theme="dark"] .memory-item:hover {
+    background-color: #334155;
+}
+
+:root[data-theme="dark"] dialog.edit-modal {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+:root[data-theme="dark"] dialog.edit-modal .modal-header,
+:root[data-theme="dark"] dialog.edit-modal .modal-footer {
+    border-color: var(--border-color);
+}
+
+:root[data-theme="dark"] dialog.edit-modal .form-group label {
+    color: var(--text-secondary);
+}
+
+:root[data-theme="dark"] dialog.edit-modal .form-group input {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border-color: var(--border-color);
 }
 
 /* ============================================================================
@@ -823,6 +882,84 @@ a {
     color: var(--text-light);
     margin-top: 4px;
     text-align: right;
+}
+
+/* AI Typing Indicator */
+.typing-indicator {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+}
+
+.typing-indicator .message-content {
+    background: linear-gradient(135deg, var(--primary-color), #8b5cf6);
+    padding: 16px 20px;
+}
+
+.typing-dots {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.typing-dots span {
+    width: 8px;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 50%;
+    animation: typingPulse 1.4s ease-in-out infinite;
+}
+
+.typing-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes typingPulse {
+    0%, 60%, 100% {
+        opacity: 0.3;
+        transform: scale(0.8);
+    }
+    30% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.typing-label {
+    font-size: 0.6875rem;
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: 4px;
+}
+
+/* Dark Mode Toggle */
+.theme-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.theme-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: var(--border-radius);
+    color: var(--text-white);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.theme-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
 }
 
 /* Message Input */

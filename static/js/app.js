@@ -108,6 +108,106 @@ function showNotification(message, type = 'info') {
 }
 
 /**
+ * Get a consistent avatar color index from a name string (0-7)
+ */
+function getAvatarColorIndex(name) {
+    if (!name) return 0;
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+        hash = ((hash << 5) - hash) + name.charCodeAt(i);
+        hash |= 0;
+    }
+    return Math.abs(hash) % 8;
+}
+
+/**
+ * Get CSS variable name for avatar color
+ */
+function getAvatarColor(name) {
+    return `var(--avatar-${getAvatarColorIndex(name)})`;
+}
+
+/**
+ * Apply avatar colors to elements with data-guest-name attribute
+ */
+function applyAvatarColors() {
+    document.querySelectorAll('[data-guest-name]').forEach(el => {
+        el.style.background = getAvatarColor(el.dataset.guestName);
+    });
+}
+
+/**
+ * Request browser notification permission (called once on first visit)
+ */
+function initNotifications() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+}
+
+/**
+ * Show a browser notification (only when tab is hidden)
+ */
+function showBrowserNotification(title, body, url) {
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+    if (document.visibilityState === 'visible') return;
+
+    const notification = new Notification(title, {
+        body: body,
+        icon: '/chatbot/static/favicon.ico'
+    });
+
+    if (url) {
+        notification.onclick = function() {
+            window.focus();
+            window.location.href = url;
+            notification.close();
+        };
+    }
+
+    setTimeout(() => notification.close(), 8000);
+}
+
+/**
+ * Initialize dark mode from localStorage
+ */
+function initTheme() {
+    const theme = localStorage.getItem('chatbot_theme') || 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    updateThemeIcon(theme);
+}
+
+/**
+ * Toggle dark mode
+ */
+function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || 'light';
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('chatbot_theme', next);
+    updateThemeIcon(next);
+}
+
+/**
+ * Update theme toggle button icon
+ */
+function updateThemeIcon(theme) {
+    const btn = document.getElementById('themeToggleBtn');
+    if (!btn) return;
+    const icon = btn.querySelector('i');
+    const label = btn.querySelector('span');
+    if (theme === 'dark') {
+        icon.className = 'fas fa-sun';
+        if (label) label.textContent = 'Light Mode';
+    } else {
+        icon.className = 'fas fa-moon';
+        if (label) label.textContent = 'Dark Mode';
+    }
+}
+
+/**
  * Debounce function
  */
 function debounce(func, wait) {
@@ -306,7 +406,16 @@ async function testAIConnection(message) {
 // Initialization
 // ============================================================================
 
+// Apply theme immediately (before DOMContentLoaded to prevent flash)
+initTheme();
+
 document.addEventListener('DOMContentLoaded', function() {
+    // Request notification permission
+    initNotifications();
+
+    // Apply avatar colors
+    applyAvatarColors();
+
     // Add notification toast styles if not present
     if (!document.querySelector('#notification-styles')) {
         const style = document.createElement('style');

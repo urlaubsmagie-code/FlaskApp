@@ -43,6 +43,14 @@
             </ul>
 
             <div class="sidebar-footer">
+                <!-- Dark Mode Toggle -->
+                <div class="theme-toggle">
+                    <button id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()">
+                        <i class="fas fa-moon"></i>
+                        <span>Dark Mode</span>
+                    </button>
+                </div>
+
                 <!-- Language Selector -->
                 <div class="language-selector">
                     <select id="languageSelector" onchange="i18n.setLanguage(this.value)">
