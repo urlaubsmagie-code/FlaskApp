@@ -47,9 +47,9 @@ Make the ChatBotAI app fully usable on mobile phones (360px+ width). Currently t
 
 ### Conversation (mobile)
 - **Header**: Back arrow (left, reuse existing `.back-btn` class) + Guest name + platform icon (center) + "..." overflow menu button (right)
-- **Overflow menu**: A `<button class="mobile-overflow-btn">` with `fas fa-ellipsis-v` icon. Clicking toggles a `.mobile-overflow-menu` dropdown (position: absolute, right: 0, top: 100%). Contains: AI toggle, property selector, auto-respond toggle, guest profile link. Click outside or second click closes it. Requires small JS handler in `conversation.js`.
+- **Overflow menu**: A `<button class="mobile-overflow-btn">` with `fas fa-ellipsis-v` icon. Clicking toggles a `.mobile-overflow-menu` dropdown (position: absolute, right: 0, top: 100%). Contains: AI toggle, property selector, auto-respond toggle, guest profile link. These are **duplicated** in the overflow menu HTML (not moved via JS). The JS toggle functions (`toggleAI()`, `toggleAutoRespond()`) must target elements by ID so they update regardless of which copy (desktop `.conversation-actions` or mobile overflow menu) the user interacts with. Click outside or second click closes it. Requires small JS handler in `conversation.js`.
 - **Messages**: Max-width 85-90%, guest left-aligned, owner/AI right-aligned
-- **Container height**: Use `height: 100dvh` with `100vh` fallback to avoid mobile browser chrome issues
+- **Container height**: Use `height: 100vh; height: 100dvh;` (vh fallback first, dvh override second) to avoid mobile browser chrome issues
 - **AI suggestion**: Full-width, between messages and input
 - **Input area**: Fixed to bottom. Textarea full-width, send button right. Action buttons (template, AI suggest) in compact row above textarea
 - **Template dropdown**: Opens upward on mobile (`.template-dropdown-menu { bottom: 100%; top: auto; }`) to avoid clipping at screen bottom
@@ -83,6 +83,11 @@ Make the ChatBotAI app fully usable on mobile phones (360px+ width). Currently t
 ## HTML Changes
 
 ### base.html
+Update viewport meta to support safe-area-inset on notched iPhones:
+```html
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+```
+
 Add `{% block body_class %}{% endblock %}` to body tag:
 ```html
 <body class="{% block body_class %}{% endblock %}">
@@ -111,14 +116,48 @@ Add bottom nav before closing `</body>`:
 ```
 
 ### Account Tab Behavior
-The Account tab opens a slide-up panel (`.account-panel`) anchored to the bottom nav. Contains:
-- User display name (from sidebar)
-- Dark mode toggle
-- Language selector
-- Sound/Push notification toggles
-- Logout button
+The Account tab opens a slide-up panel (`.account-panel`) anchored above the bottom nav. Toggled via JS click handler on `#accountNavItem`. Click outside or second click closes it.
 
-Panel HTML added to `base.html` alongside the bottom nav. Toggled via JS click handler on `#accountNavItem`. Click outside or second click closes it.
+Account panel HTML added to `base.html` alongside the bottom nav:
+```html
+<div class="account-panel">
+  {% if current_user.is_authenticated %}
+  <div class="account-panel-user">
+    <span class="user-avatar">{{ current_user.display_name[0]|upper }}</span>
+    <span class="account-panel-name">{{ current_user.display_name }}</span>
+  </div>
+  {% endif %}
+  <div class="account-panel-controls">
+    <button id="mobileThemeToggleBtn" class="account-panel-btn" onclick="toggleTheme()">
+      <i class="fas fa-moon"></i>
+      <span data-i18n="account.darkMode">Dunkelmodus</span>
+    </button>
+    <button id="mobileSoundToggleBtn" class="account-panel-btn" onclick="toggleNotificationSound()">
+      <i class="fas fa-volume-up" id="mobileSoundToggleIcon"></i>
+      <span data-i18n="account.sound">Sound</span>
+    </button>
+    <button id="mobilePushToggleBtn" class="account-panel-btn" onclick="toggleBrowserNotifications()">
+      <i class="fas fa-bell" id="mobilePushToggleIcon"></i>
+      <span data-i18n="account.push">Push</span>
+    </button>
+    <div class="account-panel-language">
+      <select id="mobileLanguageSelector" onchange="i18n.setLanguage(this.value)">
+        <option value="de">Deutsch</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+  </div>
+  {% if current_user.is_authenticated %}
+  <form action="{{ url_for('chatbot.logout') }}" method="POST" class="account-panel-logout">
+    <button type="submit" class="account-panel-btn account-panel-logout-btn">
+      <i class="fas fa-sign-out-alt"></i>
+      <span data-i18n="account.logout">Abmelden</span>
+    </button>
+  </form>
+  {% endif %}
+</div>
+```
+Note: Sound/push toggle functions must update BOTH sidebar icons (desktop) and account panel icons (mobile) to keep state in sync. The `toggleNotificationSound()` and `toggleBrowserNotifications()` functions should target both `#soundToggleIcon` and `#mobileSoundToggleIcon` (and similarly for push).
 
 ### conversation.html
 - Override body class: `{% block body_class %}conversation-page{% endblock %}`
@@ -188,7 +227,7 @@ Consolidate both existing 768px media query blocks (lines 1808-1863 and 2508-253
 
 Key changes at `@media (max-width: 768px)`:
 - `.sidebar { display: none }`
-- `.main-content { margin-left: 0; padding: 12px; padding-bottom: 72px; }` (72px = 56px nav + 16px breathing room)
+- `.main-content { margin-left: 0; padding: 12px; padding-bottom: calc(72px + env(safe-area-inset-bottom)); }` (56px nav + 16px breathing + safe area for notched phones)
 - `.conversation-page .main-content { padding-bottom: 0; }` (no bottom nav padding)
 - `.conversation-page .bottom-nav { display: none; }`
 - `.search-box { max-width: 100%; width: 100%; }`
@@ -202,9 +241,9 @@ Key changes at `@media (max-width: 768px)`:
 - `.info-grid { grid-template-columns: 1fr; }`
 - `.conversation-actions { display: none; }` (replaced by overflow menu on mobile)
 - `.mobile-overflow-btn { display: flex; }` (shown on mobile only)
-- `.back-btn { display: flex; }` (reuse existing class, show on mobile)
-- `.notification-toast { bottom: 76px; }` (above bottom nav)
-- `.conversation-container { height: 100dvh; height: 100vh; }` (dvh with vh fallback)
+- `.back-btn { display: flex; min-height: 44px; min-width: 44px; }` (reuse existing class, show on mobile, bump from 40px to meet 44px touch target)
+- `.notification-toast { bottom: 76px !important; }` (above bottom nav — `!important` needed because toast styles are JS-injected in `app.js` which would otherwise win by source order)
+- `.conversation-container { height: 100vh; height: 100dvh; }` (vh fallback first, dvh override second — browsers that support dvh use it, others fall back to vh)
 - `.template-dropdown-menu { bottom: 100%; top: auto; }` (open upward on mobile)
 - Touch target: all buttons, links, inputs get `min-height: 44px`
 - Stats overview grid: 2 columns (moved from separate media query)
@@ -219,11 +258,12 @@ Key changes at `@media (max-width: 768px)`:
 - Add Account panel toggle: click `#accountNavItem` shows/hides `.account-panel`
 - Add click-outside handler to close account panel
 - Set active state on bottom nav based on current URL path
+- Update `toggleNotificationSound()` and `toggleBrowserNotifications()` to sync both sidebar and mobile account panel icons
 
 ### i18n.js
 - Add NEW translation keys only (existing keys like `nav.inbox`, `nav.settings`, `nav.statistics` are already present):
   - `nav.account` (de: "Konto", en: "Account")
-  - `conversation.back` (de: "Zuruck", en: "Back")
+  - `conversation.back` (de: "Zurück", en: "Back")
   - `account.logout` (de: "Abmelden", en: "Logout")
   - `account.darkMode` (de: "Dunkelmodus", en: "Dark Mode")
   - `account.language` (de: "Sprache", en: "Language")
