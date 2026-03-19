@@ -1,4 +1,5 @@
 {% extends "chatbot/base.html" %}
+{% block body_class %}conversation-page{% endblock %}
 
 {% block title %}{{ _('Conversation') if _ else 'Konversation' }} - {{ guest.name or 'Gast' }}{% endblock %}
 
@@ -17,6 +18,8 @@
                     <i class="fab fa-whatsapp"></i>
                 {% elif conversation.platform == 'airbnb' %}
                     <i class="fab fa-airbnb"></i>
+                {% elif conversation.platform == 'smoobu' %}
+                    <i class="fas fa-building"></i>
                 {% else %}
                     <i class="fas fa-user"></i>
                 {% endif %}
@@ -32,20 +35,61 @@
             </div>
         </div>
         <div class="conversation-actions">
+            <div class="property-selector-wrapper">
+                <select id="propertySelector" class="property-selector" onchange="assignProperty(this.value)"
+                    data-i18n-title="conversation.property.assign" title="Unterkunft zuweisen">
+                    <option value="" data-i18n="conversation.property.none">-- Unterkunft --</option>
+                </select>
+            </div>
             <button class="btn btn-icon" onclick="toggleAI()" data-i18n-title="conversation.ai.toggle" title="KI-Antworten" id="aiToggleBtn">
                 <i class="fas fa-robot"></i>
                 <span class="toggle-status" data-ai-on="{{ 'AN' }}" data-ai-off="{{ 'AUS' }}">{{ 'AN' if conversation.ai_enabled else 'AUS' }}</span>
             </button>
+            <button class="btn btn-icon {{ 'auto-respond-active' if conversation.auto_respond else '' }}" onclick="toggleAutoRespond()" data-i18n-title="conversation.ai.autoRespond" title="Automatische KI-Antwort" id="autoRespondBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
+                <i class="fas fa-bolt"></i>
+                <span class="toggle-status" id="autoRespondStatus">{{ 'AN' if conversation.auto_respond else 'AUS' }}</span>
+            </button>
             <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="btn btn-icon" data-i18n-title="conversation.guest.profile" title="Gästeprofil anzeigen">
                 <i class="fas fa-user"></i>
+            </a>
+        </div>
+        <button class="mobile-overflow-btn" aria-label="Menu" id="mobileOverflowBtn">
+            <i class="fas fa-ellipsis-v"></i>
+        </button>
+        <div class="mobile-overflow-menu" id="mobileOverflowMenu">
+            <div class="overflow-menu-item">
+                <select id="mobilePropertySelector" class="mobile-property-selector" onchange="assignProperty(this.value)"
+                    title="Unterkunft zuweisen">
+                    <option value="" data-i18n="conversation.property.none">-- Unterkunft --</option>
+                </select>
+            </div>
+            <button class="overflow-menu-item" onclick="toggleAI()" id="mobileAiToggleBtn">
+                <i class="fas fa-robot"></i>
+                <span>KI: <span class="toggle-status" id="mobileAiStatus">{{ 'AN' if conversation.ai_enabled else 'AUS' }}</span></span>
+            </button>
+            <button class="overflow-menu-item" onclick="toggleAutoRespond()" id="mobileAutoRespondBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
+                <i class="fas fa-bolt"></i>
+                <span>Auto: <span id="mobileAutoRespondStatus">{{ 'AN' if conversation.auto_respond else 'AUS' }}</span></span>
+            </button>
+            <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="overflow-menu-item">
+                <i class="fas fa-user"></i>
+                <span data-i18n="conversation.guest.profile">Gästeprofil</span>
             </a>
         </div>
     </div>
 
     <!-- Messages Area -->
     <div class="messages-container" id="messagesContainer">
+        {% if has_older %}
+        <div class="load-older-wrapper" id="loadOlderWrapper">
+            <button class="btn btn-secondary load-older-btn" id="loadOlderBtn" onclick="loadOlderMessages()">
+                <i class="fas fa-arrow-up"></i> <span data-i18n="conversation.loadOlder">Ältere Nachrichten laden</span>
+                <span class="message-count-hint">({{ total_messages - messages|length }} weitere)</span>
+            </button>
+        </div>
+        {% endif %}
         {% for message in messages %}
-        <div class="message {{ message.sender_type }}" data-message-id="{{ message.id }}">
+        <div class="message {{ message.sender_type }}" data-message-id="{{ message.id }}" data-sent-at="{{ message.sent_at.isoformat() if message.sent_at else '' }}">
             <div class="message-avatar">
                 {% if message.sender_type == 'guest' %}
                     <i class="fas fa-user"></i>
@@ -80,6 +124,15 @@
     <!-- Message Input -->
     <div class="message-input-container">
         <div class="input-actions">
+            <div class="template-dropdown" id="templateDropdown">
+                <button class="btn btn-secondary" onclick="toggleTemplateDropdown()" type="button">
+                    <i class="fas fa-reply"></i> <span data-i18n="conversation.templates">Vorlagen</span>
+                    <i class="fas fa-caret-down" style="margin-left:4px;"></i>
+                </button>
+                <div class="template-dropdown-menu" id="templateMenu" style="display:none;">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
             <button class="btn btn-secondary" onclick="suggestAIResponse()" id="suggestAiBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
                 <i class="fas fa-lightbulb"></i> <span data-i18n="conversation.ai.suggest">KI-Vorschlag</span>
             </button>
@@ -99,331 +152,37 @@
                 <i class="fas fa-paper-plane"></i> <span data-i18n="conversation.send">Senden</span>
             </button>
         </form>
-        <div class="send-hint" data-i18n="conversation.sendHint">Strg+Enter zum Senden</div>
+        <div class="send-hint">
+            <span class="draft-indicator" id="draftIndicator" data-i18n="conversation.draft">Entwurf gespeichert</span>
+            {% if gmail_connected and conversation.platform == 'email' %}
+            <span class="gmail-indicator" style="color: #34a853; font-size: 0.8em;">
+                <i class="fas fa-envelope"></i> via Gmail
+            </span>
+            {% elif smoobu_connected and conversation.platform == 'smoobu' %}
+            <span class="smoobu-indicator" style="color: #2a7de1; font-size: 0.8em;">
+                <i class="fas fa-building"></i> via Smoobu
+            </span>
+            {% endif %}
+            <span data-i18n="conversation.sendHint">Strg+Enter zum Senden</span>
+        </div>
     </div>
 </div>
 
-<script src="{{ url_for('chatbot.static', filename='js/polling.js') }}"></script>
+<script src="{{ url_for('chatbot.static', filename='js/polling.js') }}?v=8"></script>
 <script>
-    const conversationId = {{ conversation.id }};
-    let aiEnabled = {{ 'true' if conversation.ai_enabled else 'false' }};
-
-    // Track known message IDs to prevent duplicates
-    let knownMessageIds = new Set();
-
-    // Build set of message IDs on page load
-    document.querySelectorAll('[data-message-id]').forEach(el => {
-        knownMessageIds.add(parseInt(el.dataset.messageId));
-    });
-
-    // Ctrl+Enter / Cmd+Enter to send
-    document.getElementById('messageInput').addEventListener('keydown', function(e) {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-            e.preventDefault();
-            sendMessage(e);
-        }
-    });
-
-    function scrollToBottom() {
-        const container = document.getElementById('messagesContainer');
-        const lastMessage = container.querySelector('.message:last-child');
-        if (lastMessage) {
-            lastMessage.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        } else {
-            container.scrollTop = container.scrollHeight;
-        }
-    }
-
-    function sendMessage(e) {
-        e.preventDefault();
-        const input = document.getElementById('messageInput');
-        const content = input.value.trim();
-
-        if (!content) return;
-
-        fetch(`/chatbot/api/conversations/${conversationId}/messages`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: content })
-        })
-        .then(response => response.json())
-        .then(data => {
-            // Add to known IDs immediately to prevent duplicate on next poll
-            if (data.id) {
-                knownMessageIds.add(data.id);
-            }
-            addMessageToUI(data, 'owner');
-            input.value = '';
-            scrollToBottom();
-        })
-        .catch(err => {
-            console.error('Failed to send message:', err);
-            showNotification(i18n.t('conversation.sendFailed'), 'error');
-        });
-    }
-
-    // Active AbortControllers for AI requests
-    let activeAiController = null;
-
-    function showAiError(message) {
-        // Show error as a temporary banner above the input area
-        const container = document.querySelector('.message-input-container');
-        // Remove any existing error banner
-        const existing = container.querySelector('.ai-error-banner');
-        if (existing) existing.remove();
-
-        const banner = document.createElement('div');
-        banner.className = 'ai-error-banner';
-        banner.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${message}`;
-        banner.style.cssText = 'background:#991b1b;color:#fff;padding:8px 16px;border-radius:6px;margin-bottom:8px;font-size:0.9em;display:flex;align-items:center;gap:8px;';
-        container.insertBefore(banner, container.firstChild);
-        setTimeout(() => banner.remove(), 6000);
-    }
-
-    function showTypingIndicator() {
-        removeTypingIndicator();
-        const container = document.getElementById('messagesContainer');
-        const typing = document.createElement('div');
-        typing.className = 'message typing-indicator message-slide-in';
-        typing.id = 'aiTypingIndicator';
-        typing.innerHTML = `
-            <div class="message-avatar"><i class="fas fa-robot"></i></div>
-            <div class="message-content">
-                <div class="typing-dots"><span></span><span></span><span></span></div>
-                <div class="typing-label" data-i18n="conversation.ai.thinking">${i18n.t('conversation.ai.thinking')}</div>
-            </div>
-        `;
-        container.appendChild(typing);
-        scrollToBottom();
-    }
-
-    function removeTypingIndicator() {
-        const el = document.getElementById('aiTypingIndicator');
-        if (el) el.remove();
-    }
-
-    function generateAIResponse() {
-        const btn = document.getElementById('generateAiBtn');
-        const suggestBtn = document.getElementById('suggestAiBtn');
-        btn.disabled = true;
-        suggestBtn.disabled = true;
-        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span data-i18n="conversation.ai.generating">${i18n.t('conversation.ai.generating')}</span>`;
-
-        showTypingIndicator();
-
-        // Abort any previous AI request
-        if (activeAiController) activeAiController.abort();
-        activeAiController = new AbortController();
-        const signal = activeAiController.signal;
-
-        fetch(`/chatbot/api/conversations/${conversationId}/ai-response`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: signal
-        })
-        .then(response => response.json())
-        .then(data => {
-            removeTypingIndicator();
-            if (data.error) {
-                showAiError(data.error);
-            } else {
-                if (data.id) {
-                    knownMessageIds.add(data.id);
-                }
-                addMessageToUI(data, 'ai');
-                scrollToBottom();
-            }
-        })
-        .catch(err => {
-            removeTypingIndicator();
-            if (err.name === 'AbortError') return;
-            console.error('Failed to generate AI response:', err);
-            showAiError(i18n.t('conversation.ai.error') || 'AI not reachable. Is Ollama running?');
-        })
-        .finally(() => {
-            activeAiController = null;
-            btn.disabled = !aiEnabled;
-            suggestBtn.disabled = !aiEnabled;
-            btn.innerHTML = `<i class="fas fa-magic"></i> <span data-i18n="conversation.ai.generate">${i18n.t('conversation.ai.generate')}</span>`;
-        });
-    }
-
-    function suggestAIResponse() {
-        const btn = document.getElementById('suggestAiBtn');
-        const generateBtn = document.getElementById('generateAiBtn');
-        const input = document.getElementById('messageInput');
-        btn.disabled = true;
-        generateBtn.disabled = true;
-        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span data-i18n="conversation.ai.generating">${i18n.t('conversation.ai.generating')}</span>`;
-
-        // Abort any previous AI request
-        if (activeAiController) activeAiController.abort();
-        activeAiController = new AbortController();
-        const signal = activeAiController.signal;
-
-        fetch(`/chatbot/api/conversations/${conversationId}/ai-suggest`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: signal
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                showAiError(data.error);
-            } else {
-                input.value = data.suggestion;
-                input.focus();
-                input.style.height = 'auto';
-                input.style.height = Math.min(input.scrollHeight, 200) + 'px';
-            }
-        })
-        .catch(err => {
-            if (err.name === 'AbortError') return;
-            console.error('Failed to generate AI suggestion:', err);
-            showAiError(i18n.t('conversation.ai.error') || 'AI not reachable. Is Ollama running?');
-        })
-        .finally(() => {
-            activeAiController = null;
-            btn.disabled = !aiEnabled;
-            generateBtn.disabled = !aiEnabled;
-            btn.innerHTML = `<i class="fas fa-lightbulb"></i> <span data-i18n="conversation.ai.suggest">${i18n.t('conversation.ai.suggest')}</span>`;
-        });
-    }
-
-    function toggleAI() {
-        fetch(`/chatbot/api/conversations/${conversationId}/toggle-ai`, {
-            method: 'POST'
-        })
-        .then(response => response.json())
-        .then(data => {
-            aiEnabled = data.ai_enabled;
-            const btn = document.getElementById('aiToggleBtn');
-            btn.querySelector('.toggle-status').textContent = aiEnabled ? 'ON' : 'OFF';
-            document.getElementById('generateAiBtn').disabled = !aiEnabled;
-            document.getElementById('suggestAiBtn').disabled = !aiEnabled;
-        })
-        .catch(err => console.error('Failed to toggle AI:', err));
-    }
-
-    /**
-     * Escape HTML to prevent XSS
-     */
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    /**
-     * Add a message to the UI
-     * Supports two formats:
-     * - addMessageToUI(message, senderType) - backward compat with sendMessage/generateAI
-     * - addMessageToUI(message) - full message object with sender_type property
-     */
-    function addMessageToUI(message, senderType) {
-        const container = document.getElementById('messagesContainer');
-        const messageDiv = document.createElement('div');
-
-        // Detect format: if message has sender_type property, use it
-        const actualSenderType = message.sender_type || senderType;
-        messageDiv.className = `message ${actualSenderType}`;
-
-        // Set data-message-id for duplicate tracking
-        if (message.id) {
-            messageDiv.dataset.messageId = message.id;
-        }
-
-        const icon = actualSenderType === 'guest' ? 'fa-user' : (actualSenderType === 'owner' ? 'fa-home' : 'fa-robot');
-        const name = actualSenderType === 'guest' ? '{{ guest.name or "Guest" }}' : (actualSenderType === 'owner' ? 'You' : 'AI Assistant');
-
-        // Use sent_at from message if available, otherwise current time
-        let time;
-        if (message.sent_at) {
-            const date = new Date(message.sent_at);
-            time = date.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-        } else {
-            time = new Date().toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-        }
-
-        messageDiv.innerHTML = `
-            <div class="message-avatar"><i class="fas ${icon}"></i></div>
-            <div class="message-content">
-                <div class="message-header">
-                    <span class="sender-name">${name}</span>
-                    <span class="message-time">${time}</span>
-                </div>
-                <div class="message-text">${escapeHtml(message.content || '')}</div>
-            </div>
-        `;
-
-        messageDiv.classList.add('message-slide-in');
-        container.appendChild(messageDiv);
-    }
-
-    /**
-     * Update messages from poll response - append only new messages
-     */
-    function updateMessages(messages) {
-        const container = document.getElementById('messagesContainer');
-        let hasNewMessages = false;
-
-        messages.forEach(msg => {
-            if (!knownMessageIds.has(msg.id)) {
-                // New message - append to container
-                addMessageToUI(msg, msg.sender_type);
-                knownMessageIds.add(msg.id);
-                hasNewMessages = true;
-
-                // Browser notification for new guest messages
-                if (msg.sender_type === 'guest') {
-                    const preview = (msg.content || '').substring(0, 80);
-                    showBrowserNotification(
-                        '{{ guest.name or guest.email or "New Message" }}',
-                        preview,
-                        window.location.href
-                    );
-                }
-            }
-        });
-
-        // Scroll to bottom if new messages added
-        if (hasNewMessages) {
-            scrollToBottom();
-        }
-
-        // Remove empty state if messages exist
-        const emptyState = container.querySelector('.empty-messages');
-        if (emptyState && messages.length > 0) {
-            emptyState.remove();
-        }
-    }
-
-    // Initialize message polling
-    const messagePoller = new PollingManager({
-        fetchFn: async (signal) => {
-            const response = await fetch(
-                `/chatbot/api/conversations/${conversationId}/messages`,
-                { signal }
-            );
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            return response.json();
-        },
-        onUpdate: (data) => {
-            updateMessages(data.messages);
-        },
-        interval: 10000  // 10 seconds (faster for active conversation)
-    });
-
-    // Start polling and scroll to bottom on page load
-    document.addEventListener('DOMContentLoaded', function() {
-        // Mark conversation as read (fire-and-forget)
-        fetch(`/chatbot/api/conversations/${conversationId}/read`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' }
-        }).catch(err => console.error('Failed to mark as read:', err));
-
-        scrollToBottom();
-        messagePoller.start();
-    });
+    window.CONV_CONFIG = {
+        conversationId: {{ conversation.id }},
+        aiEnabled: {{ 'true' if conversation.ai_enabled else 'false' }},
+        autoRespond: {{ 'true' if conversation.auto_respond else 'false' }},
+        platform: {{ conversation.platform|tojson }},
+        gmailConnected: {{ 'true' if gmail_connected else 'false' }},
+        smoobuConnected: {{ 'true' if smoobu_connected else 'false' }},
+        currentPropertyId: {{ conversation.property_id|tojson if conversation.property_id else 'null' }},
+        guestName: {{ (guest.name or "Guest")|tojson }},
+        guestNotifyName: {{ (guest.name or guest.email or "New Message")|tojson }},
+        propertyName: {{ (conversation.property.name if conversation.property else "")|tojson }},
+        checkInTime: {{ (conversation.property.check_in_time if conversation.property else "3:00 PM")|tojson }}
+    };
 </script>
+<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=8"></script>
 {% endblock %}
