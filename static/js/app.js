@@ -74,19 +74,21 @@ function formatRelativeTime(dateString) {
 /**
  * Show notification toast
  */
-function showNotification(message, type = 'info') {
+function showNotification(message, type = 'info', duration = 3000) {
     // Create toast element
     const toast = document.createElement('div');
     toast.className = `notification-toast ${type}`;
     toast.innerHTML = `
         <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
         <span>${message}</span>
+        <button class="toast-close" onclick="this.parentElement.classList.remove('show');setTimeout(()=>{this.parentElement.remove();_repositionToasts();},300);" aria-label="Close">&times;</button>
     `;
 
     // Stack above existing toasts
     const existingToasts = document.querySelectorAll('.notification-toast');
     const offset = existingToasts.length * 56;
-    toast.style.bottom = `${20 + offset}px`;
+    const baseOffset = window.innerWidth <= 768 ? 76 : 20;
+    toast.style.bottom = `${baseOffset + offset}px`;
 
     // Add to page
     document.body.appendChild(toast);
@@ -99,12 +101,16 @@ function showNotification(message, type = 'info') {
         toast.classList.remove('show');
         setTimeout(() => {
             toast.remove();
-            // Reposition remaining toasts
-            document.querySelectorAll('.notification-toast').forEach((t, i) => {
-                t.style.bottom = `${20 + i * 56}px`;
-            });
+            _repositionToasts();
         }, 300);
-    }, 3000);
+    }, duration);
+}
+
+function _repositionToasts() {
+    document.querySelectorAll('.notification-toast').forEach((t, i) => {
+        const baseOffset = window.innerWidth <= 768 ? 76 : 20;
+        t.style.bottom = `${baseOffset + i * 56}px`;
+    });
 }
 
 /**
@@ -147,12 +153,194 @@ function initNotifications() {
 }
 
 /**
+ * WebPush module — registers SW, subscribes/unsubscribes push.
+ * Uses localStorage for UI state (like NotificationSound), browser
+ * push subscription for actual delivery.
+ */
+const WebPush = {
+    _registration: null,
+    _vapidKey: null,
+    _supported: false,
+
+    isEnabled() {
+        return localStorage.getItem('chatbot_push_enabled') === 'true';
+    },
+
+    _setEnabled(enabled) {
+        localStorage.setItem('chatbot_push_enabled', String(enabled));
+        updateBrowserNotifyToggleUI(enabled);
+    },
+
+    async init() {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+            this._supported = false;
+            return;
+        }
+
+        try {
+            await navigator.serviceWorker.register('/chatbot/sw.js', { scope: '/chatbot/' });
+            this._registration = await navigator.serviceWorker.ready;
+            this._supported = true;
+        } catch (e) {
+            this._supported = false;
+        }
+    },
+
+    async _fetchVapidKey() {
+        if (this._vapidKey) return this._vapidKey;
+        const res = await fetch('/chatbot/api/push/vapid-key');
+        const data = await res.json();
+        this._vapidKey = data.publicKey;
+        return this._vapidKey;
+    },
+
+    _urlBase64ToUint8Array(base64String) {
+        const padding = '='.repeat((4 - base64String.length % 4) % 4);
+        const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; i++) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
+    },
+
+    async subscribe() {
+        if (!this._supported || !this._registration) return false;
+
+        try {
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') {
+                showNotification(i18n.t('notify.push.denied'), 'error');
+                return false;
+            }
+
+            const vapidKey = await this._fetchVapidKey();
+            const sub = await this._registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: this._urlBase64ToUint8Array(vapidKey)
+            });
+
+            const subJson = sub.toJSON();
+            await fetch('/chatbot/api/push/subscribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    endpoint: subJson.endpoint,
+                    keys: subJson.keys,
+                    user_agent: navigator.userAgent
+                })
+            });
+
+            this._setEnabled(true);
+            showNotification(i18n.t('notify.push.enabled'), 'success');
+            return true;
+        } catch (e) {
+            console.error('[WebPush] subscribe failed:', e);
+            showNotification(i18n.t('notify.push.unsupported'), 'error');
+            return false;
+        }
+    },
+
+    async unsubscribe() {
+        if (!this._supported || !this._registration) return false;
+
+        try {
+            const sub = await this._registration.pushManager.getSubscription();
+            if (sub) {
+                const endpoint = sub.endpoint;
+                await sub.unsubscribe();
+                await fetch('/chatbot/api/push/unsubscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ endpoint: endpoint })
+                });
+            }
+            this._setEnabled(false);
+            showNotification(i18n.t('notify.push.disabled'), 'info');
+            return true;
+        } catch (e) {
+            console.error('[WebPush] unsubscribe failed:', e);
+            return false;
+        }
+    },
+
+    async toggle() {
+        if (!this._supported || !this._registration) {
+            showNotification(i18n.t('notify.push.unsupported'), 'error');
+            return;
+        }
+        if (this.isEnabled()) {
+            await this.unsubscribe();
+        } else {
+            await this.subscribe();
+        }
+    },
+
+    isSupported() {
+        return this._supported;
+    }
+};
+
+/**
+ * Notification Sound module — plays audio ding for new messages
+ */
+const NotificationSound = {
+    audio: null,
+
+    init() {
+        this.audio = new Audio('/chatbot/static/sounds/notification.wav');
+        this.audio.volume = 0.5;
+    },
+
+    isEnabled() {
+        const stored = localStorage.getItem('chatbot_sound_enabled');
+        return stored === null ? true : stored === 'true';
+    },
+
+    setEnabled(enabled) {
+        localStorage.setItem('chatbot_sound_enabled', String(enabled));
+        updateSoundToggleUI(enabled);
+    },
+
+    toggle() {
+        const next = !this.isEnabled();
+        this.setEnabled(next);
+        return next;
+    },
+
+    play() {
+        if (!this.isEnabled()) return;
+        if (document.visibilityState === 'visible') return;
+        if (!this.audio) return;
+        this.audio.currentTime = 0;
+        this.audio.play().catch(() => { /* autoplay blocked */ });
+    }
+};
+
+/**
+ * Browser notification preference helpers
+ */
+function isBrowserNotificationEnabled() {
+    const stored = localStorage.getItem('chatbot_browser_notification_enabled');
+    return stored === null ? true : stored === 'true';
+}
+
+function setBrowserNotificationEnabled(enabled) {
+    localStorage.setItem('chatbot_browser_notification_enabled', String(enabled));
+    updateBrowserNotifyToggleUI(enabled);
+}
+
+/**
  * Show a browser notification (only when tab is hidden)
  */
 function showBrowserNotification(title, body, url) {
+    if (!isBrowserNotificationEnabled()) return;
     if (!('Notification' in window)) return;
     if (Notification.permission !== 'granted') return;
     if (document.visibilityState === 'visible') return;
+
+    NotificationSound.play();
 
     const notification = new Notification(title, {
         body: body,
@@ -168,6 +356,100 @@ function showBrowserNotification(title, body, url) {
     }
 
     setTimeout(() => notification.close(), 8000);
+}
+
+/**
+ * Check if a conversation is relevant to the current user
+ * (unassigned or assigned to me)
+ */
+function isConversationRelevantToMe(conv) {
+    if (!window.CHATBOT_USER || !window.CHATBOT_USER.id) return true;
+    return !conv.user_id || conv.user_id === window.CHATBOT_USER.id;
+}
+
+/**
+ * Update inbox badge from conversation data
+ */
+function updateInboxBadgeFromData(conversations) {
+    if (!conversations) return;
+    let count = 0;
+    conversations.forEach(conv => {
+        if (!conv.is_read && isConversationRelevantToMe(conv)) {
+            count++;
+        }
+    });
+    const badge = document.getElementById('inboxBadge');
+    if (badge) {
+        badge.textContent = count;
+        badge.style.display = count > 0 ? '' : 'none';
+    }
+    // Update document title
+    const baseTitle = document.title.replace(/^\(\d+\)\s*/, '');
+    document.title = count > 0 ? `(${count}) ${baseTitle}` : baseTitle;
+}
+
+/**
+ * Fetch conversations and update badge (for non-inbox pages)
+ */
+function updateInboxBadge() {
+    fetch('/chatbot/api/conversations?per_page=50')
+        .then(r => r.json())
+        .then(data => updateInboxBadgeFromData(data.conversations))
+        .catch(() => { /* silent */ });
+}
+
+/**
+ * Toggle notification sound on/off
+ */
+function toggleNotificationSound() {
+    NotificationSound.toggle();
+}
+
+/**
+ * Update sound toggle button UI
+ */
+function updateSoundToggleUI(enabled) {
+    const icons = [document.getElementById('soundToggleIcon'), document.getElementById('mobileSoundToggleIcon')];
+    const btns = [document.getElementById('soundToggleBtn'), document.getElementById('mobileSoundToggleBtn')];
+    icons.forEach(icon => {
+        if (!icon) return;
+        icon.className = enabled ? 'fas fa-volume-up' : 'fas fa-volume-mute';
+    });
+    btns.forEach(btn => {
+        if (!btn) return;
+        enabled ? btn.classList.remove('disabled') : btn.classList.add('disabled');
+    });
+}
+
+/**
+ * Toggle browser/push notifications on/off
+ */
+function toggleBrowserNotifications() {
+    if (WebPush.isSupported()) {
+        WebPush.toggle();
+    } else {
+        const next = !isBrowserNotificationEnabled();
+        setBrowserNotificationEnabled(next);
+        if (next && 'Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+    }
+}
+
+/**
+ * Update browser notification toggle button UI
+ */
+function updateBrowserNotifyToggleUI(enabled) {
+    const icons = [document.getElementById('browserNotifyToggleIcon'), document.getElementById('mobilePushToggleIcon')];
+    const btns = [document.getElementById('browserNotifyToggleBtn'), document.getElementById('mobilePushToggleBtn')];
+    icons.forEach(icon => {
+        if (!icon) return;
+        icon.className = enabled ? 'fas fa-bell' : 'fas fa-bell-slash';
+    });
+    btns.forEach(btn => {
+        if (!btn) return;
+        enabled ? btn.classList.remove('disabled') : btn.classList.add('disabled');
+    });
 }
 
 /**
@@ -205,6 +487,12 @@ function updateThemeIcon(theme) {
         icon.className = 'fas fa-moon';
         if (label) label.textContent = 'Dark Mode';
     }
+
+    const mobileBtn = document.getElementById('mobileThemeToggleBtn');
+    if (mobileBtn) {
+        const mobileIcon = mobileBtn.querySelector('i');
+        mobileIcon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+    }
 }
 
 /**
@@ -220,6 +508,15 @@ function debounce(func, wait) {
         clearTimeout(timeout);
         timeout = setTimeout(later, wait);
     };
+}
+
+/**
+ * Escape HTML to prevent XSS
+ */
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // ============================================================================
@@ -410,8 +707,38 @@ async function testAIConnection(message) {
 initTheme();
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Request notification permission
-    initNotifications();
+    // Initialize notification sound
+    NotificationSound.init();
+
+    // Initialize Web Push (registers SW, checks subscription state)
+    WebPush.init();
+
+    // Initialize toggle button UI states (synchronous, from localStorage)
+    updateSoundToggleUI(NotificationSound.isEnabled());
+    updateBrowserNotifyToggleUI(WebPush.isEnabled());
+
+    // Badge polling on non-inbox pages (inbox updates badge via its own poller)
+    if (!document.getElementById('conversationList')) {
+        updateInboxBadge();
+        window._badgeInterval = setInterval(updateInboxBadge, 30000);
+    }
+
+    // Pause all polling when tab is hidden (saves CPU, network, and battery)
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            // Pause badge polling
+            if (window._badgeInterval) {
+                clearInterval(window._badgeInterval);
+                window._badgeInterval = null;
+            }
+        } else {
+            // Resume badge polling (non-inbox pages only)
+            if (!document.getElementById('conversationList') && !window._badgeInterval) {
+                updateInboxBadge();
+                window._badgeInterval = setInterval(updateInboxBadge, 30000);
+            }
+        }
+    });
 
     // Apply avatar colors
     applyAvatarColors();
@@ -449,8 +776,46 @@ document.addEventListener('DOMContentLoaded', function() {
             .notification-toast.info {
                 background: #1e40af;
             }
+            .toast-close {
+                background: none;
+                border: none;
+                color: rgba(255,255,255,0.7);
+                font-size: 18px;
+                cursor: pointer;
+                padding: 0 0 0 8px;
+                line-height: 1;
+            }
+            .toast-close:hover {
+                color: #fff;
+            }
         `;
         document.head.appendChild(style);
+    }
+
+    // --- Mobile: Account panel toggle ---
+    const accountNavItem = document.getElementById('accountNavItem');
+    const accountPanel = document.getElementById('accountPanel');
+    if (accountNavItem && accountPanel) {
+        accountNavItem.addEventListener('click', function(e) {
+            e.preventDefault();
+            accountPanel.classList.toggle('open');
+        });
+
+        // Close account panel on click outside
+        document.addEventListener('click', function(e) {
+            if (accountPanel.classList.contains('open') &&
+                !accountPanel.contains(e.target) &&
+                !accountNavItem.contains(e.target)) {
+                accountPanel.classList.remove('open');
+            }
+        });
+    }
+
+    // --- Mobile: sync language selector with sidebar ---
+    const mobileLangSelector = document.getElementById('mobileLanguageSelector');
+    const desktopLangSelector = document.getElementById('languageSelector');
+    if (mobileLangSelector && desktopLangSelector) {
+        mobileLangSelector.value = desktopLangSelector.value;
     }
 
     console.log('ChatBotAI initialized');
