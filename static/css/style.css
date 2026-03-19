@@ -2075,7 +2075,19 @@ a {
 
     /* --- Messages --- */
     .message {
-        max-width: 90%;
+        max-width: 85%;
+    }
+
+    .message-content {
+        min-width: 0;
+        overflow-wrap: break-word;
+        word-break: break-word;
+    }
+
+    /* --- Overflow menu button visible styling --- */
+    .mobile-overflow-btn {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
     }
 
     /* --- Page Header (inbox etc.) --- */
