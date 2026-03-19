@@ -2006,14 +2006,15 @@ a {
 
     .mobile-overflow-menu {
         position: absolute;
-        right: 12px;
+        right: 0;
         top: 100%;
         background: var(--card-bg);
         border: 1px solid var(--border-color);
         border-radius: var(--border-radius);
         box-shadow: var(--shadow-lg);
         z-index: 200;
-        min-width: 220px;
+        width: 220px;
+        max-width: 70vw;
         overflow: hidden;
     }
 
@@ -2049,12 +2050,16 @@ a {
 
     .overflow-menu-item select {
         flex: 1;
+        min-width: 0;
+        max-width: 100%;
         padding: 6px 8px;
         border: 1px solid var(--border-color);
         border-radius: var(--border-radius);
         background: var(--bg-secondary);
         color: var(--text-primary);
         font-size: 0.8125rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     /* --- Back button (show on mobile) --- */
