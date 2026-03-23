@@ -5,7 +5,9 @@ Defines the schema for guests, conversations, messages, properties, and AI setti
 
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import UserMixin
 from sqlalchemy import MetaData
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Naming convention for constraints (required for SQLite batch migrations)
 convention = {
@@ -18,6 +20,68 @@ convention = {
 
 metadata = MetaData(naming_convention=convention)
 db = SQLAlchemy(metadata=metadata)
+
+
+class User(UserMixin, db.Model):
+    """Application user for team access"""
+    __tablename__ = 'user'
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False, index=True)
+    display_name = db.Column(db.String(200), nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    assigned_conversations = db.relationship('Conversation', backref='assigned_user', lazy='dynamic')
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    def __repr__(self):
+        return f'<User {self.id}: {self.username}>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'username': self.username,
+            'display_name': self.display_name,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+class PushSubscription(db.Model):
+    """Web Push notification subscription for a user's browser/device"""
+    __tablename__ = 'push_subscription'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
+    endpoint = db.Column(db.Text, unique=True, nullable=False)
+    p256dh = db.Column(db.String(256), nullable=False)
+    auth = db.Column(db.String(256), nullable=False)
+    user_agent = db.Column(db.String(500))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationship
+    user = db.relationship('User', backref=db.backref('push_subscriptions', cascade='all, delete-orphan', lazy='dynamic'))
+
+    def __repr__(self):
+        return f'<PushSubscription {self.id}: user={self.user_id}>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'endpoint': self.endpoint,
+            'user_agent': self.user_agent,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
 
 
 class Guest(db.Model):
@@ -36,6 +100,7 @@ class Guest(db.Model):
     whatsapp_id = db.Column(db.String(100), index=True)
     airbnb_id = db.Column(db.String(100), index=True)
     booking_id = db.Column(db.String(100), index=True)
+    smoobu_guest_id = db.Column(db.String(100), index=True)
 
     # Engagement tracking
     first_contact = db.Column(db.DateTime, default=datetime.utcnow)
@@ -66,6 +131,7 @@ class Guest(db.Model):
             'whatsapp_id': self.whatsapp_id,
             'airbnb_id': self.airbnb_id,
             'booking_id': self.booking_id,
+            'smoobu_guest_id': self.smoobu_guest_id,
             'first_contact': self.first_contact.isoformat() if self.first_contact else None,
             'last_contact': self.last_contact.isoformat() if self.last_contact else None,
             'total_stays': self.total_stays,
@@ -139,25 +205,42 @@ class Conversation(db.Model):
     # AI control (per-conversation toggle)
     ai_enabled = db.Column(db.Boolean, default=True)
 
+    # Auto-respond: AI automatically replies to new guest messages
+    auto_respond = db.Column(db.Boolean, default=False, server_default='0', nullable=False)
+
     # Unread tracking for inbox
     is_read = db.Column(db.Boolean, default=True, server_default='1', nullable=False)
+
+    # Read cursor: points to the last message the user has seen
+    last_read_message_id = db.Column(db.Integer, db.ForeignKey('message.id', ondelete='SET NULL', use_alter=True), nullable=True)
+
+    # Sync watermark: timestamp of the newest synced message (for skipping old messages during platform sync)
+    last_synced_message_at = db.Column(db.DateTime, nullable=True)
+
+    # User assignment (optional - NULL means visible to all)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+
+    # Smoobu reservation link
+    smoobu_reservation_id = db.Column(db.String(100), index=True)
 
     # Property association (optional)
     property_id = db.Column(db.Integer, db.ForeignKey('property.id', ondelete='SET NULL'), nullable=True)
 
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # Only updated explicitly on message activity (not on read/toggle/assign changes)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Relationships
     messages = db.relationship('Message', backref='conversation', lazy='dynamic', cascade='all, delete-orphan',
-                               order_by='Message.sent_at')
+                               order_by='Message.sent_at', foreign_keys='Message.conversation_id')
 
     def __repr__(self):
         return f'<Conversation {self.id}: {self.platform} - {self.subject or "No subject"}>'
 
     def to_dict(self, include_messages=False):
         """Convert conversation to dictionary"""
+        lm = self.last_message  # Call once to avoid double query
         data = {
             'id': self.id,
             'guest_id': self.guest_id,
@@ -166,12 +249,19 @@ class Conversation(db.Model):
             'subject': self.subject,
             'status': self.status,
             'ai_enabled': self.ai_enabled,
+            'auto_respond': self.auto_respond,
             'is_read': self.is_read,
+            'unread_count': self.unread_count,
+            'last_read_message_id': self.last_read_message_id,
+            'smoobu_reservation_id': self.smoobu_reservation_id,
+            'user_id': self.user_id,
+            'assigned_user_name': self.assigned_user.display_name if self.assigned_user else None,
             'property_id': self.property_id,
+            'property_name': self.property.name if self.property else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'guest': self.guest.to_dict() if self.guest else None,
-            'last_message': self.last_message.to_dict() if self.last_message else None
+            'last_message': lm.to_dict() if lm else None
         }
         if include_messages:
             data['messages'] = [m.to_dict() for m in self.messages.all()]
@@ -179,13 +269,43 @@ class Conversation(db.Model):
 
     @property
     def last_message(self):
-        """Get the most recent message in this conversation"""
+        """Get the most recent message in this conversation.
+        Uses preloaded cache if available (set by preload_last_messages()).
+        """
+        if hasattr(self, '_cached_last_message'):
+            return self._cached_last_message
         return self.messages.order_by(Message.sent_at.desc()).first()
 
     @property
     def message_count(self):
-        """Get total number of messages"""
+        """Get total number of messages.
+        Uses preloaded cache if available (set by guest_profile route).
+        """
+        if hasattr(self, '_cached_message_count'):
+            return self._cached_message_count
         return self.messages.count()
+
+    @property
+    def unread_count(self):
+        """Count guest messages newer than the read cursor."""
+        if hasattr(self, '_cached_unread_count'):
+            return self._cached_unread_count
+        query = self.messages.filter(Message.sender_type == 'guest')
+        if self.last_read_message_id:
+            query = query.filter(Message.id > self.last_read_message_id)
+        return query.count()
+
+    def recompute_is_read(self):
+        """Recompute is_read from the read cursor. Returns True if state changed."""
+        has_unread = self.messages.filter(
+            Message.sender_type == 'guest',
+            Message.id > (self.last_read_message_id or 0)
+        ).first() is not None
+        new_is_read = not has_unread
+        if self.is_read != new_is_read:
+            self.is_read = new_is_read
+            return True
+        return False
 
 
 class Message(db.Model):
@@ -242,6 +362,7 @@ class Property(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
+    smoobu_apartment_id = db.Column(db.String(100), unique=True, index=True)
     address = db.Column(db.Text)
     description = db.Column(db.Text)
 
@@ -279,6 +400,7 @@ class Property(db.Model):
         return {
             'id': self.id,
             'name': self.name,
+            'smoobu_apartment_id': self.smoobu_apartment_id,
             'address': self.address,
             'description': self.description,
             'amenities': self.amenities,
@@ -290,6 +412,37 @@ class Property(db.Model):
             'check_in_time': self.check_in_time,
             'check_out_time': self.check_out_time,
             'house_rules': self.house_rules,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+class ReplyTemplate(db.Model):
+    """
+    Quick reply templates (canned responses) for common messages.
+    Supports variable substitution: {guest_name}, {property_name}, {check_in_time}
+    """
+    __tablename__ = 'reply_template'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    category = db.Column(db.String(100), default='general')
+
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<ReplyTemplate {self.id}: {self.name}>'
+
+    def to_dict(self):
+        """Convert template to dictionary"""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'content': self.content,
+            'category': self.category,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -346,6 +499,124 @@ class AISettings(db.Model):
         return setting
 
 
+class KnowledgeEntry(db.Model):
+    """
+    Structured facts for AI context.
+    Stores host knowledge (WiFi, check-in procedures, nearby places, etc.)
+    that the AI references when responding to guests.
+    Entries can be global (property_id=NULL) or per-property.
+    """
+    __tablename__ = 'knowledge_entry'
+
+    VALID_CATEGORIES = [
+        'general', 'checkin_checkout', 'nearby',
+        'house_rules', 'emergency', 'faq'
+    ]
+
+    id = db.Column(db.Integer, primary_key=True)
+    property_id = db.Column(db.Integer, db.ForeignKey('property.id', ondelete='CASCADE'), nullable=True, index=True)
+    category = db.Column(db.String(50), nullable=False)
+    label = db.Column(db.String(200), nullable=False)
+    value = db.Column(db.Text, nullable=False)
+    sort_order = db.Column(db.Integer, default=0)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Composite index for AI context queries
+    __table_args__ = (
+        db.Index('ix_knowledge_entry_property_category', 'property_id', 'category'),
+    )
+
+    # Relationship
+    property = db.relationship('Property', backref=db.backref('knowledge_entries', cascade='all, delete-orphan', lazy='dynamic'))
+
+    def __repr__(self):
+        scope = f'property={self.property_id}' if self.property_id else 'global'
+        return f'<KnowledgeEntry {self.id}: [{self.category}] {self.label} ({scope})>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'property_id': self.property_id,
+            'property_name': self.property.name if self.property else None,
+            'category': self.category,
+            'label': self.label,
+            'value': self.value,
+            'sort_order': self.sort_order,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+def preload_last_messages(conversations):
+    """Preload last message for a batch of conversations in ONE query (eliminates N+1).
+
+    Sets _cached_last_message on each conversation object so that
+    conversation.last_message and conversation.to_dict() use the cache
+    instead of issuing individual queries.
+    """
+    if not conversations:
+        return
+
+    from sqlalchemy import func
+
+    conv_ids = [c.id for c in conversations]
+
+    # Single query: get the ID of the newest message per conversation
+    last_msg_subq = db.session.query(
+        Message.conversation_id,
+        func.max(Message.id).label('last_msg_id')
+    ).filter(
+        Message.conversation_id.in_(conv_ids)
+    ).group_by(Message.conversation_id).subquery()
+
+    # Fetch full Message objects for those IDs
+    last_messages = db.session.query(Message).join(
+        last_msg_subq, Message.id == last_msg_subq.c.last_msg_id
+    ).all()
+
+    msg_map = {m.conversation_id: m for m in last_messages}
+
+    for c in conversations:
+        c._cached_last_message = msg_map.get(c.id)
+
+
+def preload_unread_counts(conversations):
+    """Batch-load unread counts for a list of conversations.
+
+    Sets _cached_unread_count on each conversation so that
+    conversation.unread_count uses the cache instead of per-conversation queries.
+    """
+    if not conversations:
+        return
+
+    from sqlalchemy import func
+
+    conv_ids = [c.id for c in conversations]
+
+    # Single query: count unread guest messages per conversation
+    rows = db.session.query(
+        Message.conversation_id,
+        func.count(Message.id)
+    ).join(
+        Conversation, Message.conversation_id == Conversation.id
+    ).filter(
+        Message.conversation_id.in_(conv_ids),
+        Message.sender_type == 'guest'
+    ).filter(
+        db.or_(
+            Conversation.last_read_message_id.is_(None),
+            Message.id > Conversation.last_read_message_id
+        )
+    ).group_by(Message.conversation_id).all()
+
+    counts = {conv_id: count for conv_id, count in rows}
+
+    for c in conversations:
+        c._cached_unread_count = counts.get(c.id, 0)
+
+
 def init_db(app):
     """Initialize the database with the Flask app"""
     db.init_app(app)
@@ -358,15 +629,28 @@ def _populate_default_settings():
     """Populate default AI settings if not present"""
     defaults = [
         ('ai_response_tone', 'friendly_professional', 'Tone for AI-generated responses'),
-        ('auto_response_enabled', 'true', 'Enable automatic AI responses to guest messages'),
+        ('auto_response_enabled', 'false', 'Enable automatic AI responses to guest messages'),
         ('memory_extraction_enabled', 'true', 'Enable extraction of guest information from messages'),
         ('max_conversation_history', '10', 'Maximum number of messages to include in AI context'),
+        ('host_instructions', '', 'Custom instructions for AI responses (e.g. WiFi password, house rules, discounts)'),
+        ('master_ai_enabled', 'false', 'Master switch: when OFF, no auto-responses anywhere'),
+        ('auto_respond_new_conversations', 'false', 'Default auto-respond setting for newly created conversations'),
+        ('ai_temperature', '0.3', 'AI response temperature (0.0 = deterministic, 1.0 = creative)'),
+        ('ai_max_tokens', '1024', 'Maximum tokens per AI response (128-4096)'),
     ]
 
+    # Load all existing settings in one query
+    existing = {s.key: s for s in AISettings.query.all()}
+
     for key, value, description in defaults:
-        existing = AISettings.query.filter_by(key=key).first()
-        if not existing:
-            setting = AISettings(key=key, value=value, description=description)
-            db.session.add(setting)
+        if key not in existing:
+            db.session.add(AISettings(key=key, value=value, description=description))
+
+    # Ensure auto-respond settings are OFF for safe manual testing
+    safe_off_keys = ['master_ai_enabled', 'auto_respond_new_conversations', 'auto_response_enabled']
+    for key in safe_off_keys:
+        setting = existing.get(key)
+        if setting and setting.value == 'true':
+            setting.value = 'false'
 
     db.session.commit()
