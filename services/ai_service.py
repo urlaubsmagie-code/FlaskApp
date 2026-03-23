@@ -536,6 +536,10 @@ Return ONLY the JSON object:"""
         if not clean_latest.strip():
             clean_latest = latest_message.strip()
 
+        # Pre-scan: count consecutive trailing guest messages for dynamic system prompt
+        # Uses raw conversation_history (available from method params) since clean_history isn't built yet
+        unanswered_count = self._count_trailing_guest_messages(conversation_history)
+
         # --- System message: role, rules, and context ---
         now = datetime.utcnow()
         system_parts = [
@@ -553,11 +557,23 @@ Return ONLY the JSON object:"""
             "=== CONVERSATION FLOW ===",
             "The full conversation follows as user/assistant turns.",
             "Previous guest messages have ALREADY been answered by the host.",
-            f'The guest\'s MOST RECENT message is: "{clean_latest[:300]}"',
-            "Write a reply ONLY for this latest message above.",
+        ]
+
+        if unanswered_count >= 2:
+            system_parts.extend([
+                f"The guest has sent {unanswered_count} unanswered messages (numbered [1]-[{unanswered_count}] in their turn below).",
+                "Address ALL of them in a single reply.",
+            ])
+        else:
+            system_parts.extend([
+                f'The guest\'s MOST RECENT message is: "{clean_latest[:300]}"',
+                "Write a reply ONLY for this latest message above.",
+            ])
+
+        system_parts.extend([
             "Do NOT re-answer earlier questions that the host already addressed.",
             "===",
-        ]
+        ])
         if guest_language:
             system_parts.append(f"- The guest's preferred language is: {guest_language}.")
 
@@ -667,21 +683,33 @@ Return ONLY the JSON object:"""
                 collapsed.append(dict(msg))
 
         # Merge remaining consecutive same-role messages (Ollama requires alternating roles)
-        # For consecutive user messages: CONCATENATE all of them (preserves full context)
+        # For consecutive user messages: NUMBER them [1], [2], [3] when 2+ consecutive
         # For consecutive assistant messages: merge them together
         # Add short relative timestamps as prefixes for temporal awareness
         merged = []
+        # Track consecutive user messages for numbering
+        _consecutive_user_count = 0
+
         for msg in collapsed:
             time_prefix = f"[{msg['time_label']}] " if msg.get('time_label') else ""
             content_with_time = f"{time_prefix}{msg['content']}"
 
             if merged and merged[-1]['role'] == msg['role']:
                 if msg['role'] == 'user':
-                    # Concatenate guest messages so no context is lost
-                    merged[-1]['content'] += "\n" + content_with_time
+                    _consecutive_user_count += 1
+                    if _consecutive_user_count == 2:
+                        # Retroactively number the first message
+                        merged[-1]['content'] = f"[1] {merged[-1]['content']}"
+                    # Number this message
+                    numbered = f"[{_consecutive_user_count}] {content_with_time}"
+                    merged[-1]['content'] += "\n" + numbered
                 else:
                     merged[-1]['content'] += "\n\n" + content_with_time
             else:
+                if msg['role'] == 'user':
+                    _consecutive_user_count = 1
+                else:
+                    _consecutive_user_count = 0
                 merged.append({'role': msg['role'], 'content': content_with_time})
 
         # Ensure conversation starts with a user message (required by some models).
@@ -789,6 +817,17 @@ Return ONLY the JSON object:"""
         result = re.sub(r'\r\n', '\n', result)
 
         return result
+
+    @staticmethod
+    def _count_trailing_guest_messages(history: list) -> int:
+        """Count consecutive guest messages at the end of the history (no host/AI reply between them)."""
+        count = 0
+        for msg in reversed(history):
+            if msg.get('sender_type') == 'guest':
+                count += 1
+            else:
+                break
+        return count
 
     @staticmethod
     def _strip_think_tags(text: str) -> str:
