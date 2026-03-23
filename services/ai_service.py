@@ -538,7 +538,11 @@ Return ONLY the JSON object:"""
 
         # Pre-scan: count consecutive trailing guest messages for dynamic system prompt
         # Uses raw conversation_history (available from method params) since clean_history isn't built yet
-        unanswered_count = self._count_trailing_guest_messages(conversation_history)
+        # Cap at max_history since truncation may reduce what actually appears in chat turns
+        unanswered_count = min(
+            self._count_trailing_guest_messages(conversation_history),
+            max_history
+        )
 
         # --- System message: role, rules, and context ---
         now = datetime.utcnow()
