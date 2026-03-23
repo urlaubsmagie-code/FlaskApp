@@ -601,9 +601,18 @@ Return ONLY the JSON object:"""
                 system_parts.append(f"\n=== RESERVATION ===\n{res_text}\n===")
 
         if knowledge_entries:
-            kb_text = self._format_knowledge_entries(knowledge_entries)
-            if kb_text:
-                system_parts.append(f"\n=== HOST KNOWLEDGE BASE ===\n{kb_text}\n===")
+            regular_entries = [e for e in knowledge_entries if e.get('category') != 'escalation']
+            escalation_entries = [e for e in knowledge_entries if e.get('category') == 'escalation']
+
+            if regular_entries:
+                kb_text = self._format_knowledge_entries(regular_entries)
+                if kb_text:
+                    system_parts.append(f"\n=== HOST KNOWLEDGE BASE ===\n{kb_text}\n===")
+
+            if escalation_entries:
+                restricted_text = self._format_restricted_topics(escalation_entries)
+                if restricted_text:
+                    system_parts.append(f"\n=== RESTRICTED TOPICS ===\n{restricted_text}\n===")
 
         if host_instructions and host_instructions.strip():
             system_parts.append(f"\n=== HOST INSTRUCTIONS ===\n{host_instructions.strip()}\n===")
@@ -1051,6 +1060,23 @@ Return ONLY the JSON object:"""
             lines.append("(...additional entries omitted)")
 
         return "\n".join(lines).strip()
+
+    @staticmethod
+    def _format_restricted_topics(escalation_entries: List[Dict[str, Any]]) -> str:
+        """Format escalation KB entries as restricted topics for the AI prompt."""
+        if not escalation_entries:
+            return ""
+
+        lines = [
+            "You MUST NOT answer questions about these topics yourself.",
+            'Instead, reply with something like: "I\'ll check with my colleague and get back to you shortly."',
+            "(Always in the guest's language.)",
+            "",
+        ]
+        for entry in escalation_entries:
+            lines.append(f"- {entry['label']}")
+
+        return "\n".join(lines)
 
     def _format_conversation(self, messages: List[Dict[str, str]], max_messages: int = 10) -> str:
         """Format conversation history for the prompt"""

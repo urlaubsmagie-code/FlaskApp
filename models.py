@@ -510,7 +510,7 @@ class KnowledgeEntry(db.Model):
 
     VALID_CATEGORIES = [
         'general', 'checkin_checkout', 'nearby',
-        'house_rules', 'emergency', 'faq'
+        'house_rules', 'emergency', 'faq', 'escalation'
     ]
 
     id = db.Column(db.Integer, primary_key=True)
