@@ -571,6 +571,51 @@ Return ONLY the JSON object:"""
             logger.warning(f"[SUMMARY] Summary generation failed: {e}")
             return existing_summary
 
+    def extract_correction_topic(self, original: str, corrected: str) -> Optional[str]:
+        """Extract a 1-3 word topic label from a correction pair.
+
+        Args:
+            original: The original AI-generated text
+            corrected: The host's corrected version
+
+        Returns:
+            Topic string (1-3 words) or None on failure
+        """
+        try:
+            prompt = (
+                "Given this original AI response and the host's corrected version, "
+                "what is the topic of this correction in 1-3 words? "
+                "Respond with ONLY the topic words, nothing else.\n\n"
+                f"Original: {original[:500]}\n"
+                f"Corrected: {corrected[:500]}"
+            )
+
+            response = requests.post(
+                self.generate_endpoint,
+                json={
+                    'model': self.model,
+                    'prompt': prompt,
+                    'stream': False,
+                    'options': {
+                        'temperature': 0.1,
+                        'num_predict': 20
+                    }
+                },
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                topic = result.get('response', '').strip()
+                # Clean up: remove quotes, periods, limit length
+                topic = topic.strip('"\'.')
+                if topic and len(topic) <= 50:
+                    return topic
+            return None
+        except Exception as e:
+            logger.warning(f"Correction topic extraction failed: {e}")
+            return None
+
     # Tone mapping for AI prompt instructions
     TONE_INSTRUCTIONS = {
         'friendly_professional': "Be warm, helpful, and professional.",
