@@ -221,6 +221,9 @@ class Conversation(db.Model):
     escalated = db.Column(db.Boolean, default=False, server_default='0', nullable=False, index=True)
     escalated_at = db.Column(db.DateTime, nullable=True)
 
+    # Approval queue: skip the queue for this conversation
+    auto_approve = db.Column(db.Boolean, default=False, nullable=False)
+
     # Conversation summary for AI context (cached)
     ai_summary = db.Column(db.Text, nullable=True)
     ai_summary_through_id = db.Column(db.Integer, nullable=True)
@@ -265,6 +268,7 @@ class Conversation(db.Model):
             'user_id': self.user_id,
             'escalated': self.escalated,
             'escalated_at': self.escalated_at.isoformat() if self.escalated_at else None,
+            'auto_approve': self.auto_approve,
             'assigned_user_name': self.assigned_user.display_name if self.assigned_user else None,
             'property_id': self.property_id,
             'property_name': self.property.name if self.property else None,
@@ -338,6 +342,11 @@ class Message(db.Model):
     # Processing status
     is_processed = db.Column(db.Boolean, default=False, index=True)  # Has memory extraction run?
 
+    # Approval queue
+    approval_status = db.Column(db.String(20), nullable=True, index=True)  # NULL, 'pending', 'approved', 'rejected'
+    approved_at = db.Column(db.DateTime, nullable=True)
+    original_content = db.Column(db.Text, nullable=True)  # Deferred: populated by future "Learn from Corrections" feature (#8)
+
     # Timestamps
     sent_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -358,6 +367,9 @@ class Message(db.Model):
             'content': self.content,
             'platform_message_id': self.platform_message_id,
             'is_processed': self.is_processed,
+            'approval_status': self.approval_status,
+            'approved_at': self.approved_at.isoformat() if self.approved_at else None,
+            'original_content': self.original_content,
             'sent_at': self.sent_at.isoformat() if self.sent_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
@@ -647,6 +659,8 @@ def _populate_default_settings():
         ('auto_respond_new_conversations', 'false', 'Default auto-respond setting for newly created conversations'),
         ('ai_temperature', '0.3', 'AI response temperature (0.0 = deterministic, 1.0 = creative)'),
         ('ai_max_tokens', '1024', 'Maximum tokens per AI response (128-4096)'),
+        ('approval_queue_enabled', 'true', 'AI responses require host approval before sending'),
+        ('auto_approve_new_conversations', 'false', 'New conversations auto-approve AI responses (skip queue)'),
     ]
 
     # Load all existing settings in one query
