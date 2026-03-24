@@ -493,6 +493,81 @@ Return ONLY the JSON object:"""
         logger.info(f"[AI RESPONSE] guest='{guest_name}' | length={len(response)} chars | preview='{response[:80]}'")
         return response
 
+    def generate_conversation_summary(
+            self,
+            messages: List[Dict[str, str]],
+            existing_summary: Optional[str] = None
+    ) -> Optional[str]:
+        """Generate or update a conversation summary for AI context.
+
+        Args:
+            messages: Message dicts to summarize (each has 'sender_type', 'content', 'sent_at')
+            existing_summary: If provided, update this summary with the new messages
+
+        Returns:
+            Summary text (bullet points) or None on failure
+        """
+        if not messages:
+            return existing_summary
+
+        # Format messages for the prompt
+        sender_labels = {'guest': 'Guest', 'owner': 'Host', 'ai': 'Host'}
+        formatted = []
+        for msg in messages:
+            label = sender_labels.get(msg.get('sender_type', 'guest'), 'Guest')
+            content = self._strip_html(msg.get('content', ''))
+            content = self._strip_email_quotes(content)
+            if content.strip():
+                formatted.append(f"{label}: {content.strip()}")
+
+        if not formatted:
+            return existing_summary
+
+        formatted_messages = "\n".join(formatted)
+
+        system = "You are a summarization assistant. Be concise and factual."
+
+        if existing_summary:
+            prompt = (
+                "Here is an existing summary of an ongoing conversation "
+                "between a vacation rental host and a guest:\n\n"
+                f"{existing_summary}\n\n"
+                "New messages since the last summary:\n"
+                f"{formatted_messages}\n\n"
+                "Update the summary to include the new information.\n"
+                "Keep the same bullet-point format. Keep it under 300 words.\n"
+                "Write in the same language as the conversation.\n"
+                "Remove items that are no longer pending. "
+                "Add new decisions, promises, or open items."
+            )
+        else:
+            prompt = (
+                "Summarize this conversation between a vacation rental host and a guest.\n"
+                "Write concise bullet points covering:\n"
+                "- Key decisions made\n"
+                "- Promises or commitments by either party\n"
+                "- Questions that were answered (and the answers)\n"
+                "- Pending or open items\n\n"
+                "Keep it under 300 words. Write in the same language as the conversation.\n"
+                "Do NOT include greetings, pleasantries, or filler.\n\n"
+                f"Conversation:\n{formatted_messages}"
+            )
+
+        try:
+            response = self.generate_response(prompt, system=system)
+            if response:
+                response = self._strip_think_tags(response).strip()
+                if len(response) < 10:
+                    logger.warning(f"[SUMMARY] Generated summary too short ({len(response)} chars), discarding")
+                    return existing_summary
+                logger.info(f"[SUMMARY] Generated summary: {len(response)} chars")
+                return response
+            logger.warning("[SUMMARY] No response from Ollama for summary generation")
+            return existing_summary
+        except Exception as e:
+            logger.warning(f"[SUMMARY] Summary generation failed: {e}")
+            return existing_summary
+
     # Tone mapping for AI prompt instructions
     TONE_INSTRUCTIONS = {
         'friendly_professional': "Be warm, helpful, and professional.",
