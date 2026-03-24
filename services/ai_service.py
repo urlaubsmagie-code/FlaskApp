@@ -418,7 +418,8 @@ Return ONLY the JSON object:"""
             conversation_subject: Optional[str] = None,
             max_history: int = 10,
             reservation_info: Optional[Dict[str, Any]] = None,
-            knowledge_entries: Optional[List[Dict[str, Any]]] = None
+            knowledge_entries: Optional[List[Dict[str, Any]]] = None,
+            conversation_summary: Optional[str] = None
     ) -> Optional[str]:
         """
         Generate a personalized AI response for a guest.
@@ -435,6 +436,7 @@ Return ONLY the JSON object:"""
             conversation_subject: Email subject or conversation topic
             max_history: Maximum number of history messages to include
             reservation_info: Optional Smoobu reservation details
+            conversation_summary: Cached summary of older messages for context
 
         Returns:
             Generated response text or None on failure
@@ -449,7 +451,8 @@ Return ONLY the JSON object:"""
             conversation_subject=conversation_subject,
             max_history=max_history,
             reservation_info=reservation_info,
-            knowledge_entries=knowledge_entries
+            knowledge_entries=knowledge_entries,
+            conversation_summary=conversation_summary
         )
 
         # Log what the AI actually receives for debugging
@@ -587,7 +590,8 @@ Return ONLY the JSON object:"""
             conversation_subject: Optional[str] = None,
             max_history: int = 10,
             reservation_info: Optional[Dict[str, Any]] = None,
-            knowledge_entries: Optional[List[Dict[str, Any]]] = None
+            knowledge_entries: Optional[List[Dict[str, Any]]] = None,
+            conversation_summary: Optional[str] = None
     ) -> List[Dict[str, str]]:
         """Build chat messages array with proper roles for the Ollama chat API.
 
@@ -691,6 +695,13 @@ Return ONLY the JSON object:"""
 
         if host_instructions and host_instructions.strip():
             system_parts.append(f"\n=== HOST INSTRUCTIONS ===\n{host_instructions.strip()}\n===")
+
+        if conversation_summary:
+            system_parts.append(
+                f"\n=== CONVERSATION SUMMARY (older messages not shown below) ===\n"
+                f"{conversation_summary}\n"
+                f"=== The recent messages below continue from this summary. ==="
+            )
 
         messages.append({'role': 'system', 'content': "\n".join(system_parts)})
 
