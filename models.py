@@ -217,6 +217,10 @@ class Conversation(db.Model):
     # Sync watermark: timestamp of the newest synced message (for skipping old messages during platform sync)
     last_synced_message_at = db.Column(db.DateTime, nullable=True)
 
+    # Escalation tracking
+    escalated = db.Column(db.Boolean, default=False, server_default='0', nullable=False, index=True)
+    escalated_at = db.Column(db.DateTime, nullable=True)
+
     # User assignment (optional - NULL means visible to all)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
 
@@ -255,6 +259,8 @@ class Conversation(db.Model):
             'last_read_message_id': self.last_read_message_id,
             'smoobu_reservation_id': self.smoobu_reservation_id,
             'user_id': self.user_id,
+            'escalated': self.escalated,
+            'escalated_at': self.escalated_at.isoformat() if self.escalated_at else None,
             'assigned_user_name': self.assigned_user.display_name if self.assigned_user else None,
             'property_id': self.property_id,
             'property_name': self.property.name if self.property else None,
