@@ -163,11 +163,17 @@ class MessageRouter:
             # conversation.auto_respond = per-conversation toggle set by user
             should_auto_respond = master_ai and (auto_respond or conversation.auto_respond) and conversation.ai_enabled
             if should_auto_respond:
-                ai_response = self._generate_ai_response(conversation, message)
-                if ai_response:
-                    result['ai_response'] = ai_response['content']
-                    result['ai_response_id'] = ai_response['message_id']
-                    logger.info(f"AI response generated: {ai_response['message_id']}")
+                ai_result = self._generate_ai_response(conversation, message)
+                if ai_result:
+                    if ai_result.get('approval_status') == 'pending':
+                        result['ai_response'] = None
+                        result['ai_response_id'] = None
+                        result['pending_approval'] = True
+                        logger.info(f"AI response saved as pending draft: {ai_result['message_id']}")
+                    else:
+                        result['ai_response'] = ai_result.get('content')
+                        result['ai_response_id'] = ai_result.get('message_id')
+                        logger.info(f"AI response generated: {ai_result['message_id']}")
 
             result['success'] = True
 
@@ -347,6 +353,7 @@ class MessageRouter:
 
         if not conversation:
             auto_respond_default = AISettings.get('auto_respond_new_conversations', 'true') == 'true'
+            auto_approve_default = AISettings.get('auto_approve_new_conversations', 'false') == 'true'
             conversation = Conversation(
                 guest_id=guest_id,
                 platform=platform,
@@ -356,6 +363,7 @@ class MessageRouter:
                 status='active',
                 ai_enabled=True,
                 auto_respond=auto_respond_default,
+                auto_approve=auto_approve_default,
                 is_read=False
             )
             db.session.add(conversation)
@@ -437,6 +445,16 @@ class MessageRouter:
                         f"'{trigger_message.content[:50]}' — skipping AI response")
             return None
 
+        # Delete any existing pending draft for this conversation
+        existing_pending = Message.query.filter_by(
+            conversation_id=conversation.id,
+            approval_status='pending'
+        ).first()
+        if existing_pending:
+            db.session.delete(existing_pending)
+            db.session.commit()
+            logger.info(f"Replaced existing pending draft (message_id={existing_pending.id})")
+
         # Read AI settings from DB
         tone = AISettings.get('ai_response_tone', 'friendly_professional')
         host_instructions = AISettings.get('host_instructions', '')
@@ -492,9 +510,11 @@ class MessageRouter:
                         logger.warning(f"[SUMMARY] Failed to update summary for conversation {conversation.id}: {e}")
                         # Proceed with existing cached summary (or None)
 
-        # Get conversation history
+        # Get conversation history (exclude pending/rejected drafts)
         messages = Message.query.filter_by(
             conversation_id=conversation.id
+        ).filter(
+            db.or_(Message.approval_status.is_(None), Message.approval_status == 'approved')
         ).order_by(Message.sent_at.desc()).limit(max_history).all()
         messages.reverse()
 
@@ -569,72 +589,88 @@ class MessageRouter:
         conversation.updated_at = datetime.utcnow()
         db.session.commit()
 
-        # Send via Smoobu for smoobu conversations (auto-respond flow)
-        smoobu_sent = False
-        if conversation.platform == 'smoobu' and conversation.auto_respond and conversation.smoobu_reservation_id:
-            try:
-                from .smoobu_service import get_smoobu_service
-                smoobu = get_smoobu_service()
-                if smoobu and smoobu.is_configured():
-                    send_result = smoobu.send_message(conversation.smoobu_reservation_id, response_text)
-                    smoobu_sent = bool(send_result)
-                    if smoobu_sent:
-                        logger.info(f"Auto-respond Smoobu message sent for conversation {conversation.id}")
-                    else:
-                        logger.warning(f"Failed to send auto-respond Smoobu message for conversation {conversation.id}")
-            except Exception as e:
-                logger.error(f"Error sending auto-respond Smoobu message: {e}")
+        # Check if this should be a pending draft
+        approval_queue_enabled = AISettings.get('approval_queue_enabled', 'true') == 'true'
 
-        # Send via Gmail for email conversations (auto-respond flow)
-        email_sent = False
-        if conversation.platform == 'email' and conversation.auto_respond:
-            try:
-                from .gmail_service import get_gmail_service
-                gmail = get_gmail_service()
-                if gmail.is_authenticated():
-                    guest = conversation.guest
-                    send_result = gmail.send_email(
-                        to=guest.email,
-                        subject=conversation.subject or 'Re: Your inquiry',
-                        body=response_text,
-                        thread_id=conversation.platform_id,
-                        reply_to_message_id=trigger_message.platform_message_id
-                    )
-                    email_sent = bool(send_result)
-                    if email_sent:
-                        logger.info(f"Auto-respond email sent for conversation {conversation.id}")
-                    else:
-                        logger.warning(f"Failed to send auto-respond email for conversation {conversation.id}")
-            except Exception as e:
-                logger.error(f"Error sending auto-respond email: {e}")
-
-        # Check for escalation response — AFTER platform send, so the holding
-        # message reaches the guest before we pause auto-respond
-        if self._is_escalation_response(response_text):
-            conversation.escalated = True
-            conversation.escalated_at = datetime.utcnow()
-            conversation.auto_respond = False
+        if approval_queue_enabled and not conversation.auto_approve:
+            # Save as pending draft — do NOT send
+            ai_message.approval_status = 'pending'
             db.session.commit()
-            logger.info(f"[ESCALATION] Conversation {conversation.id} escalated — auto-respond paused")
+            logger.info(f"AI response saved as pending draft (message_id={ai_message.id})")
+            return {
+                'content': response_text,
+                'message_id': ai_message.id,
+                'approval_status': 'pending'
+            }
+        else:
+            # Auto-approve path: send immediately (existing behavior)
 
-            # Send escalation push notification
-            try:
-                from .push_service import get_push_service
-                push = get_push_service()
-                if push:
-                    guest = conversation.guest
-                    push.notify_escalation(
-                        conversation,
-                        guest.name or guest.email or 'Guest'
-                    )
-            except Exception as e:
-                logger.warning(f"Escalation push notification failed: {e}")
+            # Send via Smoobu for smoobu conversations (auto-respond flow)
+            smoobu_sent = False
+            if conversation.platform == 'smoobu' and conversation.auto_respond and conversation.smoobu_reservation_id:
+                try:
+                    from .smoobu_service import get_smoobu_service
+                    smoobu = get_smoobu_service()
+                    if smoobu and smoobu.is_configured():
+                        send_result = smoobu.send_message(conversation.smoobu_reservation_id, response_text)
+                        smoobu_sent = bool(send_result)
+                        if smoobu_sent:
+                            logger.info(f"Auto-respond Smoobu message sent for conversation {conversation.id}")
+                        else:
+                            logger.warning(f"Failed to send auto-respond Smoobu message for conversation {conversation.id}")
+                except Exception as e:
+                    logger.error(f"Error sending auto-respond Smoobu message: {e}")
 
-        return {
-            'content': response_text,
-            'message_id': ai_message.id,
-            'email_sent': email_sent
-        }
+            # Send via Gmail for email conversations (auto-respond flow)
+            email_sent = False
+            if conversation.platform == 'email' and conversation.auto_respond:
+                try:
+                    from .gmail_service import get_gmail_service
+                    gmail = get_gmail_service()
+                    if gmail.is_authenticated():
+                        guest = conversation.guest
+                        send_result = gmail.send_email(
+                            to=guest.email,
+                            subject=conversation.subject or 'Re: Your inquiry',
+                            body=response_text,
+                            thread_id=conversation.platform_id,
+                            reply_to_message_id=trigger_message.platform_message_id
+                        )
+                        email_sent = bool(send_result)
+                        if email_sent:
+                            logger.info(f"Auto-respond email sent for conversation {conversation.id}")
+                        else:
+                            logger.warning(f"Failed to send auto-respond email for conversation {conversation.id}")
+                except Exception as e:
+                    logger.error(f"Error sending auto-respond email: {e}")
+
+            # Check for escalation response — AFTER platform send, so the holding
+            # message reaches the guest before we pause auto-respond
+            if self._is_escalation_response(response_text):
+                conversation.escalated = True
+                conversation.escalated_at = datetime.utcnow()
+                conversation.auto_respond = False
+                db.session.commit()
+                logger.info(f"[ESCALATION] Conversation {conversation.id} escalated — auto-respond paused")
+
+                # Send escalation push notification
+                try:
+                    from .push_service import get_push_service
+                    push = get_push_service()
+                    if push:
+                        guest = conversation.guest
+                        push.notify_escalation(
+                            conversation,
+                            guest.name or guest.email or 'Guest'
+                        )
+                except Exception as e:
+                    logger.warning(f"Escalation push notification failed: {e}")
+
+            return {
+                'content': response_text,
+                'message_id': ai_message.id,
+                'email_sent': email_sent
+            }
 
     def create_test_conversation(
             self,
