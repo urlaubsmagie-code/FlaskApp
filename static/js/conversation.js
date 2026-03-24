@@ -20,6 +20,9 @@ const draftKey = 'chatbot_draft_' + conversationId;
 let approvalQueueEnabled = cfg.approvalQueueEnabled || false;
 let autoApprove = cfg.autoApprove || false;
 
+// Pending correction: stores original AI text when host edits a draft
+let pendingCorrectionOriginal = null;
+
 // Load properties into the selector
 function loadPropertySelector() {
     fetch('/chatbot/api/properties')
@@ -321,7 +324,10 @@ function sendMessage(e) {
     const input = document.getElementById('messageInput');
     const content = input.value.trim();
 
-    if (!content) return;
+    if (!content) {
+        pendingCorrectionOriginal = null;
+        return;
+    }
 
     const tempId = Date.now();
     addMessageToUI({ id: tempId, content: content, sent_at: new Date().toISOString() }, 'owner');
@@ -331,20 +337,27 @@ function sendMessage(e) {
     localStorage.removeItem(draftKey);
     scrollToBottom();
 
+    // Capture and clear correction tracking before dispatching
+    const correctionOriginal = pendingCorrectionOriginal;
+    pendingCorrectionOriginal = null;
+
     if (conversationPlatform === 'email' && gmailConnected) {
-        sendViaGmail(content, tempId);
+        sendViaGmail(content, tempId, correctionOriginal);
     } else if (conversationPlatform === 'smoobu' && smoobuConnected) {
-        sendViaSmoobu(content, tempId);
+        sendViaSmoobu(content, tempId, correctionOriginal);
     } else {
-        sendLocal(content, tempId);
+        sendLocal(content, tempId, correctionOriginal);
     }
 }
 
-function sendLocal(content, tempId) {
+function sendLocal(content, tempId, correctionOriginal) {
     fetch(`/chatbot/api/conversations/${conversationId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: content })
+        body: JSON.stringify({
+            content: content,
+            ...(correctionOriginal && { original_ai_content: correctionOriginal })
+        })
     })
     .then(response => response.json())
     .then(data => {
@@ -361,16 +374,16 @@ function sendLocal(content, tempId) {
     });
 }
 
-function sendViaGmail(content, tempId) {
+function sendViaGmail(content, tempId, correctionOriginal) {
     fetch(`/chatbot/api/gmail/reply/${conversationId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content })
+        body: JSON.stringify({ message: content, ...(correctionOriginal && { original_ai_content: correctionOriginal }) })
     })
     .then(response => {
         if (response.status === 401) {
             console.warn('Gmail disconnected, falling back to local send');
-            sendLocal(content, tempId);
+            sendLocal(content, tempId, correctionOriginal);
             return null;
         }
         return response.json();
@@ -379,7 +392,7 @@ function sendViaGmail(content, tempId) {
         if (!data) return;
         if (data.error) {
             console.warn('Gmail send failed, falling back to local:', data.error);
-            sendLocal(content, tempId);
+            sendLocal(content, tempId, correctionOriginal);
             return;
         }
         if (data.message_id) {
@@ -392,15 +405,15 @@ function sendViaGmail(content, tempId) {
     })
     .catch(err => {
         console.error('Gmail send error, falling back to local:', err);
-        sendLocal(content, tempId);
+        sendLocal(content, tempId, correctionOriginal);
     });
 }
 
-function sendViaSmoobu(content, tempId) {
+function sendViaSmoobu(content, tempId, correctionOriginal) {
     fetch(`/chatbot/api/smoobu/reply/${conversationId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content })
+        body: JSON.stringify({ message: content, ...(correctionOriginal && { original_ai_content: correctionOriginal }) })
     })
     .then(response => {
         if (!response.ok && response.status !== 200) {
@@ -411,7 +424,7 @@ function sendViaSmoobu(content, tempId) {
     .then(data => {
         if (data.error) {
             console.warn('Smoobu send failed, falling back to local:', data.error);
-            sendLocal(content, tempId);
+            sendLocal(content, tempId, correctionOriginal);
             return;
         }
         if (data.message_id) {
@@ -424,7 +437,7 @@ function sendViaSmoobu(content, tempId) {
     })
     .catch(err => {
         console.error('Smoobu send error, falling back to local:', err);
-        sendLocal(content, tempId);
+        sendLocal(content, tempId, correctionOriginal);
     });
 }
 
@@ -467,6 +480,7 @@ function removeTypingIndicator() {
 }
 
 function generateAIResponse() {
+    pendingCorrectionOriginal = null;
     const btn = document.getElementById('generateAiBtn');
     const suggestBtn = document.getElementById('suggestAiBtn');
     btn.disabled = true;
@@ -524,6 +538,7 @@ function generateAIResponse() {
 }
 
 function suggestAIResponse() {
+    pendingCorrectionOriginal = null;
     const btn = document.getElementById('suggestAiBtn');
     const generateBtn = document.getElementById('generateAiBtn');
     const input = document.getElementById('messageInput');
@@ -671,6 +686,7 @@ function resolveEscalation() {
 // =========================================================================
 
 async function approveMessage(messageId) {
+    pendingCorrectionOriginal = null;
     try {
         const response = await fetch(`/chatbot/api/messages/${messageId}/approve`, {
             method: 'POST',
@@ -700,6 +716,9 @@ async function approveMessage(messageId) {
 async function editMessage(messageId) {
     const msgEl = document.querySelector(`[data-message-id="${messageId}"]`);
     const content = msgEl?.querySelector('.message-text')?.textContent || '';
+
+    // Save original AI text for correction tracking
+    pendingCorrectionOriginal = content;
 
     const textarea = document.getElementById('messageInput');
     if (textarea) {
