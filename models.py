@@ -221,6 +221,10 @@ class Conversation(db.Model):
     escalated = db.Column(db.Boolean, default=False, server_default='0', nullable=False, index=True)
     escalated_at = db.Column(db.DateTime, nullable=True)
 
+    # Conversation summary for AI context (cached)
+    ai_summary = db.Column(db.Text, nullable=True)
+    ai_summary_through_id = db.Column(db.Integer, nullable=True)
+
     # User assignment (optional - NULL means visible to all)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
 
