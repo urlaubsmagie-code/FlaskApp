@@ -176,7 +176,9 @@ class FilterState {
         cards.forEach(card => {
             const matchesPlatform = !this.state.platform || card.dataset.platform === this.state.platform;
             const matchesStatus = !this.state.status
-                || (this.state.status === 'escalated' ? card.dataset.escalated === 'true' : card.dataset.status === this.state.status);
+                || (this.state.status === 'escalated' ? card.dataset.escalated === 'true'
+                    : this.state.status === 'pending_approval' ? card.dataset.hasPendingApproval === 'true'
+                    : card.dataset.status === this.state.status);
             const matchesGuest = !this.state.guest || card.dataset.guestId === this.state.guest;
             const matchesSearch = !searchTerm || card.textContent.toLowerCase().includes(searchTerm);
 

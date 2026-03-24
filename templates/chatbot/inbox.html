@@ -63,6 +63,7 @@
             <button class="filter-btn" data-filter-status="pending_owner" data-i18n="inbox.filter.pending">Ausstehend</button>
             <button class="filter-btn" data-filter-status="closed" data-i18n="inbox.filter.closed">Geschlossen</button>
             <button class="filter-btn" data-filter-status="escalated" data-i18n="inbox.filter.escalated">Eskaliert</button>
+            <button class="filter-btn" data-filter-status="pending_approval" data-i18n="inbox.filter.pendingApproval">KI-Freigabe</button>
         </div>
 
         <!-- Guest Filter Dropdown -->
@@ -157,6 +158,6 @@
 </div>
 
 <script src="{{ url_for('chatbot.static', filename='js/polling.js') }}?v=8"></script>
-<script src="{{ url_for('chatbot.static', filename='js/filter-state.js') }}?v=9"></script>
-<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=13"></script>
+<script src="{{ url_for('chatbot.static', filename='js/filter-state.js') }}?v=10"></script>
+<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=14"></script>
 {% endblock %}

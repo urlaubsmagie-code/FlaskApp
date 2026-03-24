@@ -3009,6 +3009,68 @@ dialog.merge-modal {
     font-size: 0.65rem;
 }
 
+/* Pending Approval */
+.message.pending-approval .message-content {
+    background: var(--pending-approval-bg, #fff3cd);
+    border: 2px solid var(--pending-approval-border, #ffc107);
+    border-radius: 12px;
+    padding: 12px;
+}
+
+:root[data-theme="dark"] .message.pending-approval .message-content {
+    --pending-approval-bg: #3d2e00;
+    --pending-approval-border: #ffc107;
+}
+
+.pending-approval-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--pending-approval-label, #856404);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+:root[data-theme="dark"] .pending-approval-label {
+    color: #ffc107;
+}
+
+.pending-approval-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--pending-approval-border, #ffc107);
+    flex-wrap: wrap;
+}
+
+.pending-approval-actions .btn {
+    font-size: 0.8rem;
+    padding: 4px 12px;
+}
+
+.badge-approval {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background-color: #ffc107;
+    color: #212529;
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.badge-approval i {
+    font-size: 0.6rem;
+}
+
+#autoApproveToggle.auto-approve-active {
+    background-color: var(--success-color, #28a745);
+    color: white;
+}
+
 /* AI auto-respond status indicator */
 .ai-badge.auto-respond-on {
     color: var(--success-color, #27ae60);

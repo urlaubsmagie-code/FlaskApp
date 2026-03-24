@@ -17,6 +17,8 @@ const gmailConnected = cfg.gmailConnected;
 const smoobuConnected = cfg.smoobuConnected;
 const currentPropertyId = cfg.currentPropertyId;
 const draftKey = 'chatbot_draft_' + conversationId;
+let approvalQueueEnabled = cfg.approvalQueueEnabled || false;
+let autoApprove = cfg.autoApprove || false;
 
 // Load properties into the selector
 function loadPropertySelector() {
@@ -488,12 +490,17 @@ function generateAIResponse() {
         if (data.error) {
             showAiError(data.error);
         } else {
-            if (data.id) {
-                knownMessageIds.add(data.id);
+            // Handle approval queue response
+            const msg = data.message || data;
+            if (msg.id) {
+                knownMessageIds.add(msg.id);
             }
-            addMessageToUI(data, 'ai');
+            addMessageToUI(msg, 'ai');
             scrollToBottom();
-            if (conversationPlatform === 'email') {
+
+            if (data.approval_status === 'pending') {
+                showNotification(i18n.t('conversation.approval.created'), 'info');
+            } else if (conversationPlatform === 'email') {
                 if (data.email_sent) {
                     showNotification(i18n.t('conversation.ai.emailSent') || 'AI response sent via email', 'success');
                 } else if (gmailConnected) {
@@ -512,7 +519,7 @@ function generateAIResponse() {
         activeAiController = null;
         btn.disabled = !aiEnabled;
         suggestBtn.disabled = !aiEnabled;
-        btn.innerHTML = `<i class="fas fa-magic"></i> <span data-i18n="conversation.ai.generate">${i18n.t('conversation.ai.generate')}</span>`;
+        btn.innerHTML = `<i class="fas fa-magic"></i> <span data-i18n="conversation.ai.create">${i18n.t('conversation.ai.create')}</span>`;
     });
 }
 
@@ -659,6 +666,103 @@ function resolveEscalation() {
     .catch(err => console.error('Failed to resolve escalation:', err));
 }
 
+// =========================================================================
+// Approval Queue Functions
+// =========================================================================
+
+async function approveMessage(messageId) {
+    try {
+        const response = await fetch(`/chatbot/api/messages/${messageId}/approve`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        const data = await response.json();
+        if (data.success) {
+            const msgEl = document.querySelector(`[data-message-id="${messageId}"]`);
+            if (msgEl) {
+                msgEl.classList.remove('pending-approval');
+                const label = msgEl.querySelector('.pending-approval-label');
+                if (label) label.remove();
+                const actions = msgEl.querySelector('.pending-approval-actions');
+                if (actions) actions.remove();
+            }
+            showNotification(i18n.t('conversation.approval.sent'), 'success');
+
+            if (!data.email_sent && !data.smoobu_sent) {
+                showNotification(i18n.t('conversation.approval.sendWarning'), 'warning');
+            }
+        }
+    } catch (error) {
+        showNotification(i18n.t('conversation.approval.error'), 'error');
+    }
+}
+
+async function editMessage(messageId) {
+    const msgEl = document.querySelector(`[data-message-id="${messageId}"]`);
+    const content = msgEl?.querySelector('.message-text')?.textContent || '';
+
+    const textarea = document.getElementById('messageInput');
+    if (textarea) {
+        textarea.value = content;
+        textarea.focus();
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+    }
+
+    try {
+        await fetch(`/chatbot/api/messages/${messageId}/reject`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        if (msgEl) msgEl.remove();
+    } catch (error) {
+        console.error('Failed to remove pending draft:', error);
+    }
+}
+
+async function rejectMessage(messageId) {
+    try {
+        const response = await fetch(`/chatbot/api/messages/${messageId}/reject`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        const data = await response.json();
+        if (data.success) {
+            const msgEl = document.querySelector(`[data-message-id="${messageId}"]`);
+            if (msgEl) msgEl.remove();
+            showNotification(i18n.t('conversation.approval.rejected'), 'info');
+        }
+    } catch (error) {
+        showNotification(i18n.t('conversation.approval.error'), 'error');
+    }
+}
+
+async function toggleAutoApprove() {
+    try {
+        const response = await fetch(`/chatbot/api/conversations/${conversationId}/toggle-auto-approve`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        const data = await response.json();
+        autoApprove = data.auto_approve;
+        updateAutoApproveButton(autoApprove);
+    } catch (error) {
+        showNotification(i18n.t('conversation.approval.toggleError'), 'error');
+    }
+}
+
+function updateAutoApproveButton(isEnabled) {
+    const btn = document.getElementById('autoApproveToggle');
+    if (btn) {
+        btn.classList.toggle('auto-approve-active', isEnabled);
+        const status = document.getElementById('autoApproveStatus');
+        if (status) status.textContent = isEnabled ? 'AN' : 'AUS';
+        btn.title = isEnabled
+            ? i18n.t('conversation.autoApprove.on')
+            : i18n.t('conversation.autoApprove.off');
+    }
+}
+
 /**
  * Add a message to the UI
  */
@@ -697,6 +801,30 @@ function addMessageToUI(message, senderType) {
             <div class="message-text">${escapeHtml(message.content || '')}</div>
         </div>
     `;
+
+    // Pending approval styling
+    if (message.approval_status === 'pending') {
+        messageDiv.classList.add('pending-approval');
+        const label = document.createElement('div');
+        label.className = 'pending-approval-label';
+        label.textContent = i18n.t('conversation.approval.waiting');
+        messageDiv.querySelector('.message-content').prepend(label);
+
+        const actions = document.createElement('div');
+        actions.className = 'pending-approval-actions';
+        actions.innerHTML = `
+            <button class="btn btn-sm btn-success" onclick="approveMessage(${message.id})">
+                <i class="fas fa-check"></i> ${i18n.t('conversation.approval.send')}
+            </button>
+            <button class="btn btn-sm btn-secondary" onclick="editMessage(${message.id})">
+                <i class="fas fa-edit"></i> ${i18n.t('conversation.approval.edit')}
+            </button>
+            <button class="btn btn-sm btn-outline-danger" onclick="rejectMessage(${message.id})">
+                <i class="fas fa-times"></i> ${i18n.t('conversation.approval.reject')}
+            </button>
+        `;
+        messageDiv.querySelector('.message-content').appendChild(actions);
+    }
 
     const dateKey = getDateKey(sentAt);
     if (dateKey && !knownDateDividers.has(dateKey)) {
@@ -886,6 +1014,12 @@ document.addEventListener('DOMContentLoaded', function() {
     initGmailSync();
     initSmoobuSync();
     checkMasterAiSwitch();
+
+    // Show auto-approve toggle if approval queue is enabled
+    if (approvalQueueEnabled) {
+        document.getElementById('autoApproveToggle').style.display = '';
+        updateAutoApproveButton(autoApprove);
+    }
 });
 
 // --- Mobile overflow menu ---

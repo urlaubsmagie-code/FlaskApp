@@ -377,7 +377,33 @@ const translations = {
         // Conversation escalation
         'conversation.escalation.resolve': 'Als gelöst markieren',
         'conversation.escalation.banner': 'Dieses Gespräch wurde eskaliert und benötigt Ihre Aufmerksamkeit.',
-        'conversation.escalation.resolved': 'Eskalation gelöst'
+        'conversation.escalation.resolved': 'Eskalation gelöst',
+
+        // Approval Queue
+        'conversation.approval.waiting': 'Wartet auf Freigabe',
+        'conversation.approval.send': 'Absenden',
+        'conversation.approval.edit': 'Bearbeiten',
+        'conversation.approval.reject': 'Ablehnen',
+        'conversation.approval.sent': 'Nachricht gesendet',
+        'conversation.approval.sendWarning': 'Genehmigt, aber Versand fehlgeschlagen',
+        'conversation.approval.rejected': 'Entwurf abgelehnt',
+        'conversation.approval.created': 'KI-Entwurf erstellt — wartet auf Freigabe',
+        'conversation.approval.error': 'Fehler beim Verarbeiten',
+        'conversation.approval.toggleError': 'Fehler beim Umschalten',
+        'conversation.autoApprove': 'Auto-Freigabe',
+        'conversation.autoApprove.on': 'Auto-Freigabe: AN',
+        'conversation.autoApprove.off': 'Auto-Freigabe: AUS',
+        'conversation.ai.create': 'KI-Antwort erstellen',
+        'inbox.badge.pendingApproval': 'KI-Freigabe',
+        'inbox.filter.pendingApproval': 'KI-Freigabe',
+        'settings.ai.approvalQueue': 'KI-Freigabe',
+        'settings.ai.approvalQueue.desc': 'KI-Antworten müssen vor dem Versand genehmigt werden',
+        'settings.ai.autoApproveNew': 'Auto-Freigabe für neue Konversationen',
+        'settings.ai.autoApproveNew.desc': 'Neue Konversationen starten mit Auto-Freigabe',
+        'settings.ai.bulkAutoApprove': 'Auto-Freigabe für alle Chats',
+        'settings.ai.bulkAutoApprove.desc': 'Auto-Freigabe für alle aktiven Konversationen',
+        'settings.ai.bulkAutoApprove.enable': 'Für alle aktivieren',
+        'settings.ai.bulkAutoApprove.disable': 'Für alle deaktivieren'
     },
 
     en: {
@@ -753,7 +779,33 @@ const translations = {
         // Conversation escalation
         'conversation.escalation.resolve': 'Mark as Resolved',
         'conversation.escalation.banner': 'This conversation has been escalated and needs your attention.',
-        'conversation.escalation.resolved': 'Escalation resolved'
+        'conversation.escalation.resolved': 'Escalation resolved',
+
+        // Approval Queue
+        'conversation.approval.waiting': 'Waiting for approval',
+        'conversation.approval.send': 'Send',
+        'conversation.approval.edit': 'Edit',
+        'conversation.approval.reject': 'Reject',
+        'conversation.approval.sent': 'Message sent',
+        'conversation.approval.sendWarning': 'Approved, but sending failed',
+        'conversation.approval.rejected': 'Draft rejected',
+        'conversation.approval.created': 'AI draft created — waiting for approval',
+        'conversation.approval.error': 'Error processing',
+        'conversation.approval.toggleError': 'Toggle error',
+        'conversation.autoApprove': 'Auto-approve',
+        'conversation.autoApprove.on': 'Auto-approve: ON',
+        'conversation.autoApprove.off': 'Auto-approve: OFF',
+        'conversation.ai.create': 'Create AI response',
+        'inbox.badge.pendingApproval': 'AI Approval',
+        'inbox.filter.pendingApproval': 'AI Approval',
+        'settings.ai.approvalQueue': 'AI Approval',
+        'settings.ai.approvalQueue.desc': 'AI responses must be approved before sending',
+        'settings.ai.autoApproveNew': 'Auto-approve for new conversations',
+        'settings.ai.autoApproveNew.desc': 'New conversations start with auto-approve enabled',
+        'settings.ai.bulkAutoApprove': 'Auto-approve for all chats',
+        'settings.ai.bulkAutoApprove.desc': 'Toggle auto-approve for all active conversations',
+        'settings.ai.bulkAutoApprove.enable': 'Enable for all',
+        'settings.ai.bulkAutoApprove.disable': 'Disable for all'
     }
 };
 

@@ -184,6 +184,8 @@ def conversation_view(conversation_id):
         except Exception:
             pass
 
+    approval_queue_enabled = AISettings.get('approval_queue_enabled', 'true') != 'false'
+
     return render_template(
         'chatbot/conversation.html',
         conversation=conversation,
@@ -192,7 +194,8 @@ def conversation_view(conversation_id):
         gmail_connected=gmail_connected,
         smoobu_connected=smoobu_connected,
         has_older=has_older,
-        total_messages=total_messages
+        total_messages=total_messages,
+        approval_queue_enabled=approval_queue_enabled
     )
 
 
@@ -2310,6 +2313,16 @@ def api_update_conversation_status(conversation_id):
         return jsonify({'error': f'Invalid status. Must be one of: {valid_statuses}'}), 400
 
     conversation.status = data['status']
+
+    # Auto-reject pending drafts when closing a conversation
+    if data['status'] == 'closed':
+        pending_messages = Message.query.filter_by(
+            conversation_id=conversation_id,
+            approval_status='pending'
+        ).all()
+        for msg in pending_messages:
+            msg.approval_status = 'rejected'
+
     db.session.commit()
 
     return jsonify({'success': True, 'status': conversation.status})

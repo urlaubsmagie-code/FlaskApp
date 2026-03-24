@@ -52,6 +52,7 @@ function createConversationCard(conv) {
     card.dataset.isRead = conv.is_read ? 'true' : 'false';
     card.dataset.escalated = conv.escalated ? 'true' : 'false';
     card.dataset.autoRespond = conv.auto_respond ? 'true' : 'false';
+    card.dataset.hasPendingApproval = conv.has_pending_approval ? 'true' : 'false';
     if (conv.escalated) card.classList.add('escalated');
 
     const guestName = (conv.guest && (conv.guest.name || conv.guest.email)) || 'Unknown Guest';
@@ -68,6 +69,9 @@ function createConversationCard(conv) {
         : '';
     const escalationLabel = conv.escalated
         ? `<span class="escalation-badge"><i class="fas fa-exclamation-triangle"></i> ${i18n.t('inbox.needsAttention') || 'Braucht Aufmerksamkeit'}</span>`
+        : '';
+    const approvalLabel = conv.has_pending_approval
+        ? `<span class="badge badge-approval"><i class="fas fa-clock"></i> ${i18n.t('inbox.badge.pendingApproval') || 'KI-Freigabe'}</span>`
         : '';
     const srText = !conv.is_read ? '<span class="sr-only">Unread</span>' : '';
 
@@ -88,6 +92,7 @@ function createConversationCard(conv) {
             <span class="platform-badge ${conv.platform}">${conv.platform.charAt(0).toUpperCase() + conv.platform.slice(1)}</span>
             ${aiBadge}
             ${escalationLabel}
+            ${approvalLabel}
             <span class="status-badge ${conv.status}">${formatStatus(conv.status)}</span>
             ${conv.status !== 'closed' ? `<button class="btn-close-conv" onclick="closeConversation(event, ${conv.id})" title="${i18n.t('inbox.closeChat') || 'Gespräch beenden'}"><i class="fas fa-times"></i></button>` : ''}
         </div>
@@ -102,6 +107,7 @@ function updateConversationCard(card, conv) {
     card.dataset.isRead = conv.is_read ? 'true' : 'false';
     card.dataset.escalated = conv.escalated ? 'true' : 'false';
     card.dataset.autoRespond = conv.auto_respond ? 'true' : 'false';
+    card.dataset.hasPendingApproval = conv.has_pending_approval ? 'true' : 'false';
     card.classList.toggle('escalated', !!conv.escalated);
 
     if (conv.is_read) {
@@ -162,6 +168,17 @@ function updateConversationCard(card, conv) {
         metaEl.insertBefore(badge, statusEl);
     } else if (!conv.escalated && existingEscalation) {
         existingEscalation.remove();
+    }
+
+    // Update pending approval badge
+    const existingApprovalBadge = card.querySelector('.badge-approval');
+    if (conv.has_pending_approval && !existingApprovalBadge) {
+        const approvalBadge = document.createElement('span');
+        approvalBadge.className = 'badge badge-approval';
+        approvalBadge.innerHTML = `<i class="fas fa-clock"></i> ${i18n.t('inbox.badge.pendingApproval') || 'KI-Freigabe'}`;
+        metaEl.insertBefore(approvalBadge, statusEl);
+    } else if (!conv.has_pending_approval && existingApprovalBadge) {
+        existingApprovalBadge.remove();
     }
 
     // Update AI badge auto-respond state
