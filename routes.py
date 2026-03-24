@@ -3,6 +3,7 @@ Routes for ChatBotAI
 Defines all URL endpoints for the messaging system
 """
 
+import difflib
 import logging
 import threading
 
@@ -18,6 +19,63 @@ logger = logging.getLogger(__name__)
 from .models import db, User, Guest, GuestDetail, Conversation, Message, Property, AISettings, ReplyTemplate, KnowledgeEntry, preload_last_messages, preload_unread_counts
 from .services.ai_service import get_ai_service
 from .services.memory_service import get_memory_service
+
+
+# ============================================================================
+# HELPERS
+# ============================================================================
+
+def _store_correction_if_needed(original_ai_content, corrected_content, conversation):
+    """Compare original AI text with host's corrected version and store as correction if meaningfully different."""
+    if not original_ai_content or not corrected_content:
+        return None
+
+    # Check similarity — skip if just a typo fix (ratio >= 0.90)
+    ratio = difflib.SequenceMatcher(None, original_ai_content, corrected_content).ratio()
+    if ratio >= 0.90:
+        logger.info(f"[CORRECTION] Skipped — similarity {ratio:.2f} >= 0.90 (typo-level edit)")
+        return None
+
+    # Format the correction value
+    value = f"FALSCH: {original_ai_content}\nRICHTIG: {corrected_content}"
+
+    # Create KnowledgeEntry with placeholder label
+    entry = KnowledgeEntry(
+        property_id=conversation.property_id,
+        category='correction',
+        label='(wird extrahiert...)',
+        value=value,
+        sort_order=0
+    )
+    db.session.add(entry)
+    db.session.commit()
+
+    logger.info(f"[CORRECTION] Stored correction {entry.id} for conversation {conversation.id} "
+                f"(similarity={ratio:.2f}, property_id={conversation.property_id})")
+
+    # Extract topic label via AI in background thread
+    entry_id = entry.id
+    app = current_app._get_current_object()
+
+    def _extract_topic():
+        with app.app_context():
+            try:
+                ai = get_ai_service()
+                if not ai:
+                    return
+                topic = ai.extract_correction_topic(original_ai_content, corrected_content)
+                if topic:
+                    e = KnowledgeEntry.query.get(entry_id)
+                    if e:
+                        e.label = topic
+                        db.session.commit()
+                        logger.info(f"[CORRECTION] Topic extracted for {entry_id}: {topic}")
+            except Exception as ex:
+                logger.warning(f"[CORRECTION] Topic extraction failed for {entry_id}: {ex}")
+
+    threading.Thread(target=_extract_topic, daemon=True).start()
+
+    return entry
 
 
 # ============================================================================
@@ -591,7 +649,14 @@ def api_send_message(conversation_id):
     conversation.updated_at = datetime.utcnow()
     db.session.commit()
 
+    # Store correction if host edited an AI draft
+    correction_saved = False
+    original_ai_content = data.get('original_ai_content')
+    if original_ai_content:
+        correction_saved = _store_correction_if_needed(original_ai_content, data['content'], conversation) is not None
+
     response_data = message.to_dict()
+    response_data['correction_saved'] = correction_saved
 
     # Process memory extraction in background thread (non-blocking)
     message_id = message.id
@@ -2723,6 +2788,11 @@ def api_gmail_reply(conversation_id):
             extract_memory=True
         )
 
+        # Store correction if host edited an AI draft
+        original_ai_content = data.get('original_ai_content')
+        if original_ai_content:
+            _store_correction_if_needed(original_ai_content, message_content, conversation)
+
         return jsonify({
             'success': True,
             'gmail_message_id': send_result.get('id'),
@@ -3027,6 +3097,12 @@ def api_smoobu_reply(conversation_id):
             extract_memory=True,
             platform_message_id=platform_msg_id
         )
+
+        # Store correction if host edited an AI draft
+        original_ai_content = data.get('original_ai_content')
+        if original_ai_content:
+            _store_correction_if_needed(original_ai_content, message_content, conversation)
+
         return jsonify({
             'success': True,
             'message_id': owner_result.get('message_id'),
