@@ -8,9 +8,38 @@
     <div class="page-header">
         <h1><i class="fas fa-inbox"></i> <span data-i18n="inbox.title">Posteingang</span></h1>
         <div class="header-actions">
+            <button class="btn btn-secondary" id="markAllReadBtn" onclick="markAllRead()">
+                <i class="fas fa-check-double"></i> <span data-i18n="inbox.markAllRead">Alle gelesen</span>
+            </button>
+            <button class="btn btn-secondary" id="syncSmoobuBtn" onclick="syncSmoobuNow()" style="display: none;">
+                <i class="fas fa-building"></i> <span data-i18n="inbox.syncSmoobu">Smoobu Sync</span>
+            </button>
+            <button class="btn btn-secondary" id="syncGmailBtn" onclick="syncGmailNow()" style="display: none;">
+                <i class="fas fa-envelope"></i> <span data-i18n="inbox.syncGmail">Sync Gmail</span>
+            </button>
             <button class="btn btn-secondary" onclick="refreshConversations()">
                 <i class="fas fa-sync-alt"></i> <span data-i18n="common.refresh">Aktualisieren</span>
             </button>
+        </div>
+    </div>
+
+    <!-- Stats Card -->
+    <div class="stats-card" id="statsCard">
+        <div class="stat-item">
+            <span class="stat-value" id="statConversations">-</span>
+            <span class="stat-label" data-i18n="inbox.stats.conversations">Konversationen</span>
+        </div>
+        <div class="stat-item stat-highlight">
+            <span class="stat-value" id="statUnread">-</span>
+            <span class="stat-label" data-i18n="inbox.stats.unread">Ungelesen</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-value" id="statMessagesToday">-</span>
+            <span class="stat-label" data-i18n="inbox.stats.messagesToday">Nachrichten heute</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-value" id="statActiveGuests">-</span>
+            <span class="stat-label" data-i18n="inbox.stats.activeGuests">Aktive Gäste</span>
         </div>
     </div>
 
@@ -22,14 +51,8 @@
             <button class="filter-btn" data-filter-platform="email">
                 <i class="fas fa-envelope"></i> <span data-i18n="platform.email">E-Mail</span>
             </button>
-            <button class="filter-btn" data-filter-platform="whatsapp">
-                <i class="fab fa-whatsapp"></i> <span data-i18n="platform.whatsapp">WhatsApp</span>
-            </button>
-            <button class="filter-btn" data-filter-platform="airbnb">
-                <i class="fab fa-airbnb"></i> <span data-i18n="platform.airbnb">Airbnb</span>
-            </button>
-            <button class="filter-btn" data-filter-platform="booking">
-                <i class="fas fa-bed"></i> <span data-i18n="platform.booking">Booking.com</span>
+            <button class="filter-btn" data-filter-platform="smoobu">
+                <i class="fas fa-building"></i> <span data-i18n="platform.smoobu">Smoobu</span>
             </button>
         </div>
 
@@ -39,6 +62,7 @@
             <button class="filter-btn" data-filter-status="active" data-i18n="inbox.filter.active">Aktiv</button>
             <button class="filter-btn" data-filter-status="pending_owner" data-i18n="inbox.filter.pending">Ausstehend</button>
             <button class="filter-btn" data-filter-status="closed" data-i18n="inbox.filter.closed">Geschlossen</button>
+            <button class="filter-btn" data-filter-status="escalated" data-i18n="inbox.filter.escalated">Eskaliert</button>
         </div>
 
         <!-- Guest Filter Dropdown -->
@@ -76,6 +100,8 @@
                         <i class="fab fa-whatsapp"></i>
                     {% elif conv.platform == 'airbnb' %}
                         <i class="fab fa-airbnb"></i>
+                    {% elif conv.platform == 'smoobu' %}
+                        <i class="fas fa-building"></i>
                     {% else %}
                         <i class="fas fa-comment"></i>
                     {% endif %}
@@ -85,7 +111,7 @@
                         <span class="guest-name">{{ conv.guest.name or conv.guest.email or 'Unknown Guest' }}</span>
                         <span class="conversation-time" data-timestamp="{{ conv.updated_at.isoformat() if conv.updated_at else '' }}" title="{{ conv.updated_at.strftime('%d.%m.%Y %H:%M') if conv.updated_at else '' }}">{{ conv.updated_at.strftime('%d.%m %H:%M') if conv.updated_at else '' }}</span>
                     </div>
-                    <div class="conversation-subject">{{ conv.subject or 'No subject' }}</div>
+                    <div class="conversation-subject">{{ conv.property.name if conv.property else conv.subject or 'No subject' }}</div>
                     <div class="conversation-preview">
                         {% if conv.last_message %}
                             {{ conv.last_message.content[:80] }}{% if conv.last_message.content|length > 80 %}...{% endif %}
@@ -100,6 +126,9 @@
                         <span class="ai-badge"><i class="fas fa-robot"></i></span>
                     {% endif %}
                     <span class="status-badge {{ conv.status }}">{{ conv.status|replace('_', ' ')|title }}</span>
+                    {% if conv.status != 'closed' %}
+                        <button class="btn-close-conv" onclick="closeConversation(event, {{ conv.id }})" title="Gespräch beenden"><i class="fas fa-times"></i></button>
+                    {% endif %}
                 </div>
             </a>
             {% endfor %}
@@ -127,590 +156,7 @@
     </div>
 </div>
 
-<script src="{{ url_for('chatbot.static', filename='js/polling.js') }}"></script>
-<script src="{{ url_for('chatbot.static', filename='js/filter-state.js') }}"></script>
-<script>
-    // =========================================================================
-    // Conversation Card DOM Helpers
-    // =========================================================================
-
-    /**
-     * Get platform icon class based on platform name
-     */
-    function getPlatformIcon(platform) {
-        switch (platform) {
-            case 'email': return 'fas fa-envelope';
-            case 'whatsapp': return 'fab fa-whatsapp';
-            case 'airbnb': return 'fab fa-airbnb';
-            default: return 'fas fa-comment';
-        }
-    }
-
-    /**
-     * Format timestamp for display as absolute (DD.MM HH:MM)
-     */
-    function formatAbsoluteTime(dateString) {
-        if (!dateString) return '';
-        const date = new Date(dateString);
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${day}.${month} ${hours}:${minutes}`;
-    }
-
-    /**
-     * Update all visible relative timestamps in the inbox
-     */
-    function refreshRelativeTimestamps() {
-        document.querySelectorAll('.conversation-time[data-timestamp]').forEach(el => {
-            const ts = el.dataset.timestamp;
-            if (ts) {
-                el.textContent = formatRelativeTime(ts);
-            }
-        });
-    }
-
-    /**
-     * Format status for display (underscores to spaces, title case)
-     */
-    function formatStatus(status) {
-        return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    }
-
-    /**
-     * Create a new conversation card element from API data
-     */
-    function createConversationCard(conv) {
-        const card = document.createElement('a');
-        card.href = `/chatbot/conversation/${conv.id}`;
-        card.className = 'conversation-card' + (!conv.is_read ? ' unread' : '');
-        card.dataset.conversationId = conv.id;
-        card.dataset.updatedAt = conv.updated_at || '';
-        card.dataset.platform = conv.platform;
-        card.dataset.status = conv.status;
-        card.dataset.guestId = conv.guest_id || '';
-        card.dataset.isRead = conv.is_read ? 'true' : 'false';
-
-        // Get guest display name
-        const guestName = (conv.guest && (conv.guest.name || conv.guest.email)) || 'Unknown Guest';
-
-        // Get preview text
-        let preview = 'No messages yet';
-        if (conv.last_message && conv.last_message.content) {
-            preview = conv.last_message.content.length > 80
-                ? conv.last_message.content.substring(0, 80) + '...'
-                : conv.last_message.content;
-        }
-
-        // Build AI badge HTML
-        const aiBadge = conv.ai_enabled ? '<span class="ai-badge"><i class="fas fa-robot"></i></span>' : '';
-
-        // Build screen reader text for unread
-        const srText = !conv.is_read ? '<span class="sr-only">Unread</span>' : '';
-
-        card.innerHTML = `
-            ${srText}
-            <div class="conversation-avatar" data-guest-name="${escapeHtml(guestName)}" style="background: ${getAvatarColor(guestName)}">
-                <i class="${getPlatformIcon(conv.platform)}"></i>
-            </div>
-            <div class="conversation-info">
-                <div class="conversation-header">
-                    <span class="guest-name">${escapeHtml(guestName)}</span>
-                    <span class="conversation-time" data-timestamp="${conv.updated_at || ''}" title="${formatAbsoluteTime(conv.updated_at)}">${formatRelativeTime(conv.updated_at)}</span>
-                </div>
-                <div class="conversation-subject">${escapeHtml(conv.subject || 'No subject')}</div>
-                <div class="conversation-preview">${escapeHtml(preview)}</div>
-            </div>
-            <div class="conversation-meta">
-                <span class="platform-badge ${conv.platform}">${conv.platform.charAt(0).toUpperCase() + conv.platform.slice(1)}</span>
-                ${aiBadge}
-                <span class="status-badge ${conv.status}">${formatStatus(conv.status)}</span>
-            </div>
-        `;
-
-        return card;
-    }
-
-    /**
-     * Escape HTML to prevent XSS
-     */
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    /**
-     * Update an existing conversation card in place (prevents flicker)
-     */
-    function updateConversationCard(card, conv) {
-        // Update data attributes
-        card.dataset.updatedAt = conv.updated_at || '';
-        card.dataset.status = conv.status;
-        card.dataset.isRead = conv.is_read ? 'true' : 'false';
-
-        // Update unread state
-        if (conv.is_read) {
-            card.classList.remove('unread');
-            const srOnly = card.querySelector('.sr-only');
-            if (srOnly) srOnly.remove();
-        } else {
-            card.classList.add('unread');
-            if (!card.querySelector('.sr-only')) {
-                const srSpan = document.createElement('span');
-                srSpan.className = 'sr-only';
-                srSpan.textContent = 'Unread';
-                card.insertBefore(srSpan, card.firstChild);
-            }
-        }
-
-        // Update time
-        const timeEl = card.querySelector('.conversation-time');
-        if (timeEl) {
-            timeEl.dataset.timestamp = conv.updated_at || '';
-            timeEl.title = formatAbsoluteTime(conv.updated_at);
-            timeEl.textContent = formatRelativeTime(conv.updated_at);
-        }
-
-        // Update preview
-        const previewEl = card.querySelector('.conversation-preview');
-        if (previewEl) {
-            let preview = 'No messages yet';
-            if (conv.last_message && conv.last_message.content) {
-                preview = conv.last_message.content.length > 80
-                    ? conv.last_message.content.substring(0, 80) + '...'
-                    : conv.last_message.content;
-            }
-            previewEl.textContent = preview;
-        }
-
-        // Update status badge
-        const statusEl = card.querySelector('.status-badge');
-        if (statusEl) {
-            statusEl.className = `status-badge ${conv.status}`;
-            statusEl.textContent = formatStatus(conv.status);
-        }
-
-        // Update AI badge
-        const metaEl = card.querySelector('.conversation-meta');
-        const existingAiBadge = card.querySelector('.ai-badge');
-        if (conv.ai_enabled && !existingAiBadge) {
-            // Add AI badge before status badge
-            const aiBadge = document.createElement('span');
-            aiBadge.className = 'ai-badge';
-            aiBadge.innerHTML = '<i class="fas fa-robot"></i>';
-            metaEl.insertBefore(aiBadge, statusEl);
-        } else if (!conv.ai_enabled && existingAiBadge) {
-            existingAiBadge.remove();
-        }
-    }
-
-    /**
-     * Main function to update the inbox list with new data
-     */
-    function updateInboxList(conversations) {
-        // If in search mode, don't update from polling (would clear search results)
-        if (typeof isSearchMode !== 'undefined' && isSearchMode) return;
-
-        const container = document.getElementById('conversationList');
-        if (!container) return;
-
-        // Handle empty state
-        if (!conversations || conversations.length === 0) {
-            const existingEmpty = container.querySelector('.empty-state');
-            if (!existingEmpty) {
-                // Clear cards and add empty state
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-inbox"></i>
-                        <h3>No conversations yet</h3>
-                        <p>When guests message you, their conversations will appear here.</p>
-                    </div>
-                `;
-            }
-            return;
-        }
-
-        // Remove empty state if it exists
-        const emptyState = container.querySelector('.empty-state');
-        if (emptyState) {
-            emptyState.remove();
-        }
-
-        // Build map of existing cards by ID
-        const existingCards = new Map();
-        container.querySelectorAll('.conversation-card').forEach(card => {
-            existingCards.set(card.dataset.conversationId, card);
-        });
-
-        // Track which cards we've processed
-        const processedIds = new Set();
-
-        // Process each conversation (already sorted by updated_at desc from API)
-        conversations.forEach((conv, index) => {
-            const convId = String(conv.id);
-            processedIds.add(convId);
-
-            const existingCard = existingCards.get(convId);
-
-            if (existingCard) {
-                // Update existing card if data changed (timestamp or read state)
-                const isReadChanged = existingCard.dataset.isRead !== (conv.is_read ? 'true' : 'false');
-                if (existingCard.dataset.updatedAt !== conv.updated_at || isReadChanged) {
-                    updateConversationCard(existingCard, conv);
-                }
-
-                // Move to correct position if needed
-                const currentIndex = Array.from(container.querySelectorAll('.conversation-card')).indexOf(existingCard);
-                if (currentIndex !== index) {
-                    if (index === 0) {
-                        container.prepend(existingCard);
-                    } else {
-                        const cards = container.querySelectorAll('.conversation-card');
-                        if (cards[index]) {
-                            container.insertBefore(existingCard, cards[index]);
-                        } else {
-                            container.appendChild(existingCard);
-                        }
-                    }
-                }
-            } else {
-                // Create new card
-                const newCard = createConversationCard(conv);
-
-                // Browser notification for new unread conversations
-                if (!conv.is_read) {
-                    const gName = (conv.guest && (conv.guest.name || conv.guest.email)) || 'Guest';
-                    const preview = (conv.last_message && conv.last_message.content) || '';
-                    showBrowserNotification(
-                        gName,
-                        preview.substring(0, 80),
-                        `/chatbot/conversation/${conv.id}`
-                    );
-                }
-
-                // Insert at correct position
-                const cards = container.querySelectorAll('.conversation-card');
-                if (index === 0 || cards.length === 0) {
-                    container.prepend(newCard);
-                } else if (cards[index]) {
-                    container.insertBefore(newCard, cards[index]);
-                } else {
-                    container.appendChild(newCard);
-                }
-            }
-        });
-
-        // Remove cards for conversations that no longer exist
-        existingCards.forEach((card, id) => {
-            if (!processedIds.has(id)) {
-                card.remove();
-            }
-        });
-
-        // Re-apply filters after update (handles platform, status, and search)
-        filterState.applyFilters();
-
-        // Apply avatar colors to any new cards
-        applyAvatarColors();
-    }
-
-    // =========================================================================
-    // Filter and Search (using FilterState module)
-    // =========================================================================
-
-    // Platform filter button click handlers
-    document.querySelectorAll('[data-filter-platform]').forEach(btn => {
-        btn.addEventListener('click', function() {
-            filterState.setPlatform(this.dataset.filterPlatform || null);
-        });
-    });
-
-    // Status filter button click handlers
-    document.querySelectorAll('[data-filter-status]').forEach(btn => {
-        btn.addEventListener('click', function() {
-            filterState.setStatus(this.dataset.filterStatus || null);
-        });
-    });
-
-    // Guest filter dropdown handler
-    document.getElementById('guestFilter').addEventListener('change', function() {
-        filterState.setGuest(this.value || null);
-    });
-
-    // Clear all filters button
-    document.getElementById('clearFiltersBtn').addEventListener('click', function() {
-        filterState.reset();
-    });
-
-    // Search input handler with debounce
-    let searchTimeout = null;
-    let isSearchMode = false;
-
-    document.getElementById('searchInput').addEventListener('input', function() {
-        const query = this.value.trim();
-
-        // Clear previous timeout
-        if (searchTimeout) clearTimeout(searchTimeout);
-
-        // Immediate client-side filtering for quick feedback
-        filterState.applyFilters();
-
-        // Debounced server search for accurate results
-        searchTimeout = setTimeout(async () => {
-            if (query.length >= 2) {
-                filterState.setSearch(query);
-                const results = await fetchSearchResults(query);
-                renderSearchResults(results);
-            } else if (query.length === 0) {
-                clearSearchMode();
-            }
-        }, 300);
-    });
-
-    // =========================================================================
-    // Search Functions
-    // =========================================================================
-
-    /**
-     * Fetch search results from server API
-     */
-    async function fetchSearchResults(query) {
-        const params = new URLSearchParams({ q: query });
-
-        // Include active filters in search
-        if (filterState.state.platform) {
-            params.set('platform', filterState.state.platform);
-        }
-        if (filterState.state.status) {
-            params.set('status', filterState.state.status);
-        }
-
-        try {
-            const response = await fetch(`/chatbot/api/search?${params}`);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            return await response.json();
-        } catch (error) {
-            console.error('Search error:', error);
-            return { results: [], query: query, total: 0 };
-        }
-    }
-
-    /**
-     * Render search results, replacing normal inbox view
-     */
-    function renderSearchResults(data) {
-        const container = document.getElementById('conversationList');
-        const emptyState = document.getElementById('searchEmptyState');
-        const normalEmpty = container.querySelector('.empty-state:not(.search-empty)');
-
-        isSearchMode = true;
-
-        // Hide normal empty state if present
-        if (normalEmpty) normalEmpty.style.display = 'none';
-
-        if (data.results.length === 0) {
-            // Show search empty state
-            document.getElementById('searchQueryText').textContent = data.query;
-            emptyState.style.display = 'block';
-
-            // Hide all cards
-            container.querySelectorAll('.conversation-card').forEach(card => {
-                card.style.display = 'none';
-            });
-            return;
-        }
-
-        // Hide search empty state
-        emptyState.style.display = 'none';
-
-        // Build set of matching conversation IDs
-        const matchingIds = new Set(data.results.map(r => String(r.conversation_id)));
-
-        // Update cards with search results
-        container.querySelectorAll('.conversation-card').forEach(card => {
-            const convId = card.dataset.conversationId;
-
-            if (matchingIds.has(convId)) {
-                card.style.display = 'flex';
-                card.classList.add('search-result');
-
-                // Find this conversation's result data
-                const result = data.results.find(r => String(r.conversation_id) === convId);
-
-                // Add or update snippet display
-                let snippetEl = card.querySelector('.search-snippet');
-                if (!snippetEl) {
-                    snippetEl = document.createElement('div');
-                    snippetEl.className = 'search-snippet';
-                    const previewEl = card.querySelector('.conversation-preview');
-                    if (previewEl) {
-                        previewEl.insertAdjacentElement('afterend', snippetEl);
-                    }
-                }
-
-                // Set snippet HTML (sanitized on server)
-                if (result.first_snippet) {
-                    snippetEl.innerHTML = result.first_snippet;
-                }
-
-                // Add match count indicator
-                let countEl = card.querySelector('.match-count');
-                if (!countEl && result.match_count > 1) {
-                    countEl = document.createElement('span');
-                    countEl.className = 'match-count';
-                    const headerEl = card.querySelector('.conversation-header');
-                    if (headerEl) headerEl.appendChild(countEl);
-                }
-                if (countEl) {
-                    countEl.textContent = result.match_count > 1 ? `(${result.match_count} matches)` : '';
-                }
-            } else {
-                card.style.display = 'none';
-            }
-        });
-    }
-
-    /**
-     * Clear search mode and restore normal inbox view
-     */
-    function clearSearchMode() {
-        isSearchMode = false;
-        filterState.setSearch(null);
-
-        const emptyState = document.getElementById('searchEmptyState');
-        emptyState.style.display = 'none';
-
-        // Remove search result decorations
-        document.querySelectorAll('.conversation-card').forEach(card => {
-            card.classList.remove('search-result');
-            const snippetEl = card.querySelector('.search-snippet');
-            if (snippetEl) snippetEl.remove();
-            const countEl = card.querySelector('.match-count');
-            if (countEl) countEl.remove();
-        });
-
-        // Re-apply filters (shows all cards matching current filters)
-        filterState.applyFilters();
-    }
-
-    /**
-     * Clear search (called from empty state button)
-     */
-    function clearSearch() {
-        document.getElementById('searchInput').value = '';
-        clearSearchMode();
-    }
-
-    // =========================================================================
-    // Guest Dropdown Population
-    // =========================================================================
-
-    /**
-     * Fetch guests and populate dropdown with conversation counts
-     */
-    async function populateGuestDropdown() {
-        const dropdown = document.getElementById('guestFilter');
-        if (!dropdown) return;
-
-        try {
-            const response = await fetch('/chatbot/api/guests');
-            if (!response.ok) throw new Error('Failed to fetch guests');
-            const data = await response.json();
-
-            // Count conversations per guest from DOM
-            const counts = {};
-            document.querySelectorAll('.conversation-card').forEach(card => {
-                const guestId = card.dataset.guestId;
-                if (guestId) counts[guestId] = (counts[guestId] || 0) + 1;
-            });
-
-            // Clear and rebuild options
-            dropdown.innerHTML = '<option value="">All Guests</option>';
-
-            // Sort guests by name for easy scanning
-            const sortedGuests = data.guests.sort((a, b) => {
-                const nameA = (a.name || a.email || '').toLowerCase();
-                const nameB = (b.name || b.email || '').toLowerCase();
-                return nameA.localeCompare(nameB);
-            });
-
-            sortedGuests.forEach(guest => {
-                const count = counts[guest.id] || 0;
-                if (count > 0) {  // Only show guests with conversations
-                    const option = document.createElement('option');
-                    option.value = guest.id;
-                    const displayName = guest.name || guest.email || 'Unknown Guest';
-                    option.textContent = `${displayName} (${count})`;
-                    dropdown.appendChild(option);
-                }
-            });
-
-            // Restore selection from URL state if present
-            if (filterState.state.guest) {
-                dropdown.value = filterState.state.guest;
-            }
-        } catch (error) {
-            console.error('Failed to populate guest dropdown:', error);
-        }
-    }
-
-    // =========================================================================
-    // Polling Setup
-    // =========================================================================
-
-    const inboxPoller = new PollingManager({
-        fetchFn: async (signal) => {
-            const response = await fetch('/chatbot/api/conversations?per_page=50', { signal });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            return response.json();
-        },
-        onUpdate: (data) => {
-            updateInboxList(data.conversations);
-        },
-        interval: 15000,  // 15 seconds
-        onError: (err) => {
-            console.error('Inbox polling error:', err);
-        }
-    });
-
-    /**
-     * Manual refresh - restarts polling (triggers immediate poll)
-     */
-    function refreshConversations() {
-        inboxPoller.stop();
-        inboxPoller.start();
-    }
-
-    // Start polling when page loads
-    document.addEventListener('DOMContentLoaded', () => {
-        // Convert server-rendered timestamps to relative format
-        refreshRelativeTimestamps();
-
-        // Refresh relative timestamps every 60 seconds
-        setInterval(refreshRelativeTimestamps, 60000);
-
-        // Initialize filter state from URL and apply
-        filterState.applyFilters();
-        filterState.updateUI();
-
-        // Restore search input from URL state
-        const searchInput = document.getElementById('searchInput');
-        if (filterState.state.search && searchInput) {
-            searchInput.value = filterState.state.search;
-            // Trigger search to load results
-            setTimeout(async () => {
-                const results = await fetchSearchResults(filterState.state.search);
-                renderSearchResults(results);
-            }, 100);
-        }
-
-        // Populate guest dropdown (after filters applied so counts are accurate)
-        populateGuestDropdown();
-
-        // Then start polling
-        inboxPoller.start();
-    });
-</script>
+<script src="{{ url_for('chatbot.static', filename='js/polling.js') }}?v=8"></script>
+<script src="{{ url_for('chatbot.static', filename='js/filter-state.js') }}?v=8"></script>
+<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=12"></script>
 {% endblock %}

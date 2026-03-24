@@ -175,11 +175,26 @@ class FilterState {
 
         cards.forEach(card => {
             const matchesPlatform = !this.state.platform || card.dataset.platform === this.state.platform;
-            const matchesStatus = !this.state.status || card.dataset.status === this.state.status;
+            const matchesStatus = !this.state.status
+                || (this.state.status === 'escalated' ? card.dataset.escalated === 'true' : card.dataset.status === this.state.status);
             const matchesGuest = !this.state.guest || card.dataset.guestId === this.state.guest;
             const matchesSearch = !searchTerm || card.textContent.toLowerCase().includes(searchTerm);
 
             card.style.display = (matchesPlatform && matchesStatus && matchesGuest && matchesSearch) ? 'flex' : 'none';
+        });
+
+        // Hide date group headers that have no visible cards after them
+        document.querySelectorAll('.date-group-header').forEach(header => {
+            let hasVisibleCard = false;
+            let sibling = header.nextElementSibling;
+            while (sibling && !sibling.classList.contains('date-group-header')) {
+                if (sibling.classList.contains('conversation-card') && sibling.style.display !== 'none') {
+                    hasVisibleCard = true;
+                    break;
+                }
+                sibling = sibling.nextElementSibling;
+            }
+            header.style.display = hasVisibleCard ? 'flex' : 'none';
         });
     }
 

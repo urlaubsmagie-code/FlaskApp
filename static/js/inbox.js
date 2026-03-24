@@ -538,7 +538,11 @@ let lastKnownTimestamp = null;
 let lastKnownUnread = null;
 
 async function fullInboxFetch(signal) {
-    const response = await fetch('/chatbot/api/conversations?per_page=50', { signal });
+    let url = '/chatbot/api/conversations?per_page=50';
+    if (filterState.getState().status === 'escalated') {
+        url += '&escalated=true';
+    }
+    const response = await fetch(url, { signal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     updateInboxList(data.conversations);
