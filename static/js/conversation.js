@@ -367,6 +367,9 @@ function sendLocal(content, tempId, correctionOriginal) {
             const el = document.querySelector(`[data-message-id="${tempId}"]`);
             if (el) el.dataset.messageId = data.id;
         }
+        if (data.correction_saved) {
+            showNotification(i18n.t('knowledge.corrections.autoSaved'), 'info', 3000);
+        }
     })
     .catch(err => {
         console.error('Failed to send message:', err);
@@ -402,6 +405,9 @@ function sendViaGmail(content, tempId, correctionOriginal) {
             if (el) el.dataset.messageId = data.message_id;
         }
         showNotification(i18n.t('conversation.gmail.sent') || 'Email sent via Gmail', 'success');
+        if (correctionOriginal) {
+            showNotification(i18n.t('knowledge.corrections.autoSaved'), 'info', 3000);
+        }
     })
     .catch(err => {
         console.error('Gmail send error, falling back to local:', err);
@@ -434,6 +440,9 @@ function sendViaSmoobu(content, tempId, correctionOriginal) {
             if (el) el.dataset.messageId = data.message_id;
         }
         showNotification('Message sent via Smoobu', 'success');
+        if (correctionOriginal) {
+            showNotification(i18n.t('knowledge.corrections.autoSaved'), 'info', 3000);
+        }
     })
     .catch(err => {
         console.error('Smoobu send error, falling back to local:', err);

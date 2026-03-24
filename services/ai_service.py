@@ -419,7 +419,8 @@ Return ONLY the JSON object:"""
             max_history: int = 10,
             reservation_info: Optional[Dict[str, Any]] = None,
             knowledge_entries: Optional[List[Dict[str, Any]]] = None,
-            conversation_summary: Optional[str] = None
+            conversation_summary: Optional[str] = None,
+            corrections: Optional[List[Dict[str, Any]]] = None
     ) -> Optional[str]:
         """
         Generate a personalized AI response for a guest.
@@ -452,7 +453,8 @@ Return ONLY the JSON object:"""
             max_history=max_history,
             reservation_info=reservation_info,
             knowledge_entries=knowledge_entries,
-            conversation_summary=conversation_summary
+            conversation_summary=conversation_summary,
+            corrections=corrections
         )
 
         # Log what the AI actually receives for debugging
@@ -636,7 +638,8 @@ Return ONLY the JSON object:"""
             max_history: int = 10,
             reservation_info: Optional[Dict[str, Any]] = None,
             knowledge_entries: Optional[List[Dict[str, Any]]] = None,
-            conversation_summary: Optional[str] = None
+            conversation_summary: Optional[str] = None,
+            corrections: Optional[List[Dict[str, Any]]] = None
     ) -> List[Dict[str, str]]:
         """Build chat messages array with proper roles for the Ollama chat API.
 
@@ -747,6 +750,11 @@ Return ONLY the JSON object:"""
                 f"{conversation_summary}\n"
                 f"=== The recent messages below continue from this summary. ==="
             )
+
+        if corrections:
+            corrections_text = self._format_corrections(corrections)
+            if corrections_text:
+                system_parts.append(f"\n=== PAST CORRECTIONS (you made these mistakes before — don't repeat them) ===\n{corrections_text}\n===")
 
         messages.append({'role': 'system', 'content': "\n".join(system_parts)})
 
@@ -1138,6 +1146,31 @@ Return ONLY the JSON object:"""
         return "\n".join(lines)
 
     @staticmethod
+    @staticmethod
+    def _format_corrections(corrections: List[Dict[str, Any]], max_chars: int = 1500) -> str:
+        """Format correction entries for the AI system prompt."""
+        lines = []
+        total = 0
+        for c in corrections:
+            label = c.get('label', 'Unknown')
+            value = c.get('value', '')
+
+            # Parse FALSCH:/RICHTIG: format
+            if '\nRICHTIG: ' in value:
+                parts = value.split('\nRICHTIG: ', 1)
+                original = parts[0].replace('FALSCH: ', '', 1).strip()
+                corrected = parts[1].strip()
+                line = f'- "{label}": Don\'t say "{original[:150]}" → Correct: "{corrected[:150]}"'
+            else:
+                line = f'- "{label}": {value[:200]}'
+
+            if total + len(line) > max_chars:
+                break
+            lines.append(line)
+            total += len(line)
+
+        return "\n".join(lines) if lines else ""
+
     def _format_knowledge_entries(entries: List[Dict[str, Any]], max_chars: int = 2000) -> str:
         """Format knowledge base entries for the AI prompt, grouped by category."""
         if not entries:

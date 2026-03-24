@@ -358,6 +358,15 @@ const translations = {
         'knowledge.cat.emergency': 'Notfallkontakte',
         'knowledge.cat.faq': 'Häufige Fragen',
         'knowledge.cat.escalation': 'Eskalation',
+        'knowledge.cat.correction': 'Korrektur',
+        'knowledge.tab.knowledge': 'Wissen',
+        'knowledge.tab.escalation': 'Eskalation',
+        'knowledge.tab.corrections': 'Korrekturen',
+        'knowledge.corrections.empty': 'Noch keine Korrekturen',
+        'knowledge.corrections.empty.hint': 'Wenn Sie KI-Entwürfe bearbeiten, lernt die KI automatisch daraus.',
+        'knowledge.corrections.original': 'KI sagte',
+        'knowledge.corrections.corrected': 'Richtig ist',
+        'knowledge.corrections.autoSaved': 'KI-Korrektur gespeichert',
 
         // Mobile Navigation & Account
         'nav.account': 'Konto',
@@ -760,6 +769,15 @@ const translations = {
         'knowledge.cat.emergency': 'Emergency Contacts',
         'knowledge.cat.faq': 'FAQ / Common Questions',
         'knowledge.cat.escalation': 'Escalation',
+        'knowledge.cat.correction': 'Correction',
+        'knowledge.tab.knowledge': 'Knowledge',
+        'knowledge.tab.escalation': 'Escalation',
+        'knowledge.tab.corrections': 'Corrections',
+        'knowledge.corrections.empty': 'No corrections yet',
+        'knowledge.corrections.empty.hint': 'When you edit AI drafts, the AI automatically learns from your changes.',
+        'knowledge.corrections.original': 'AI said',
+        'knowledge.corrections.corrected': 'Correct is',
+        'knowledge.corrections.autoSaved': 'AI correction saved',
 
         // Mobile Navigation & Account
         'nav.account': 'Account',

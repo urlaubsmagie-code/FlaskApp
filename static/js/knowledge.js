@@ -1,6 +1,6 @@
 /**
  * Knowledge Base management
- * CRUD operations, property filtering, category grouping
+ * CRUD operations, property filtering, category grouping, tabbed layout
  */
 
 const CATEGORY_LABELS = {
@@ -11,6 +11,7 @@ const CATEGORY_LABELS = {
     emergency: { de: 'Notfallkontakte', en: 'Emergency Contacts' },
     faq: { de: 'Häufige Fragen', en: 'FAQ / Common Questions' },
     escalation: { de: 'Eskalation', en: 'Escalation' },
+    correction: { de: 'Korrektur', en: 'Correction' },
 };
 
 const CATEGORY_ICONS = {
@@ -21,12 +22,28 @@ const CATEGORY_ICONS = {
     emergency: 'fa-phone-alt',
     faq: 'fa-question-circle',
     escalation: 'fa-exclamation-triangle',
+    correction: 'fa-spell-check',
 };
 
-const CATEGORY_ORDER = ['general', 'checkin_checkout', 'nearby', 'house_rules', 'emergency', 'faq', 'escalation'];
+const CATEGORY_ORDER = ['general', 'checkin_checkout', 'nearby', 'house_rules', 'emergency', 'faq', 'escalation', 'correction'];
+
+const KNOWLEDGE_CATEGORIES = ['general', 'checkin_checkout', 'nearby', 'house_rules', 'emergency', 'faq'];
 
 const knowledgeApp = {
     entries: [],
+    currentTab: 'knowledge',
+
+    switchTab(tab) {
+        this.currentTab = tab;
+        document.querySelectorAll('.knowledge-tab').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tab);
+        });
+        // Update URL param without reload
+        const url = new URL(window.location);
+        url.searchParams.set('tab', tab);
+        history.replaceState(null, '', url);
+        this.renderEntries();
+    },
 
     async loadEntries() {
         const filter = document.getElementById('propertyFilter').value;
@@ -48,21 +65,43 @@ const knowledgeApp = {
     },
 
     renderEntries() {
+        // Filter entries based on current tab
+        let filtered;
+        if (this.currentTab === 'knowledge') {
+            filtered = this.entries.filter(e => KNOWLEDGE_CATEGORIES.includes(e.category || 'general'));
+        } else if (this.currentTab === 'escalation') {
+            filtered = this.entries.filter(e => e.category === 'escalation');
+        } else if (this.currentTab === 'corrections') {
+            filtered = this.entries.filter(e => e.category === 'correction');
+            this.renderCorrections(filtered);
+            return;
+        }
+
         const container = document.getElementById('entriesContainer');
         const lang = (typeof i18n !== 'undefined' && i18n.currentLanguage) || 'de';
 
-        if (!this.entries.length) {
+        if (!filtered.length) {
+            let emptyText, hintText, icon;
+            if (this.currentTab === 'escalation') {
+                emptyText = typeof i18n !== 'undefined' ? i18n.t('knowledge.empty') : 'Noch keine Einträge vorhanden';
+                hintText = typeof i18n !== 'undefined' ? i18n.t('knowledge.empty.hint') : 'Fügen Sie Fakten hinzu, die die KI bei Gästeanfragen nutzen soll.';
+                icon = 'fa-exclamation-triangle';
+            } else {
+                emptyText = typeof i18n !== 'undefined' ? i18n.t('knowledge.empty') : 'Noch keine Einträge vorhanden';
+                hintText = typeof i18n !== 'undefined' ? i18n.t('knowledge.empty.hint') : 'Fügen Sie Fakten hinzu, die die KI bei Gästeanfragen nutzen soll.';
+                icon = 'fa-book-open';
+            }
             container.innerHTML =
                 '<div class="settings-card"><div class="card-body" style="text-align:center;padding:40px;color:var(--text-secondary);">' +
-                '<i class="fas fa-book-open" style="font-size:48px;margin-bottom:15px;opacity:0.3;"></i>' +
-                '<p style="font-size:16px;">' + (typeof i18n !== 'undefined' ? i18n.t('knowledge.empty') : 'Noch keine Einträge vorhanden') + '</p>' +
-                '<p style="font-size:14px;opacity:0.7;">' + (typeof i18n !== 'undefined' ? i18n.t('knowledge.empty.hint') : 'Fügen Sie Fakten hinzu, die die KI bei Gästeanfragen nutzen soll.') + '</p></div></div>';
+                '<i class="fas ' + icon + '" style="font-size:48px;margin-bottom:15px;opacity:0.3;"></i>' +
+                '<p style="font-size:16px;">' + emptyText + '</p>' +
+                '<p style="font-size:14px;opacity:0.7;">' + hintText + '</p></div></div>';
             return;
         }
 
         // Group by category
         const grouped = {};
-        for (const entry of this.entries) {
+        for (const entry of filtered) {
             const cat = entry.category || 'general';
             if (!grouped[cat]) grouped[cat] = [];
             grouped[cat].push(entry);
@@ -105,11 +144,81 @@ const knowledgeApp = {
         container.innerHTML = html;
     },
 
+    renderCorrections(entries) {
+        const container = document.getElementById('entriesContainer');
+        const lang = (typeof i18n !== 'undefined' && i18n.currentLanguage) || 'de';
+
+        if (!entries.length) {
+            const emptyText = typeof i18n !== 'undefined' ? i18n.t('knowledge.corrections.empty') : 'Noch keine Korrekturen';
+            const hintText = typeof i18n !== 'undefined' ? i18n.t('knowledge.corrections.empty.hint') : 'Wenn Sie KI-Entwürfe bearbeiten, lernt die KI automatisch daraus.';
+            container.innerHTML =
+                '<div class="settings-card"><div class="card-body" style="text-align:center;padding:40px;color:var(--text-secondary);">' +
+                '<i class="fas fa-spell-check" style="font-size:48px;margin-bottom:15px;opacity:0.3;"></i>' +
+                '<p style="font-size:16px;">' + emptyText + '</p>' +
+                '<p style="font-size:14px;opacity:0.7;">' + hintText + '</p></div></div>';
+            return;
+        }
+
+        const originalLabel = typeof i18n !== 'undefined' ? i18n.t('knowledge.corrections.original') : 'KI sagte';
+        const correctedLabel = typeof i18n !== 'undefined' ? i18n.t('knowledge.corrections.corrected') : 'Richtig ist';
+
+        let html = '<div class="settings-card"><div class="card-body" style="padding: 0;">';
+
+        for (const entry of entries) {
+            const scopeBadge = entry.property_name
+                ? '<span class="badge" style="background:var(--primary-color);color:white;padding:2px 8px;border-radius:10px;font-size:11px;margin-left:8px;">' + this.escapeHtml(entry.property_name) + '</span>'
+                : '<span class="badge" style="background:var(--text-secondary);color:white;padding:2px 8px;border-radius:10px;font-size:11px;margin-left:8px;">Global</span>';
+
+            // Parse FALSCH:/RICHTIG: format
+            let originalText = '';
+            let correctedText = '';
+            const value = entry.value || '';
+            if (value.includes('\nRICHTIG: ')) {
+                const parts = value.split('\nRICHTIG: ');
+                originalText = parts[0].replace('FALSCH: ', '');
+                correctedText = parts[1];
+            } else {
+                correctedText = value;
+            }
+
+            const date = entry.created_at ? new Date(entry.created_at).toLocaleDateString(lang === 'de' ? 'de-DE' : 'en-US') : '';
+
+            html += '<div class="correction-entry">';
+            html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:5px;">';
+            html += '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:5px;">';
+            html += '<strong>' + this.escapeHtml(entry.label) + '</strong>' + scopeBadge;
+            html += '<span style="color:var(--text-light);font-size:12px;margin-left:8px;">' + date + '</span>';
+            html += '</div>';
+            html += '<div style="display:flex;gap:8px;">';
+            html += '<button class="btn btn-icon" onclick="knowledgeApp.openEditModal(' + entry.id + ')" title="Edit"><i class="fas fa-pencil-alt"></i></button>';
+            html += '<button class="btn btn-icon" onclick="knowledgeApp.deleteEntry(' + entry.id + ')" title="Delete" style="color:var(--danger-color);"><i class="fas fa-trash"></i></button>';
+            html += '</div></div>';
+
+            html += '<div class="correction-pair">';
+            if (originalText) {
+                html += '<div class="correction-original"><strong>' + originalLabel + ':</strong> ' + this.escapeHtml(originalText.substring(0, 200)) + (originalText.length > 200 ? '...' : '') + '</div>';
+            }
+            html += '<div class="correction-corrected"><strong>' + correctedLabel + ':</strong> ' + this.escapeHtml(correctedText.substring(0, 200)) + (correctedText.length > 200 ? '...' : '') + '</div>';
+            html += '</div></div>';
+        }
+
+        html += '</div></div>';
+        container.innerHTML = html;
+    },
+
     openAddModal() {
         document.getElementById('entryId').value = '';
         document.getElementById('knowledgeForm').reset();
         document.querySelector('input[name="scope"][value="global"]').checked = true;
         this.toggleScope();
+
+        // Pre-set category based on current tab
+        if (this.currentTab === 'corrections') {
+            document.getElementById('entryCategory').value = 'correction';
+        } else if (this.currentTab === 'escalation') {
+            document.getElementById('entryCategory').value = 'escalation';
+        }
+
         const titleEl = document.getElementById('modalTitle');
         titleEl.setAttribute('data-i18n', 'knowledge.add');
         titleEl.textContent = typeof i18n !== 'undefined' ? i18n.t('knowledge.add') : 'Eintrag hinzufügen';
@@ -205,5 +314,15 @@ const knowledgeApp = {
     },
 };
 
-// Load entries on page ready
-document.addEventListener('DOMContentLoaded', () => knowledgeApp.loadEntries());
+// Load entries on page ready, restore tab from URL
+document.addEventListener('DOMContentLoaded', () => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab && ['knowledge', 'escalation', 'corrections'].includes(tab)) {
+        knowledgeApp.currentTab = tab;
+        document.querySelectorAll('.knowledge-tab').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tab);
+        });
+    }
+    knowledgeApp.loadEntries();
+});

@@ -11,6 +11,19 @@
         </button>
     </div>
 
+    <!-- Tab Bar -->
+    <div class="knowledge-tabs">
+        <button class="knowledge-tab active" data-tab="knowledge" onclick="knowledgeApp.switchTab('knowledge')">
+            <i class="fas fa-book"></i> <span data-i18n="knowledge.tab.knowledge">Wissen</span>
+        </button>
+        <button class="knowledge-tab" data-tab="escalation" onclick="knowledgeApp.switchTab('escalation')">
+            <i class="fas fa-exclamation-triangle"></i> <span data-i18n="knowledge.tab.escalation">Eskalation</span>
+        </button>
+        <button class="knowledge-tab" data-tab="corrections" onclick="knowledgeApp.switchTab('corrections')">
+            <i class="fas fa-spell-check"></i> <span data-i18n="knowledge.tab.corrections">Korrekturen</span>
+        </button>
+    </div>
+
     <!-- Filter Bar -->
     <div class="settings-card" style="margin-bottom: 20px;">
         <div class="card-body" style="padding: 15px;">
@@ -81,6 +94,7 @@
                     <option value="emergency" data-i18n="knowledge.cat.emergency">Notfallkontakte</option>
                     <option value="faq" data-i18n="knowledge.cat.faq">Häufige Fragen</option>
                     <option value="escalation" data-i18n="knowledge.cat.escalation">Eskalation</option>
+                    <option value="correction" data-i18n="knowledge.cat.correction">Korrektur</option>
                 </select>
             </div>
 
@@ -106,5 +120,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('chatbot.static', filename='js/knowledge.js') }}?v=1"></script>
+<script src="{{ url_for('chatbot.static', filename='js/knowledge.js') }}?v=2"></script>
 {% endblock %}

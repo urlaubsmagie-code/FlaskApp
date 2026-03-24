@@ -541,12 +541,13 @@ class MessageRouter:
             except Exception as e:
                 logger.warning(f"Failed to fetch Smoobu reservation: {e}")
 
-        # Load knowledge base entries for AI context
+        # Load knowledge base entries for AI context (exclude corrections)
         knowledge_entries = []
         try:
             if conversation.property_id:
                 knowledge_entries = [e.to_dict() for e in
                                     KnowledgeEntry.query.filter(
+                                        KnowledgeEntry.category != 'correction',
                                         db.or_(
                                             KnowledgeEntry.property_id.is_(None),
                                             KnowledgeEntry.property_id == conversation.property_id
@@ -554,10 +555,33 @@ class MessageRouter:
                                     ).order_by(KnowledgeEntry.category, KnowledgeEntry.sort_order).all()]
             else:
                 knowledge_entries = [e.to_dict() for e in
-                                    KnowledgeEntry.query.filter_by(property_id=None)
+                                    KnowledgeEntry.query.filter(
+                                        KnowledgeEntry.category != 'correction'
+                                    ).filter_by(property_id=None)
                                     .order_by(KnowledgeEntry.category, KnowledgeEntry.sort_order).all()]
         except Exception as e:
             logger.warning(f"Failed to load knowledge entries: {e}")
+
+        # Load past corrections for AI context
+        corrections = []
+        try:
+            correction_query = KnowledgeEntry.query.filter_by(category='correction')
+            if conversation.property_id:
+                property_corrections = correction_query.filter_by(
+                    property_id=conversation.property_id
+                ).order_by(KnowledgeEntry.created_at.desc()).limit(7).all()
+
+                global_corrections = KnowledgeEntry.query.filter_by(
+                    category='correction', property_id=None
+                ).order_by(KnowledgeEntry.created_at.desc()).limit(3).all()
+
+                corrections = [c.to_dict() for c in property_corrections + global_corrections]
+            else:
+                corrections = [c.to_dict() for c in
+                               correction_query.filter_by(property_id=None)
+                               .order_by(KnowledgeEntry.created_at.desc()).limit(10).all()]
+        except Exception as e:
+            logger.warning(f"Failed to load corrections: {e}")
 
         # Generate response
         response_text = self.ai_service.generate_guest_response(
@@ -571,7 +595,8 @@ class MessageRouter:
             max_history=max_history,
             reservation_info=reservation_info,
             knowledge_entries=knowledge_entries,
-            conversation_summary=conversation_summary
+            conversation_summary=conversation_summary,
+            corrections=corrections
         )
 
         if not response_text:
