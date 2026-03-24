@@ -366,7 +366,18 @@ const translations = {
         'account.sound': 'Ton',
         'account.push': 'Push',
         'account.language': 'Sprache',
-        'account.logout': 'Abmelden'
+        'account.logout': 'Abmelden',
+
+        // Inbox escalation & AI status
+        'inbox.needsAttention': 'Braucht Aufmerksamkeit',
+        'inbox.aiActive': 'KI aktiv',
+        'inbox.aiPaused': 'KI pausiert',
+        'inbox.filter.escalated': 'Eskaliert',
+
+        // Conversation escalation
+        'conversation.escalation.resolve': 'Als gelöst markieren',
+        'conversation.escalation.banner': 'Dieses Gespräch wurde eskaliert und benötigt Ihre Aufmerksamkeit.',
+        'conversation.escalation.resolved': 'Eskalation gelöst'
     },
 
     en: {
@@ -731,7 +742,18 @@ const translations = {
         'account.sound': 'Sound',
         'account.push': 'Push',
         'account.language': 'Language',
-        'account.logout': 'Logout'
+        'account.logout': 'Logout',
+
+        // Inbox escalation & AI status
+        'inbox.needsAttention': 'Needs Attention',
+        'inbox.aiActive': 'AI Active',
+        'inbox.aiPaused': 'AI Paused',
+        'inbox.filter.escalated': 'Escalated',
+
+        // Conversation escalation
+        'conversation.escalation.resolve': 'Mark as Resolved',
+        'conversation.escalation.banner': 'This conversation has been escalated and needs your attention.',
+        'conversation.escalation.resolved': 'Escalation resolved'
     }
 };
 
