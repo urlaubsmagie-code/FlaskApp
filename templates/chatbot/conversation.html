@@ -3,6 +3,11 @@
 
 {% block title %}{{ _('Conversation') if _ else 'Konversation' }} - {{ guest.name or 'Gast' }}{% endblock %}
 
+{% block extra_css %}
+<!-- Prefetch inbox page so "back" navigation is instant -->
+<link rel="prefetch" href="{{ url_for('chatbot.index') }}">
+{% endblock %}
+
 {% block content %}
 <div class="conversation-container">
     <!-- Conversation Header -->
@@ -49,6 +54,13 @@
                 <i class="fas fa-bolt"></i>
                 <span class="toggle-status" id="autoRespondStatus">{{ 'AN' if conversation.auto_respond else 'AUS' }}</span>
             </button>
+            {% if conversation.escalated %}
+            <button class="btn btn-icon btn-escalation-resolve" onclick="resolveEscalation()" id="resolveEscalationBtn"
+                data-i18n-title="conversation.escalation.resolve" title="Als gelöst markieren">
+                <i class="fas fa-check-circle"></i>
+                <span class="toggle-status" data-i18n="conversation.escalation.resolve">Lösen</span>
+            </button>
+            {% endif %}
             <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="btn btn-icon" data-i18n-title="conversation.guest.profile" title="Gästeprofil anzeigen">
                 <i class="fas fa-user"></i>
             </a>
@@ -71,6 +83,12 @@
                 <i class="fas fa-bolt"></i>
                 <span>Auto: <span id="mobileAutoRespondStatus">{{ 'AN' if conversation.auto_respond else 'AUS' }}</span></span>
             </button>
+            {% if conversation.escalated %}
+            <button class="overflow-menu-item btn-escalation-resolve" onclick="resolveEscalation()" id="mobileResolveBtn">
+                <i class="fas fa-check-circle"></i>
+                <span data-i18n="conversation.escalation.resolve">Als gelöst markieren</span>
+            </button>
+            {% endif %}
             <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="overflow-menu-item">
                 <i class="fas fa-user"></i>
                 <span data-i18n="conversation.guest.profile">Gästeprofil</span>
@@ -80,6 +98,13 @@
 
     <!-- Messages Area -->
     <div class="messages-container" id="messagesContainer">
+        {% if conversation.escalated %}
+        <div class="escalation-banner" id="escalationBanner">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span data-i18n="conversation.escalation.banner">Dieses Gespräch wurde eskaliert und benötigt Ihre Aufmerksamkeit.</span>
+            <button class="btn btn-sm btn-resolve" onclick="resolveEscalation()" data-i18n="conversation.escalation.resolve">Als gelöst markieren</button>
+        </div>
+        {% endif %}
         {% if has_older %}
         <div class="load-older-wrapper" id="loadOlderWrapper">
             <button class="btn btn-secondary load-older-btn" id="loadOlderBtn" onclick="loadOlderMessages()">
@@ -174,6 +199,7 @@
         conversationId: {{ conversation.id }},
         aiEnabled: {{ 'true' if conversation.ai_enabled else 'false' }},
         autoRespond: {{ 'true' if conversation.auto_respond else 'false' }},
+        escalated: {{ 'true' if conversation.escalated else 'false' }},
         platform: {{ conversation.platform|tojson }},
         gmailConnected: {{ 'true' if gmail_connected else 'false' }},
         smoobuConnected: {{ 'true' if smoobu_connected else 'false' }},
@@ -184,5 +210,5 @@
         checkInTime: {{ (conversation.property.check_in_time if conversation.property else "3:00 PM")|tojson }}
     };
 </script>
-<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=9"></script>
+<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=11"></script>
 {% endblock %}

@@ -538,6 +538,13 @@ function suggestAIResponse() {
     .then(data => {
         if (data.error) {
             showAiError(data.error);
+        } else if (data.skipped) {
+            // Acknowledgment detected — no AI response needed
+            const msg = i18n.t('conversation.ai.no_response_needed') || 'No response needed — guest acknowledged your message.';
+            showNotification(msg, 'info', 5000);
+            if (data.debug_context) {
+                console.log('AI Skipped:', data.debug_context);
+            }
         } else {
             input.value = data.suggestion;
             localStorage.setItem(draftKey, data.suggestion);
@@ -628,6 +635,30 @@ function toggleAutoRespond() {
     .catch(err => console.error('Failed to toggle auto-respond:', err));
 }
 
+function resolveEscalation() {
+    fetch(`/chatbot/api/conversations/${conversationId}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            // Remove escalation UI elements
+            const banner = document.getElementById('escalationBanner');
+            if (banner) banner.remove();
+
+            const resolveBtn = document.getElementById('resolveEscalationBtn');
+            if (resolveBtn) resolveBtn.remove();
+
+            const mobileResolveBtn = document.getElementById('mobileResolveBtn');
+            if (mobileResolveBtn) mobileResolveBtn.remove();
+
+            showNotification(i18n.t('conversation.escalation.resolved') || 'Eskalation gelöst', 'success');
+        }
+    })
+    .catch(err => console.error('Failed to resolve escalation:', err));
+}
+
 /**
  * Add a message to the UI
  */
@@ -704,6 +735,12 @@ function updateMessages(messages) {
 
     if (hasNewMessages) {
         scrollToBottom();
+        // Advance read cursor to include newly arrived messages
+        fetch(`/chatbot/api/conversations/${conversationId}/read`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ last_message_id: maxKnownMessageId })
+        }).catch(err => console.error('Failed to advance read cursor:', err));
     }
 
     const emptyState = container.querySelector('.empty-messages');
@@ -787,7 +824,7 @@ function initSmoobuSync() {
                 messagePoller.start();
             }
         },
-        interval: 15000,
+        interval: 30000,
         onError: (err) => {
             console.error('Smoobu sync error:', err);
         }
@@ -825,10 +862,11 @@ function checkMasterAiSwitch() {
 
 // Start polling and scroll to bottom on page load
 document.addEventListener('DOMContentLoaded', function() {
-    // Mark conversation as read (fire-and-forget)
+    // Mark read with the latest known message ID for precise cursor tracking
     fetch(`/chatbot/api/conversations/${conversationId}/read`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ last_message_id: maxKnownMessageId || null })
     }).catch(err => console.error('Failed to mark as read:', err));
 
     insertInitialDateDividers();

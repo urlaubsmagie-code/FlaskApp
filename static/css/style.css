@@ -3019,3 +3019,46 @@ dialog.merge-modal {
     opacity: 0.6;
 }
 
+/* Escalation banner in conversation view */
+.escalation-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: color-mix(in srgb, var(--danger-color, #e74c3c) 10%, var(--card-bg, white));
+    border: 1px solid var(--danger-color, #e74c3c);
+    border-radius: 8px;
+    margin: 8px 16px;
+    font-size: 0.85rem;
+    color: var(--danger-color, #e74c3c);
+}
+
+.escalation-banner i {
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.escalation-banner .btn-resolve {
+    margin-left: auto;
+    padding: 4px 12px;
+    background: var(--danger-color, #e74c3c);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.escalation-banner .btn-resolve:hover {
+    opacity: 0.85;
+}
+
+.btn-escalation-resolve {
+    color: var(--danger-color, #e74c3c) !important;
+}
+
+:root[data-theme="dark"] .escalation-banner {
+    background: color-mix(in srgb, var(--danger-color, #e74c3c) 15%, var(--card-bg, #1e1e1e));
+}
+
