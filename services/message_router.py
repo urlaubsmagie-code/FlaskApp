@@ -442,6 +442,56 @@ class MessageRouter:
         host_instructions = AISettings.get('host_instructions', '')
         max_history = int(AISettings.get('max_conversation_history', '10'))
 
+        # --- Conversation summary for long conversations ---
+        conversation_summary = conversation.ai_summary  # Use cached by default
+        total_msg_count = Message.query.filter_by(conversation_id=conversation.id).count()
+
+        if total_msg_count > max_history:
+            # Find the cutoff message (the oldest message that WON'T be in recent history)
+            cutoff_msg = Message.query.filter_by(
+                conversation_id=conversation.id
+            ).order_by(Message.sent_at.desc()).offset(max_history).first()
+
+            if cutoff_msg:
+                summary_is_stale = (
+                    conversation.ai_summary_through_id is None
+                    or cutoff_msg.id > conversation.ai_summary_through_id
+                )
+
+                if summary_is_stale and self.ai_service:
+                    try:
+                        # Fetch messages to summarize (between last summary and cutoff)
+                        summary_query = Message.query.filter_by(
+                            conversation_id=conversation.id
+                        ).filter(
+                            Message.id <= cutoff_msg.id
+                        )
+                        if conversation.ai_summary_through_id:
+                            summary_query = summary_query.filter(
+                                Message.id > conversation.ai_summary_through_id
+                            )
+                        msgs_to_summarize = summary_query.order_by(
+                            Message.sent_at.asc()
+                        ).limit(50).all()
+
+                        if msgs_to_summarize:
+                            summary_result = self.ai_service.generate_conversation_summary(
+                                [m.to_dict() for m in msgs_to_summarize],
+                                existing_summary=conversation.ai_summary
+                            )
+                            if summary_result:
+                                conversation.ai_summary = summary_result
+                                # Track through the last message actually summarized
+                                # (not cutoff_msg.id - the .limit(50) may not reach it)
+                                conversation.ai_summary_through_id = msgs_to_summarize[-1].id
+                                conversation_summary = summary_result
+                                db.session.commit()
+                                logger.info(f"[SUMMARY] Updated summary for conversation {conversation.id} "
+                                            f"(through msg {msgs_to_summarize[-1].id})")
+                    except Exception as e:
+                        logger.warning(f"[SUMMARY] Failed to update summary for conversation {conversation.id}: {e}")
+                        # Proceed with existing cached summary (or None)
+
         # Get conversation history
         messages = Message.query.filter_by(
             conversation_id=conversation.id
@@ -500,7 +550,8 @@ class MessageRouter:
             conversation_subject=conversation.subject,
             max_history=max_history,
             reservation_info=reservation_info,
-            knowledge_entries=knowledge_entries
+            knowledge_entries=knowledge_entries,
+            conversation_summary=conversation_summary
         )
 
         if not response_text:
