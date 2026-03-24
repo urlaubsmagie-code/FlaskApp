@@ -585,12 +585,13 @@ def preload_last_messages(conversations):
 
     conv_ids = [c.id for c in conversations]
 
-    # Single query: get the ID of the newest message per conversation
+    # Single query: get the ID of the newest non-pending/non-rejected message per conversation
     last_msg_subq = db.session.query(
         Message.conversation_id,
         func.max(Message.id).label('last_msg_id')
     ).filter(
-        Message.conversation_id.in_(conv_ids)
+        Message.conversation_id.in_(conv_ids),
+        db.or_(Message.approval_status.is_(None), Message.approval_status == 'approved')
     ).group_by(Message.conversation_id).subquery()
 
     # Fetch full Message objects for those IDs

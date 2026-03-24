@@ -348,7 +348,13 @@ def api_get_conversations():
     status = request.args.get('status')
 
     query = Conversation.query.options(joinedload(Conversation.guest), joinedload(Conversation.property))
-    if status:
+    if status == 'pending_approval':
+        query = query.filter(Conversation.id.in_(
+            db.session.query(Message.conversation_id)
+            .filter(Message.approval_status == 'pending')
+            .distinct()
+        ))
+    elif status:
         query = query.filter_by(status=status)
     escalated = request.args.get('escalated')
     if escalated == 'true':
@@ -362,8 +368,22 @@ def api_get_conversations():
     preload_last_messages(pagination.items)
     preload_unread_counts(pagination.items)
 
+    # Get conversation IDs with pending approvals
+    pending_conv_ids = set(
+        row[0] for row in db.session.query(Message.conversation_id)
+        .filter(Message.approval_status == 'pending')
+        .distinct()
+        .all()
+    )
+
+    conv_list = []
+    for c in pagination.items:
+        conv_dict = c.to_dict()
+        conv_dict['has_pending_approval'] = c.id in pending_conv_ids
+        conv_list.append(conv_dict)
+
     return jsonify({
-        'conversations': [c.to_dict() for c in pagination.items],
+        'conversations': conv_list,
         'total': pagination.total,
         'pages': pagination.pages,
         'current_page': page
@@ -455,7 +475,9 @@ def api_get_messages(conversation_id):
     before_id = request.args.get('before', type=int)
     limit = request.args.get('limit', 50, type=int)
 
-    query = Message.query.filter_by(conversation_id=conversation_id)
+    query = Message.query.filter_by(conversation_id=conversation_id).filter(
+        db.or_(Message.approval_status.is_(None), Message.approval_status != 'rejected')
+    )
 
     if after_id:
         # Polling: only new messages after the last known ID
@@ -606,14 +628,25 @@ def api_generate_ai_response(conversation_id):
     if not ai_service.test_connection():
         return jsonify({'error': 'Cannot connect to Ollama. Is the server running?'}), 503
 
+    # Delete any existing pending draft before generating a new one
+    existing_pending = Message.query.filter_by(
+        conversation_id=conversation_id,
+        approval_status='pending'
+    ).first()
+    if existing_pending:
+        db.session.delete(existing_pending)
+        db.session.commit()
+
     try:
         # Read AI settings from DB
         tone = AISettings.get('ai_response_tone', 'friendly_professional')
         host_instructions = AISettings.get('host_instructions', '')
         max_history = int(AISettings.get('max_conversation_history', '10'))
 
-        # Get conversation context
-        messages = conversation.messages.order_by(Message.sent_at.desc()).limit(max_history).all()
+        # Get conversation context (exclude pending/rejected drafts from history)
+        messages = conversation.messages.filter(
+            db.or_(Message.approval_status.is_(None), Message.approval_status == 'approved')
+        ).order_by(Message.sent_at.desc()).limit(max_history).all()
         messages.reverse()
 
         if not messages:
@@ -697,51 +730,64 @@ def api_generate_ai_response(conversation_id):
         conversation.updated_at = datetime.utcnow()
         db.session.commit()
 
-        # Send via platform if applicable
-        email_sent = False
-        smoobu_sent = False
-        if conversation.platform == 'email':
-            try:
-                from .services.gmail_service import get_gmail_service
-                gmail = get_gmail_service()
-                if gmail.is_authenticated():
-                    guest = conversation.guest
-                    send_result = gmail.send_email(
-                        to=guest.email,
-                        subject=conversation.subject or 'Re: Your inquiry',
-                        body=ai_response,
-                        thread_id=conversation.platform_id,
-                        reply_to_message_id=latest_guest_message.platform_message_id if latest_guest_message.platform_message_id else None
-                    )
-                    email_sent = bool(send_result)
-                    if not email_sent:
-                        logger.warning(f"Failed to send AI response via Gmail for conversation {conversation_id}")
-            except Exception as e:
-                logger.error(f"Error sending AI response via Gmail: {e}")
-        elif conversation.platform == 'smoobu' and conversation.smoobu_reservation_id:
-            try:
-                from .services.smoobu_service import get_smoobu_service
-                smoobu = get_smoobu_service()
-                if smoobu and smoobu.is_configured():
-                    send_result = smoobu.send_message(conversation.smoobu_reservation_id, ai_response)
-                    smoobu_sent = bool(send_result)
-                    if smoobu_sent and isinstance(send_result, dict):
-                        # Set platform_message_id to prevent duplicate on next sync
-                        smoobu_msg_id = str(send_result.get('id') or send_result.get('message_id')
-                                           or send_result.get('messageId') or '')
-                        if smoobu_msg_id:
-                            ai_message.platform_message_id = (
-                                f"smoobu-{conversation.smoobu_reservation_id}-{smoobu_msg_id}")
-                            db.session.commit()
-                    if not smoobu_sent:
-                        logger.warning(f"Failed to send AI response via Smoobu for conversation {conversation_id}")
-            except Exception as e:
-                logger.error(f"Error sending AI response via Smoobu: {e}")
+        # Check if approval queue is enabled
+        # Manual button ALWAYS creates a pending draft when queue is enabled
+        approval_queue_enabled = AISettings.get('approval_queue_enabled', 'true') == 'true'
 
-        response = ai_message.to_dict()
-        response['email_sent'] = email_sent
-        response['smoobu_sent'] = smoobu_sent
-        return jsonify(response), 201
+        if approval_queue_enabled:
+            ai_message.approval_status = 'pending'
+            db.session.commit()
+            return jsonify({
+                'success': True,
+                'approval_status': 'pending',
+                'message': ai_message.to_dict()
+            })
+        else:
+            # Queue disabled: send immediately via platform
+            email_sent = False
+            smoobu_sent = False
+            if conversation.platform == 'email':
+                try:
+                    from .services.gmail_service import get_gmail_service
+                    gmail = get_gmail_service()
+                    if gmail.is_authenticated():
+                        guest = conversation.guest
+                        send_result = gmail.send_email(
+                            to=guest.email,
+                            subject=conversation.subject or 'Re: Your inquiry',
+                            body=ai_response,
+                            thread_id=conversation.platform_id,
+                            reply_to_message_id=latest_guest_message.platform_message_id if latest_guest_message.platform_message_id else None
+                        )
+                        email_sent = bool(send_result)
+                        if not email_sent:
+                            logger.warning(f"Failed to send AI response via Gmail for conversation {conversation_id}")
+                except Exception as e:
+                    logger.error(f"Error sending AI response via Gmail: {e}")
+            elif conversation.platform == 'smoobu' and conversation.smoobu_reservation_id:
+                try:
+                    from .services.smoobu_service import get_smoobu_service
+                    smoobu = get_smoobu_service()
+                    if smoobu and smoobu.is_configured():
+                        send_result = smoobu.send_message(conversation.smoobu_reservation_id, ai_response)
+                        smoobu_sent = bool(send_result)
+                        if smoobu_sent and isinstance(send_result, dict):
+                            # Set platform_message_id to prevent duplicate on next sync
+                            smoobu_msg_id = str(send_result.get('id') or send_result.get('message_id')
+                                               or send_result.get('messageId') or '')
+                            if smoobu_msg_id:
+                                ai_message.platform_message_id = (
+                                    f"smoobu-{conversation.smoobu_reservation_id}-{smoobu_msg_id}")
+                                db.session.commit()
+                        if not smoobu_sent:
+                            logger.warning(f"Failed to send AI response via Smoobu for conversation {conversation_id}")
+                except Exception as e:
+                    logger.error(f"Error sending AI response via Smoobu: {e}")
+
+            response = ai_message.to_dict()
+            response['email_sent'] = email_sent
+            response['smoobu_sent'] = smoobu_sent
+            return jsonify(response), 201
 
     except MemoryError:
         logger.error("MemoryError during AI response generation - model may be too large")
@@ -1395,6 +1441,110 @@ def api_resolve_escalation(conversation_id):
         'escalated': conversation.escalated,
         'auto_respond': conversation.auto_respond
     })
+
+
+@chatbot_bp.route('/api/messages/<int:message_id>/approve', methods=['POST'])
+def api_approve_message(message_id):
+    """Approve a pending AI draft and send it via platform."""
+    message = Message.query.get_or_404(message_id)
+
+    if message.approval_status != 'pending':
+        return jsonify({'error': 'Message is not pending approval'}), 400
+
+    conversation = Conversation.query.get(message.conversation_id)
+
+    # Mark as approved
+    message.approval_status = 'approved'
+    message.approved_at = datetime.utcnow()
+    db.session.commit()
+
+    # Send via platform (same logic as api_generate_ai_response)
+    email_sent = False
+    smoobu_sent = False
+
+    if conversation.platform == 'email' and conversation.guest:
+        try:
+            from .services.gmail_service import get_gmail_service
+            gmail = get_gmail_service()
+            if gmail and gmail.is_authenticated() and conversation.guest.email:
+                latest_guest_msg = Message.query.filter_by(
+                    conversation_id=conversation.id,
+                    sender_type='guest'
+                ).order_by(Message.sent_at.desc()).first()
+
+                send_result = gmail.send_email(
+                    to=conversation.guest.email,
+                    subject=conversation.subject or 'Re: Your inquiry',
+                    body=message.content,
+                    thread_id=conversation.platform_id,
+                    reply_to_message_id=latest_guest_msg.platform_message_id if latest_guest_msg and latest_guest_msg.platform_message_id else None
+                )
+                email_sent = bool(send_result)
+        except Exception as e:
+            logger.warning(f"Failed to send approved message via Gmail: {e}")
+
+    elif conversation.platform == 'smoobu' and conversation.smoobu_reservation_id:
+        try:
+            from .services.smoobu_service import get_smoobu_service
+            smoobu = get_smoobu_service()
+            if smoobu and smoobu.is_configured():
+                send_result = smoobu.send_message(conversation.smoobu_reservation_id, message.content)
+                smoobu_sent = bool(send_result)
+                # Set platform_message_id to prevent duplicate on next sync
+                if smoobu_sent and isinstance(send_result, dict):
+                    smoobu_msg_id = str(send_result.get('id') or send_result.get('message_id')
+                                       or send_result.get('messageId') or '')
+                    if smoobu_msg_id:
+                        message.platform_message_id = (
+                            f"smoobu-{conversation.smoobu_reservation_id}-{smoobu_msg_id}")
+                        db.session.commit()
+        except Exception as e:
+            logger.warning(f"Failed to send approved message via Smoobu: {e}")
+
+    return jsonify({
+        'success': True,
+        'email_sent': email_sent,
+        'smoobu_sent': smoobu_sent,
+        'message': message.to_dict()
+    })
+
+
+@chatbot_bp.route('/api/messages/<int:message_id>/reject', methods=['POST'])
+def api_reject_message(message_id):
+    """Reject a pending AI draft."""
+    message = Message.query.get_or_404(message_id)
+
+    if message.approval_status != 'pending':
+        return jsonify({'error': 'Message is not pending approval'}), 400
+
+    message.approval_status = 'rejected'
+    db.session.commit()
+
+    return jsonify({'success': True})
+
+
+@chatbot_bp.route('/api/conversations/<int:conv_id>/toggle-auto-approve', methods=['POST'])
+def api_toggle_auto_approve(conv_id):
+    """Toggle auto-approve for a conversation."""
+    conversation = Conversation.query.get_or_404(conv_id)
+    conversation.auto_approve = not conversation.auto_approve
+    db.session.commit()
+
+    return jsonify({'auto_approve': conversation.auto_approve})
+
+
+@chatbot_bp.route('/api/settings/bulk-auto-approve', methods=['POST'])
+def api_bulk_auto_approve():
+    """Enable/disable auto-approve for all active conversations."""
+    data = request.get_json()
+    enabled = data.get('enabled', False)
+
+    updated = Conversation.query.filter(
+        Conversation.status != 'closed'
+    ).update({Conversation.auto_approve: enabled})
+    db.session.commit()
+
+    return jsonify({'success': True, 'updated_count': updated})
 
 
 @chatbot_bp.route('/api/conversations/<int:conversation_id>/property', methods=['PATCH'])
