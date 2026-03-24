@@ -17,7 +17,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('chatbot.static', filename='css/style.css') }}?v=10">
+    <link rel="stylesheet" href="{{ url_for('chatbot.static', filename='css/style.css') }}?v=15">
 
     {% block extra_css %}{% endblock %}
 </head>
@@ -50,6 +50,12 @@
                     <a href="{{ url_for('chatbot.settings') }}" class="nav-link {% if request.endpoint == 'chatbot.settings' %}active{% endif %}">
                         <i class="fas fa-cog"></i>
                         <span data-i18n="nav.settings">Einstellungen</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('chatbot.knowledge_base') }}" class="nav-link {% if request.endpoint == 'chatbot.knowledge_base' %}active{% endif %}">
+                        <i class="fas fa-book"></i>
+                        <span data-i18n="nav.knowledge">Wissensdatenbank</span>
                     </a>
                 </li>
                 {% if current_user.is_authenticated and current_user.id == 1 %}
@@ -186,7 +192,7 @@
     </script>
 
     <!-- Scripts -->
-    <script src="{{ url_for('chatbot.static', filename='js/i18n.js') }}?v=11"></script>
+    <script src="{{ url_for('chatbot.static', filename='js/i18n.js') }}?v=14"></script>
     <script src="{{ url_for('chatbot.static', filename='js/app.js') }}?v=9"></script>
     {% block extra_js %}{% endblock %}
 
