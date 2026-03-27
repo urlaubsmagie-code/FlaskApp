@@ -107,7 +107,7 @@ function loadOlderMessages() {
 
                 const icon = msg.sender_type === 'guest' ? 'fa-user' : (msg.sender_type === 'owner' ? 'fa-home' : 'fa-robot');
                 const name = msg.sender_type === 'guest' ? cfg.guestName
-                    : (msg.sender_type === 'owner' ? 'You' : 'AI Assistant');
+                    : (msg.sender_type === 'owner' ? (msg.sender_name || 'Team') : 'KI');
                 let time = '';
                 if (msg.sent_at) {
                     const d = new Date(msg.sent_at);
@@ -809,7 +809,7 @@ function addMessageToUI(message, senderType) {
     messageDiv.dataset.sentAt = sentAt;
 
     const icon = actualSenderType === 'guest' ? 'fa-user' : (actualSenderType === 'owner' ? 'fa-home' : 'fa-robot');
-    const name = actualSenderType === 'guest' ? cfg.guestName : (actualSenderType === 'owner' ? 'You' : 'AI Assistant');
+    const name = actualSenderType === 'guest' ? cfg.guestName : (actualSenderType === 'owner' ? (message.sender_name || 'Team') : 'KI');
 
     let time;
     if (message.sent_at) {

@@ -6,10 +6,23 @@ Defines all URL endpoints for the messaging system
 import difflib
 import logging
 import threading
+from functools import wraps
 
 from flask import render_template, request, jsonify, redirect, url_for, current_app
-from flask_login import login_user, logout_user, current_user
+from flask_login import login_user, logout_user, current_user, login_required
 from datetime import datetime
+
+
+def admin_required(f):
+    """Decorator that restricts access to admin users only."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not current_user.is_authenticated or not current_user.is_admin:
+            if request.is_json or request.path.startswith('/chatbot/api/'):
+                return jsonify({'error': 'Admin access required'}), 403
+            return redirect(url_for('chatbot.index'))
+        return f(*args, **kwargs)
+    return decorated
 from sqlalchemy import case as sa_case
 from sqlalchemy.orm import joinedload
 
@@ -144,7 +157,7 @@ def setup():
             return render_template('chatbot/setup.html', error=error,
                                    username=username, display_name=display_name)
 
-        user = User(username=username, display_name=display_name)
+        user = User(username=username, display_name=display_name, is_admin=True)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
@@ -295,6 +308,7 @@ def statistics():
 
 
 @chatbot_bp.route('/settings')
+@login_required
 def settings():
     """AI settings configuration page"""
     all_settings = AISettings.query.all()
@@ -309,10 +323,16 @@ def knowledge_base():
     return render_template('chatbot/knowledge.html', properties=properties)
 
 
+@chatbot_bp.route('/help')
+def help_page():
+    """Help and documentation page"""
+    return render_template('chatbot/help.html')
+
+
 @chatbot_bp.route('/debug')
 def debug_page():
     """Debug dashboard — admin only (first user = admin)."""
-    if not current_user.is_authenticated or current_user.id != 1:
+    if not current_user.is_authenticated or not current_user.is_admin:
         return redirect(url_for('chatbot.index'))
     return render_template('chatbot/debug.html')
 
@@ -320,7 +340,7 @@ def debug_page():
 @chatbot_bp.route('/api/debug/logs')
 def api_debug_logs():
     """API: get recent log entries."""
-    if not current_user.is_authenticated or current_user.id != 1:
+    if not current_user.is_authenticated or not current_user.is_admin:
         return jsonify({'error': 'Unauthorized'}), 403
     from .services.debug_service import get_log_handler
     handler = get_log_handler()
@@ -338,7 +358,7 @@ def api_debug_logs():
 @chatbot_bp.route('/api/debug/api-calls')
 def api_debug_api_calls():
     """API: get recent API call history."""
-    if not current_user.is_authenticated or current_user.id != 1:
+    if not current_user.is_authenticated or not current_user.is_admin:
         return jsonify({'error': 'Unauthorized'}), 403
     from .services.debug_service import get_api_tracker
     tracker = get_api_tracker()
@@ -354,7 +374,7 @@ def api_debug_api_calls():
 @chatbot_bp.route('/api/debug/status')
 def api_debug_status():
     """API: system status check."""
-    if not current_user.is_authenticated or current_user.id != 1:
+    if not current_user.is_authenticated or not current_user.is_admin:
         return jsonify({'error': 'Unauthorized'}), 403
     from .services.ai_service import get_ai_service
     from .services.gmail_service import get_gmail_service
@@ -522,6 +542,29 @@ def api_search():
     })
 
 
+@chatbot_bp.route('/api/search/rebuild', methods=['POST'])
+def api_rebuild_search_index():
+    """Admin endpoint: rebuild FTS5 search index from scratch."""
+    if not current_user.is_authenticated or not current_user.is_admin:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    from .utils.search import rebuild_search_index
+    from sqlalchemy import text
+
+    msg_count = db.session.execute(text("SELECT COUNT(*) FROM message")).scalar()
+    success = rebuild_search_index()
+
+    if success:
+        fts_count = db.session.execute(text("SELECT COUNT(*) FROM message_fts")).scalar()
+        return jsonify({
+            'success': True,
+            'messages_total': msg_count,
+            'messages_indexed': fts_count
+        })
+    else:
+        return jsonify({'success': False, 'error': 'Rebuild failed — check server logs'}), 500
+
+
 @chatbot_bp.route('/api/conversations/<int:conversation_id>/messages', methods=['GET'])
 def api_get_messages(conversation_id):
     """Get messages for a specific conversation.
@@ -643,10 +686,17 @@ def api_send_message(conversation_id):
         conversation_id=conversation_id,
         sender_type='owner',
         content=data['content'],
-        sent_at=datetime.utcnow()
+        sent_at=datetime.utcnow(),
+        sent_via_app=True,
+        user_id=current_user.id if current_user.is_authenticated else None
     )
     db.session.add(message)
     conversation.updated_at = datetime.utcnow()
+
+    # Assign conversation to the user who is responding
+    if current_user.is_authenticated and conversation.user_id is None:
+        conversation.user_id = current_user.id
+
     db.session.commit()
 
     # Store correction if host edited an AI draft
@@ -1297,18 +1347,30 @@ def api_merge_guests(guest_id):
 
 
 @chatbot_bp.route('/api/settings', methods=['GET'])
+@login_required
 def api_get_settings():
     """Get all AI settings"""
     settings = AISettings.query.all()
     return jsonify({s.key: s.value for s in settings})
 
 
+# Settings keys that only admins may change
+ADMIN_ONLY_SETTINGS = {'ai_temperature', 'ai_max_tokens', 'ollama_model'}
+
+
 @chatbot_bp.route('/api/settings', methods=['PUT'])
+@login_required
 def api_update_settings():
     """Update AI settings"""
     data = request.get_json()
     if not data:
         return jsonify({'error': 'No data provided'}), 400
+
+    # Check if non-admin is trying to change admin-only settings
+    if not current_user.is_admin:
+        blocked = set(data.keys()) & ADMIN_ONLY_SETTINGS
+        if blocked:
+            return jsonify({'error': 'Admin rights required for these settings'}), 403
 
     for key, value in data.items():
         AISettings.set(key, str(value))
@@ -1317,6 +1379,7 @@ def api_update_settings():
 
 
 @chatbot_bp.route('/api/ollama/models', methods=['GET'])
+@admin_required
 def api_get_ollama_models():
     """Get available Ollama models with resource info"""
     ai_service = get_ai_service()
@@ -1373,6 +1436,7 @@ def api_get_ollama_models():
 
 
 @chatbot_bp.route('/api/settings/model', methods=['PUT'])
+@admin_required
 def api_change_model():
     """Change the active AI model"""
     data = request.get_json()
@@ -1420,6 +1484,7 @@ def api_change_model():
 
 
 @chatbot_bp.route('/api/settings/email-filter', methods=['GET'])
+@admin_required
 def api_get_email_filter():
     """Get email filter settings"""
     from .services.gmail_service import get_gmail_service
@@ -1428,6 +1493,7 @@ def api_get_email_filter():
 
 
 @chatbot_bp.route('/api/settings/email-filter', methods=['PUT'])
+@admin_required
 def api_update_email_filter():
     """Update email filter settings"""
     from .services.gmail_service import get_gmail_service
@@ -1459,6 +1525,7 @@ def api_update_email_filter():
 # ============================================================================
 
 @chatbot_bp.route('/api/users', methods=['GET'])
+@admin_required
 def api_get_users():
     """Get all users"""
     users = User.query.order_by(User.username).all()
@@ -1466,6 +1533,7 @@ def api_get_users():
 
 
 @chatbot_bp.route('/api/users', methods=['POST'])
+@admin_required
 def api_create_user():
     """Create a new user"""
     data = request.get_json()
@@ -1494,6 +1562,7 @@ def api_create_user():
 
 
 @chatbot_bp.route('/api/users/<int:user_id>', methods=['DELETE'])
+@admin_required
 def api_delete_user(user_id):
     """Delete a user (cannot delete self or last user)"""
     user = User.query.get_or_404(user_id)
@@ -1509,7 +1578,22 @@ def api_delete_user(user_id):
     return jsonify({'success': True})
 
 
+@chatbot_bp.route('/api/users/<int:user_id>/admin', methods=['PUT'])
+@admin_required
+def api_toggle_admin(user_id):
+    """Toggle admin status for a user"""
+    user = User.query.get_or_404(user_id)
+
+    if user.id == current_user.id:
+        return jsonify({'error': 'Cannot change your own admin status'}), 400
+
+    user.is_admin = not user.is_admin
+    db.session.commit()
+    return jsonify({'success': True, 'is_admin': user.is_admin})
+
+
 @chatbot_bp.route('/api/users/<int:user_id>/password', methods=['PUT'])
+@admin_required
 def api_reset_password(user_id):
     """Reset a user's password"""
     user = User.query.get_or_404(user_id)
@@ -1689,6 +1773,7 @@ def api_toggle_auto_approve(conv_id):
 
 
 @chatbot_bp.route('/api/settings/bulk-auto-approve', methods=['POST'])
+@admin_required
 def api_bulk_auto_approve():
     """Enable/disable auto-approve for all active conversations."""
     data = request.get_json()
@@ -1926,11 +2011,13 @@ def api_get_detailed_stats():
     month_ago = now - timedelta(days=30)
 
     # --- Team totals (overview) ---
+    # Only count messages sent through the app (not synced from external platforms)
     total_conversations = Conversation.query.count()
     conversations_week = Conversation.query.filter(Conversation.created_at >= week_ago).count()
-    total_owner_messages = Message.query.filter_by(sender_type='owner').count()
+    total_owner_messages = Message.query.filter_by(sender_type='owner', sent_via_app=True).count()
     owner_messages_week = Message.query.filter(
         Message.sender_type == 'owner',
+        Message.sent_via_app == True,
         Message.sent_at >= week_ago
     ).count()
     total_guests = Guest.query.count()
@@ -1958,7 +2045,7 @@ def api_get_detailed_stats():
     ).filter(Conversation.user_id.in_(user_ids)).group_by(Conversation.user_id).all()
     conv_map = {r.user_id: {'total': r.total, 'active': r.active} for r in conv_counts}
 
-    # Batch: owner message counts per user (total, week, month) — 1 query
+    # Batch: owner message counts per user (total, week, month) — only app-sent messages
     msg_counts = db.session.query(
         Conversation.user_id,
         func.count(Message.id).label('total'),
@@ -1966,21 +2053,23 @@ def api_get_detailed_stats():
         func.sum(sa_case((Message.sent_at >= month_ago, 1), else_=0)).label('month')
     ).join(Conversation, Message.conversation_id == Conversation.id).filter(
         Conversation.user_id.in_(user_ids),
-        Message.sender_type == 'owner'
+        Message.sender_type == 'owner',
+        Message.sent_via_app == True
     ).group_by(Conversation.user_id).all()
     msg_map = {r.user_id: {'total': r.total, 'week': r.week, 'month': r.month} for r in msg_counts}
 
-    # Batch: last activity per user — 1 query
+    # Batch: last activity per user (only app-sent) — 1 query
     last_activity_q = db.session.query(
         Conversation.user_id,
         func.max(Message.sent_at).label('last_at')
     ).join(Conversation, Message.conversation_id == Conversation.id).filter(
         Conversation.user_id.in_(user_ids),
-        Message.sender_type == 'owner'
+        Message.sender_type == 'owner',
+        Message.sent_via_app == True
     ).group_by(Conversation.user_id).all()
     last_activity_map = {r.user_id: r.last_at for r in last_activity_q}
 
-    # Batch: daily breakdown for all users (last 7 days) — 1 query
+    # Batch: daily breakdown for all users (last 7 days, only app-sent) — 1 query
     week_start = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
     daily_counts = db.session.query(
         Conversation.user_id,
@@ -1989,6 +2078,7 @@ def api_get_detailed_stats():
     ).join(Conversation, Message.conversation_id == Conversation.id).filter(
         Conversation.user_id.in_(user_ids),
         Message.sender_type == 'owner',
+        Message.sent_via_app == True,
         Message.sent_at >= week_start
     ).group_by(Conversation.user_id, func.date(Message.sent_at)).all()
 
@@ -2175,6 +2265,119 @@ def api_push_unsubscribe():
         db.session.commit()
 
     return jsonify({'success': True})
+
+
+@chatbot_bp.route('/api/push/test', methods=['POST'])
+def api_push_test():
+    """Send a test push notification with detailed diagnostics per subscription"""
+    import json as _json
+    from pywebpush import webpush, WebPushException
+    from .services.push_service import get_push_service
+    from .models import PushSubscription
+
+    push = get_push_service()
+    if not push:
+        return jsonify({'error': 'Push service not initialized'}), 503
+
+    push._ensure_keys()
+
+    subs = PushSubscription.query.filter_by(user_id=current_user.id).all()
+    if not subs:
+        return jsonify({'error': 'No push subscriptions found. Enable push notifications first.', 'subscriptions': 0}), 400
+
+    payload = _json.dumps({
+        'title': 'ChatBotAI Test',
+        'body': 'Push notifications are working!',
+        'url': '/chatbot/',
+        'tag': 'test-push'
+    })
+
+    results = []
+    for sub in subs:
+        endpoint_short = sub.endpoint[:80] + '...' if len(sub.endpoint) > 80 else sub.endpoint
+        try:
+            response = webpush(
+                subscription_info={
+                    'endpoint': sub.endpoint,
+                    'keys': {
+                        'p256dh': sub.p256dh,
+                        'auth': sub.auth
+                    }
+                },
+                data=payload,
+                vapid_private_key=push._private_key,
+                vapid_claims={'sub': push.claim_email}
+            )
+            results.append({
+                'endpoint': endpoint_short,
+                'status': response.status_code if response else 'no_response',
+                'ok': True
+            })
+        except WebPushException as e:
+            status_code = e.response.status_code if e.response is not None else None
+            body = ''
+            if e.response is not None:
+                try:
+                    body = e.response.text[:200]
+                except Exception:
+                    body = str(e.response.status_code)
+            # Clean up expired subscriptions
+            if status_code in (404, 410):
+                db.session.delete(sub)
+                db.session.commit()
+            results.append({
+                'endpoint': endpoint_short,
+                'status': status_code,
+                'error': str(e)[:200],
+                'response_body': body,
+                'ok': False
+            })
+        except Exception as e:
+            results.append({
+                'endpoint': endpoint_short,
+                'status': None,
+                'error': f'{type(e).__name__}: {e}',
+                'ok': False
+            })
+
+    any_ok = any(r['ok'] for r in results)
+    return jsonify({
+        'success': any_ok,
+        'subscriptions': len(subs),
+        'results': results
+    })
+
+
+@chatbot_bp.route('/api/push/reset', methods=['POST'])
+def api_push_reset():
+    """Delete all push subscriptions for the current user"""
+    from .models import PushSubscription
+    deleted = PushSubscription.query.filter_by(user_id=current_user.id).delete()
+    db.session.commit()
+    return jsonify({'success': True, 'deleted': deleted})
+
+
+@chatbot_bp.route('/api/push/status', methods=['GET'])
+def api_push_status():
+    """Return push notification status for debug dashboard"""
+    from .services.push_service import get_push_service
+    from .models import PushSubscription
+
+    push = get_push_service()
+    if not push:
+        return jsonify({'initialized': False, 'subscriptions': []})
+
+    subs = PushSubscription.query.filter_by(user_id=current_user.id).all()
+    return jsonify({
+        'initialized': True,
+        'has_vapid_keys': bool(push._private_key or push._public_key),
+        'subscriptions': [{
+            'id': s.id,
+            'endpoint_domain': s.endpoint.split('/')[2] if '/' in s.endpoint else 'unknown',
+            'user_agent': (s.user_agent or '')[:80],
+            'created_at': s.created_at.isoformat() if s.created_at else None,
+        } for s in subs]
+    })
 
 
 # ============================================================================
@@ -2533,6 +2736,7 @@ def gmail_status():
 
 
 @chatbot_bp.route('/gmail/authorize')
+@admin_required
 def gmail_authorize():
     """Start Gmail OAuth flow"""
     from .services.gmail_service import get_gmail_service
@@ -2626,6 +2830,7 @@ def gmail_callback():
 
 
 @chatbot_bp.route('/gmail/disconnect', methods=['POST'])
+@admin_required
 def gmail_disconnect():
     """Disconnect Gmail account"""
     from .services.gmail_service import get_gmail_service
@@ -2872,8 +3077,14 @@ def api_gmail_reply(conversation_id):
         owner_result = router.process_owner_message(
             conversation_id=conversation_id,
             content=message_content,
-            extract_memory=True
+            extract_memory=True,
+            sent_via_app=True
         )
+
+        # Assign conversation to the user who is responding
+        if current_user.is_authenticated and conversation.user_id is None:
+            conversation.user_id = current_user.id
+            db.session.commit()
 
         # Store correction if host edited an AI draft
         original_ai_content = data.get('original_ai_content')
@@ -2905,6 +3116,7 @@ def smoobu_status():
 
 
 @chatbot_bp.route('/smoobu/connect', methods=['POST'])
+@admin_required
 def smoobu_connect():
     """Save Smoobu API key and verify connection"""
     data = request.get_json()
@@ -2928,6 +3140,7 @@ def smoobu_connect():
 
 
 @chatbot_bp.route('/smoobu/disconnect', methods=['POST'])
+@admin_required
 def smoobu_disconnect():
     """Clear Smoobu API key"""
     from .services.smoobu_service import get_smoobu_service
@@ -3182,8 +3395,14 @@ def api_smoobu_reply(conversation_id):
             conversation_id=conversation_id,
             content=message_content,
             extract_memory=True,
-            platform_message_id=platform_msg_id
+            platform_message_id=platform_msg_id,
+            sent_via_app=True
         )
+
+        # Assign conversation to the user who is responding
+        if current_user.is_authenticated and conversation.user_id is None:
+            conversation.user_id = current_user.id
+            db.session.commit()
 
         # Store correction if host edited an AI draft
         original_ai_content = data.get('original_ai_content')

@@ -705,9 +705,7 @@ Return ONLY the JSON object:"""
             "- NEVER repeat information you already provided.",
             "- If you don't know specific details (WiFi password, door code, prices), say you'll check — NEVER invent details.",
             "",
-            "=== CONVERSATION FLOW ===",
-            "The full conversation follows as user/assistant turns.",
-            "Previous guest messages have ALREADY been answered by the host.",
+            "=== YOUR TASK ===",
         ]
 
         if unanswered_count >= 2:
@@ -717,12 +715,12 @@ Return ONLY the JSON object:"""
             ])
         else:
             system_parts.extend([
-                f'The guest\'s MOST RECENT message is: "{clean_latest[:300]}"',
-                "Write a reply ONLY for this latest message above.",
+                f'The guest\'s LATEST message is: "{clean_latest[:300]}"',
+                "Your reply MUST answer THIS specific message. Ignore old topics from the conversation history that are NOT related to this message.",
             ])
 
         system_parts.extend([
-            "Do NOT re-answer earlier questions that the host already addressed.",
+            "The conversation history below is for context only — do NOT re-answer topics the host already addressed.",
             "===",
         ])
         if guest_language:
@@ -754,7 +752,10 @@ Return ONLY the JSON object:"""
             if regular_entries:
                 kb_text = self._format_knowledge_entries(regular_entries)
                 if kb_text:
-                    system_parts.append(f"\n=== HOST KNOWLEDGE BASE ===\n{kb_text}\n===")
+                    system_parts.append(
+                        f"\n=== HOST KNOWLEDGE BASE (reference only — use ONLY facts relevant to the guest's current question) ===\n"
+                        f"{kb_text}\n==="
+                    )
 
             if escalation_entries:
                 restricted_text = self._format_restricted_topics(escalation_entries)
@@ -904,17 +905,19 @@ Return ONLY the JSON object:"""
             merged.insert(0, {'role': 'user', 'content': '[Previous conversation:]'})
 
         # Ensure conversation ends with a user message (required by most models).
-        # The system prompt already tells the model which message to respond to,
-        # so we don't need inline instructions in the user turn.
+        # When the latest guest message is already the final turn, we still add
+        # a marker to help the model focus on it specifically.
         if merged and merged[-1]['role'] == 'user':
-            # Latest guest message is already the final user turn. Nothing to add.
-            pass
+            # Latest guest message is already the final user turn.
+            # Add a focus marker to the last message so the model doesn't drift
+            # to older conversation topics.
+            merged[-1]['content'] = merged[-1]['content'] + "\n\n[Reply to THIS message above.]"
         elif merged and merged[-1]['role'] == 'assistant':
             # Host/AI already replied to the last guest message.
             # KEEP the assistant reply visible so the model knows what was already said
             # (previously we popped it, which caused the model to re-answer old questions).
             # Append the latest guest message as a new user turn for the model to respond to.
-            merged.append({'role': 'user', 'content': clean_latest})
+            merged.append({'role': 'user', 'content': clean_latest + "\n\n[Reply to THIS message above.]"})
         else:
             # Empty conversation
             merged.append({'role': 'user', 'content': clean_latest})

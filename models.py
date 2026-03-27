@@ -30,6 +30,7 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False, index=True)
     display_name = db.Column(db.String(200), nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -51,6 +52,7 @@ class User(UserMixin, db.Model):
             'id': self.id,
             'username': self.username,
             'display_name': self.display_name,
+            'is_admin': self.is_admin,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -347,12 +349,17 @@ class Message(db.Model):
     approved_at = db.Column(db.DateTime, nullable=True)
     original_content = db.Column(db.Text, nullable=True)  # Deferred: populated by future "Learn from Corrections" feature (#8)
 
+    # Source tracking
+    sent_via_app = db.Column(db.Boolean, default=False)  # True = sent through ChatBotAI, False = synced from external platform
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)  # Which team member sent this message
+
     # Timestamps
     sent_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Relationship to extracted details (for audit trail)
+    # Relationships
     extracted_details = db.relationship('GuestDetail', backref='source_message', lazy='dynamic')
+    sender_user = db.relationship('User', foreign_keys=[user_id], lazy='select')
 
     def __repr__(self):
         preview = self.content[:50] + '...' if len(self.content) > 50 else self.content
@@ -371,7 +378,9 @@ class Message(db.Model):
             'approved_at': self.approved_at.isoformat() if self.approved_at else None,
             'original_content': self.original_content,
             'sent_at': self.sent_at.isoformat() if self.sent_at else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'user_id': self.user_id,
+            'sender_name': self.sender_user.display_name if self.sender_user else None,
         }
 
 
@@ -582,6 +591,7 @@ def preload_last_messages(conversations):
         return
 
     from sqlalchemy import func
+    from sqlalchemy.orm import joinedload
 
     conv_ids = [c.id for c in conversations]
 
@@ -594,8 +604,10 @@ def preload_last_messages(conversations):
         db.or_(Message.approval_status.is_(None), Message.approval_status == 'approved')
     ).group_by(Message.conversation_id).subquery()
 
-    # Fetch full Message objects for those IDs
-    last_messages = db.session.query(Message).join(
+    # Fetch full Message objects for those IDs (eagerly load sender_user for display)
+    last_messages = db.session.query(Message).options(
+        joinedload(Message.sender_user)
+    ).join(
         last_msg_subq, Message.id == last_msg_subq.c.last_msg_id
     ).all()
 

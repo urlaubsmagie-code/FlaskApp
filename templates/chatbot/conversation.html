@@ -134,7 +134,7 @@
                 <div class="message-header">
                     <span class="sender-name">
                         {% if message.sender_type == 'guest' %}{{ guest.name or 'Gast' }}
-                        {% elif message.sender_type == 'owner' %}<span data-i18n="conversation.you">Sie</span>
+                        {% elif message.sender_type == 'owner' %}{{ message.sender_user.display_name if message.sender_user else 'Team' }}
                         {% else %}<span data-i18n="conversation.ai">KI-Assistent</span>{% endif %}
                     </span>
                     <span class="message-time">{{ message.sent_at.strftime('%d.%m.%Y %H:%M') if message.sent_at else '' }}</span>

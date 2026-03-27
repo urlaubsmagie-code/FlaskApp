@@ -59,9 +59,12 @@ function createConversationCard(conv) {
 
     let preview = 'No messages yet';
     if (conv.last_message && conv.last_message.content) {
-        preview = conv.last_message.content.length > 80
-            ? conv.last_message.content.substring(0, 80) + '...'
-            : conv.last_message.content;
+        let prefix = '';
+        if (conv.last_message.sender_type === 'owner') prefix = (conv.last_message.sender_name || i18n.t('inbox.senderMe') || 'Ich') + ': ';
+        else if (conv.last_message.sender_type === 'ai') prefix = (i18n.t('inbox.senderAI') || 'KI') + ': ';
+        const content = conv.last_message.content;
+        const maxLen = 80 - prefix.length;
+        preview = prefix + (content.length > maxLen ? content.substring(0, maxLen) + '...' : content);
     }
 
     const aiBadge = conv.ai_enabled
@@ -135,9 +138,12 @@ function updateConversationCard(card, conv) {
     if (previewEl) {
         let preview = 'No messages yet';
         if (conv.last_message && conv.last_message.content) {
-            preview = conv.last_message.content.length > 80
-                ? conv.last_message.content.substring(0, 80) + '...'
-                : conv.last_message.content;
+            let prefix = '';
+            if (conv.last_message.sender_type === 'owner') prefix = (conv.last_message.sender_name || i18n.t('inbox.senderMe') || 'Ich') + ': ';
+            else if (conv.last_message.sender_type === 'ai') prefix = (i18n.t('inbox.senderAI') || 'KI') + ': ';
+            const content = conv.last_message.content;
+            const maxLen = 80 - prefix.length;
+            preview = prefix + (content.length > maxLen ? content.substring(0, maxLen) + '...' : content);
         }
         previewEl.textContent = preview;
     }
@@ -214,7 +220,7 @@ function updateInboxList(conversations) {
     // Cache data in sessionStorage for instant rendering on next visit
     cacheInboxData(conversations);
 
-    const emptyState = container.querySelector('.empty-state');
+    const emptyState = container.querySelector('.empty-state:not(.search-empty)');
     if (emptyState) emptyState.remove();
     container.querySelectorAll('.date-group-header').forEach(h => h.remove());
 
@@ -423,11 +429,15 @@ function renderSearchResults(data) {
 
     isSearchMode = true;
 
+    // Remove any previously injected search-only cards
+    container.querySelectorAll('.conversation-card.search-injected').forEach(c => c.remove());
+
     if (normalEmpty) normalEmpty.style.display = 'none';
 
     if (data.results.length === 0) {
-        document.getElementById('searchQueryText').textContent = data.query;
-        emptyState.style.display = 'block';
+        const queryTextEl = document.getElementById('searchQueryText');
+        if (queryTextEl) queryTextEl.textContent = data.query;
+        if (emptyState) emptyState.style.display = 'block';
 
         container.querySelectorAll('.conversation-card').forEach(card => {
             card.style.display = 'none';
@@ -435,10 +445,11 @@ function renderSearchResults(data) {
         return;
     }
 
-    emptyState.style.display = 'none';
+    if (emptyState) emptyState.style.display = 'none';
 
     const matchingIds = new Set(data.results.map(r => String(r.conversation_id)));
 
+    // Hide non-matching existing cards, annotate matching ones
     container.querySelectorAll('.conversation-card').forEach(card => {
         const convId = card.dataset.conversationId;
 
@@ -476,6 +487,63 @@ function renderSearchResults(data) {
             card.style.display = 'none';
         }
     });
+
+    // Create cards for search results not already in the DOM (older conversations)
+    const existingIds = new Set(
+        Array.from(container.querySelectorAll('.conversation-card'))
+            .map(c => c.dataset.conversationId)
+    );
+
+    const platformIcons = {
+        email: 'fas fa-envelope',
+        whatsapp: 'fab fa-whatsapp',
+        airbnb: 'fab fa-airbnb',
+        smoobu: 'fas fa-building',
+    };
+
+    for (const result of data.results) {
+        const convId = String(result.conversation_id);
+        if (existingIds.has(convId)) continue;
+
+        const iconClass = platformIcons[result.platform] || 'fas fa-comment';
+        const guestName = escapeHtml(result.guest_name || 'Unknown Guest');
+        const subject = escapeHtml(result.subject || '');
+        const matchLabel = result.match_count > 1 ? `<span class="match-count">(${result.match_count} matches)</span>` : '';
+        const snippet = result.first_snippet || '';  // Already sanitized server-side
+
+        const card = document.createElement('a');
+        card.href = `/chatbot/conversation/${result.conversation_id}`;
+        card.className = 'conversation-card search-result search-injected';
+        card.dataset.conversationId = convId;
+        card.dataset.platform = result.platform || '';
+        card.dataset.guestId = result.guest_id || '';
+        card.style.display = 'flex';
+        card.innerHTML = `
+            <div class="conversation-avatar" data-guest-name="${guestName}">
+                <i class="${iconClass}"></i>
+            </div>
+            <div class="conversation-info">
+                <div class="conversation-header">
+                    <span class="guest-name">${guestName}</span>
+                    ${matchLabel}
+                </div>
+                <div class="conversation-subject">${subject}</div>
+                <div class="conversation-preview" style="display:none;"></div>
+                <div class="search-snippet">${snippet}</div>
+            </div>
+            <div class="conversation-meta">
+                <span class="platform-badge ${result.platform || ''}">${(result.platform || '').charAt(0).toUpperCase() + (result.platform || '').slice(1)}</span>
+            </div>
+        `;
+
+        // Insert before the search empty state
+        const searchEmpty = container.querySelector('#searchEmptyState');
+        if (searchEmpty) {
+            container.insertBefore(card, searchEmpty);
+        } else {
+            container.appendChild(card);
+        }
+    }
 }
 
 function clearSearchMode() {
@@ -484,6 +552,9 @@ function clearSearchMode() {
 
     const emptyState = document.getElementById('searchEmptyState');
     emptyState.style.display = 'none';
+
+    // Remove injected search-only cards (conversations not in the original page)
+    document.querySelectorAll('.conversation-card.search-injected').forEach(c => c.remove());
 
     document.querySelectorAll('.conversation-card').forEach(card => {
         card.classList.remove('search-result');
@@ -827,7 +898,6 @@ function loadStats() {
             document.getElementById('statConversations').textContent = data.total_conversations || 0;
             document.getElementById('statUnread').textContent = data.unread_count || 0;
             document.getElementById('statMessagesToday').textContent = data.messages_today || 0;
-            document.getElementById('statActiveGuests').textContent = data.active_guests || 0;
 
             const unreadEl = document.getElementById('statUnread').closest('.stat-item');
             if (data.unread_count > 0) {

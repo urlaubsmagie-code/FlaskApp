@@ -37,10 +37,6 @@
             <span class="stat-value" id="statMessagesToday">-</span>
             <span class="stat-label" data-i18n="inbox.stats.messagesToday">Nachrichten heute</span>
         </div>
-        <div class="stat-item">
-            <span class="stat-value" id="statActiveGuests">-</span>
-            <span class="stat-label" data-i18n="inbox.stats.activeGuests">Aktive Gäste</span>
-        </div>
     </div>
 
     <!-- Filters -->
@@ -115,7 +111,7 @@
                     <div class="conversation-subject">{{ conv.property.name if conv.property else conv.subject or 'No subject' }}</div>
                     <div class="conversation-preview">
                         {% if conv.last_message %}
-                            {{ conv.last_message.content[:80] }}{% if conv.last_message.content|length > 80 %}...{% endif %}
+                            {% if conv.last_message.sender_type == 'owner' %}{{ conv.last_message.sender_user.display_name if conv.last_message.sender_user else 'Team' }}: {% elif conv.last_message.sender_type == 'ai' %}KI: {% endif %}{{ conv.last_message.content[:80] }}{% if conv.last_message.content|length > 80 %}...{% endif %}
                         {% else %}
                             No messages yet
                         {% endif %}
@@ -159,5 +155,5 @@
 
 <script src="{{ url_for('chatbot.static', filename='js/polling.js') }}?v=8"></script>
 <script src="{{ url_for('chatbot.static', filename='js/filter-state.js') }}?v=10"></script>
-<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=14"></script>
+<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=17"></script>
 {% endblock %}
