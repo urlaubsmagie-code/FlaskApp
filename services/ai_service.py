@@ -426,8 +426,8 @@ Return ONLY the JSON object:"""
     ) -> Optional[str]:
         """
         Generate a personalized AI response for a guest.
-        Uses native chat format with proper user/assistant roles so the model
-        understands the conversation structure.
+        History is embedded in the system prompt as a read-only log.
+        The only user turn is the guest's latest message.
 
         Args:
             guest_profile: Complete guest profile including all stored memories
@@ -805,9 +805,14 @@ Return ONLY the JSON object:"""
                 else:
                     break
             trailing_messages.reverse()
-            # Number them [1], [2], ...
-            numbered = [f"[{i+1}] {text}" for i, text in enumerate(trailing_messages)]
-            messages.append({'role': 'user', 'content': "\n".join(numbered)})
+
+            if len(trailing_messages) >= 2:
+                # Number them [1], [2], ...
+                numbered = [f"[{i+1}] {text}" for i, text in enumerate(trailing_messages)]
+                messages.append({'role': 'user', 'content': "\n".join(numbered)})
+            else:
+                # After cleaning, only 1 message has content — send as single message
+                messages.append({'role': 'user', 'content': trailing_messages[0] if trailing_messages else clean_latest})
         else:
             messages.append({'role': 'user', 'content': clean_latest})
 
@@ -828,36 +833,6 @@ Return ONLY the JSON object:"""
         text = re.sub(r'\n{3,}', '\n\n', text)
         text = re.sub(r'[ \t]{2,}', ' ', text)
         return text.strip()
-
-    @staticmethod
-    def _format_relative_time(sent_at_str, now: datetime) -> str:
-        """Format a sent_at timestamp as a relative time label."""
-        try:
-            if isinstance(sent_at_str, str):
-                # Handle ISO format timestamps
-                sent_at = datetime.fromisoformat(sent_at_str.replace('Z', '+00:00'))
-                if sent_at.tzinfo:
-                    sent_at = sent_at.replace(tzinfo=None)
-            elif isinstance(sent_at_str, datetime):
-                sent_at = sent_at_str
-            else:
-                return ""
-
-            diff = now - sent_at
-            minutes = diff.total_seconds() / 60
-
-            if minutes < 5:
-                return "just now"
-            elif minutes < 60:
-                return f"{int(minutes)}min ago"
-            elif minutes < 1440:
-                hours = int(minutes / 60)
-                return f"{hours}h ago"
-            else:
-                days = int(minutes / 1440)
-                return f"{days}d ago"
-        except (ValueError, TypeError):
-            return ""
 
     @staticmethod
     def _strip_email_quotes(text: str) -> str:
@@ -946,8 +921,8 @@ Return ONLY the JSON object:"""
             if not content.strip():
                 continue
 
-            # Skip duplicate content
-            content_key = (sender_type, content.strip())
+            # Skip duplicate content (use label to pool owner+ai under Host)
+            content_key = (label, content.strip())
             if content_key in seen_content:
                 continue
             seen_content.add(content_key)
