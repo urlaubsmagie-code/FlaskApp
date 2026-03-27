@@ -709,23 +709,7 @@ Return ONLY the JSON object:"""
         if guest_language:
             system_parts.append(f"- The guest's preferred language is: {guest_language}.")
 
-        # Task instruction
-        system_parts.append("")
-        if unanswered_count >= 2:
-            system_parts.extend([
-                "=== YOUR TASK ===",
-                f"The guest has sent {unanswered_count} unanswered messages (numbered [1]-[{unanswered_count}] below).",
-                "Address ALL of them in a single reply.",
-                "===",
-            ])
-        else:
-            system_parts.extend([
-                "=== YOUR TASK ===",
-                "Reply to the guest's new message below.",
-                "===",
-            ])
-
-        # Context sections (same as before — conditional)
+        # Context sections (conditional) — task instruction comes LAST for model attention
         if guest_profile:
             profile_text = self._format_guest_profile(guest_profile)
             if profile_text:
@@ -782,13 +766,30 @@ Return ONLY the JSON object:"""
             if corrections_text:
                 system_parts.append(f"\n=== PAST CORRECTIONS (you made these mistakes before — don't repeat them) ===\n{corrections_text}\n===")
 
-        # Conversation log — the key change: history is now IN the system prompt
+        # Conversation log — history as read-only text in the system prompt
         conversation_log = self._format_conversation_log(conversation_history, max_history)
         if conversation_log:
             system_parts.append(
                 f"\n=== CONVERSATION LOG (read-only context — do NOT respond to these messages) ===\n"
                 f"{conversation_log}\n==="
             )
+
+        # Task instruction at the END — models pay most attention to beginning + end
+        system_parts.append("")
+        if unanswered_count >= 2:
+            system_parts.extend([
+                "=== YOUR TASK ===",
+                f"The guest has sent {unanswered_count} unanswered messages below.",
+                "Address ALL of them in a single reply.",
+                "===",
+            ])
+        else:
+            system_parts.extend([
+                "=== YOUR TASK ===",
+                f'The guest\'s NEW message is: "{clean_latest[:300]}"',
+                "Write a reply that answers THIS message. Ignore everything else.",
+                "===",
+            ])
 
         messages.append({'role': 'system', 'content': "\n".join(system_parts)})
 
@@ -928,9 +929,9 @@ Return ONLY the JSON object:"""
             if content_key in seen_content:
                 continue
             seen_content.add(content_key)
-            # Truncate very long messages to keep the log scannable
-            if len(content) > 500:
-                content = content[:500] + "..."
+            # Truncate messages to keep the log compact (reduces distraction for 8B models)
+            if len(content) > 150:
+                content = content[:150] + "..."
             lines.append(f"{label}: {content.strip()}")
 
         # Keep last N messages
