@@ -758,6 +758,7 @@ def api_generate_ai_response(conversation_id):
             if conversation.property_id:
                 knowledge_entries = [e.to_dict() for e in
                                     KnowledgeEntry.query.filter(
+                                        KnowledgeEntry.category != 'correction',
                                         db.or_(
                                             KnowledgeEntry.property_id.is_(None),
                                             KnowledgeEntry.property_id == conversation.property_id
@@ -765,23 +766,64 @@ def api_generate_ai_response(conversation_id):
                                     ).order_by(KnowledgeEntry.category, KnowledgeEntry.sort_order).all()]
             else:
                 knowledge_entries = [e.to_dict() for e in
-                                    KnowledgeEntry.query.filter_by(property_id=None)
+                                    KnowledgeEntry.query.filter(
+                                        KnowledgeEntry.category != 'correction'
+                                    ).filter_by(property_id=None)
                                     .order_by(KnowledgeEntry.category, KnowledgeEntry.sort_order).all()]
         except Exception as e:
             logger.warning(f"Failed to load knowledge entries: {e}")
 
+        # Load corrections
+        corrections = []
+        try:
+            correction_query = KnowledgeEntry.query.filter_by(category='correction')
+            if conversation.property_id:
+                property_corrections = correction_query.filter_by(
+                    property_id=conversation.property_id
+                ).order_by(KnowledgeEntry.created_at.desc()).limit(7).all()
+                global_corrections = KnowledgeEntry.query.filter_by(
+                    category='correction', property_id=None
+                ).order_by(KnowledgeEntry.created_at.desc()).limit(3).all()
+                corrections = [c.to_dict() for c in property_corrections + global_corrections]
+            else:
+                corrections = [c.to_dict() for c in
+                               correction_query.filter_by(property_id=None)
+                               .order_by(KnowledgeEntry.created_at.desc()).limit(10).all()]
+        except Exception as e:
+            logger.warning(f"Failed to load corrections: {e}")
+
+        # Load conversation summary
+        conversation_summary = conversation.ai_summary
+
+        # Apply context filter
+        from .services.context_filter import ContextFilter
+        filtered = ContextFilter.filter(
+            latest_message=latest_guest_message.content,
+            conversation_history=[m.to_dict() for m in messages],
+            knowledge_entries=knowledge_entries,
+            guest_profile=profile,
+            property_info=property_info,
+            corrections=corrections,
+            reservation_info=reservation_info,
+        )
+        logger.debug(f"[CONTEXT FILTER] generate: {filtered.filter_log}")
+
         # Generate AI response
         ai_response = ai_service.generate_guest_response(
-            guest_profile=profile,
+            guest_profile=filtered.guest_profile,
             conversation_history=[m.to_dict() for m in messages],
             latest_message=latest_guest_message.content,
-            property_info=property_info,
+            property_info=filtered.property_info,
             tone=tone,
             host_instructions=host_instructions,
             conversation_subject=conversation.subject,
             max_history=max_history,
-            reservation_info=reservation_info,
-            knowledge_entries=knowledge_entries
+            reservation_info=filtered.reservation_info,
+            knowledge_entries=filtered.knowledge_entries,
+            conversation_summary=conversation_summary,
+            corrections=filtered.corrections,
+            resolved_topics=filtered.resolved_topics,
+            is_closing=filtered.is_closing,
         )
 
         if not ai_response:
@@ -896,7 +938,9 @@ def api_suggest_ai_response(conversation_id):
         max_history = int(AISettings.get('max_conversation_history', '10'))
 
         # Get conversation context
-        messages = conversation.messages.order_by(Message.sent_at.desc()).limit(max_history).all()
+        messages = conversation.messages.filter(
+            db.or_(Message.approval_status.is_(None), Message.approval_status == 'approved')
+        ).order_by(Message.sent_at.desc()).limit(max_history).all()
         messages.reverse()
 
         if not messages:
@@ -945,6 +989,7 @@ def api_suggest_ai_response(conversation_id):
             if conversation.property_id:
                 knowledge_entries = [e.to_dict() for e in
                                     KnowledgeEntry.query.filter(
+                                        KnowledgeEntry.category != 'correction',
                                         db.or_(
                                             KnowledgeEntry.property_id.is_(None),
                                             KnowledgeEntry.property_id == conversation.property_id
@@ -952,23 +997,64 @@ def api_suggest_ai_response(conversation_id):
                                     ).order_by(KnowledgeEntry.category, KnowledgeEntry.sort_order).all()]
             else:
                 knowledge_entries = [e.to_dict() for e in
-                                    KnowledgeEntry.query.filter_by(property_id=None)
+                                    KnowledgeEntry.query.filter(
+                                        KnowledgeEntry.category != 'correction'
+                                    ).filter_by(property_id=None)
                                     .order_by(KnowledgeEntry.category, KnowledgeEntry.sort_order).all()]
         except Exception as e:
             logger.warning(f"Failed to load knowledge entries: {e}")
 
+        # Load corrections
+        corrections = []
+        try:
+            correction_query = KnowledgeEntry.query.filter_by(category='correction')
+            if conversation.property_id:
+                property_corrections = correction_query.filter_by(
+                    property_id=conversation.property_id
+                ).order_by(KnowledgeEntry.created_at.desc()).limit(7).all()
+                global_corrections = KnowledgeEntry.query.filter_by(
+                    category='correction', property_id=None
+                ).order_by(KnowledgeEntry.created_at.desc()).limit(3).all()
+                corrections = [c.to_dict() for c in property_corrections + global_corrections]
+            else:
+                corrections = [c.to_dict() for c in
+                               correction_query.filter_by(property_id=None)
+                               .order_by(KnowledgeEntry.created_at.desc()).limit(10).all()]
+        except Exception as e:
+            logger.warning(f"Failed to load corrections: {e}")
+
+        # Load conversation summary
+        conversation_summary = conversation.ai_summary
+
+        # Apply context filter
+        from .services.context_filter import ContextFilter
+        filtered = ContextFilter.filter(
+            latest_message=latest_guest_message.content,
+            conversation_history=[m.to_dict() for m in messages],
+            knowledge_entries=knowledge_entries,
+            guest_profile=profile,
+            property_info=property_info,
+            corrections=corrections,
+            reservation_info=reservation_info,
+        )
+        logger.debug(f"[CONTEXT FILTER] suggest: {filtered.filter_log}")
+
         # Generate AI response (but don't save it)
         ai_response = ai_service.generate_guest_response(
-            guest_profile=profile,
+            guest_profile=filtered.guest_profile,
             conversation_history=[m.to_dict() for m in messages],
             latest_message=latest_guest_message.content,
-            property_info=property_info,
+            property_info=filtered.property_info,
             tone=tone,
             host_instructions=host_instructions,
             conversation_subject=conversation.subject,
             max_history=max_history,
-            reservation_info=reservation_info,
-            knowledge_entries=knowledge_entries
+            reservation_info=filtered.reservation_info,
+            knowledge_entries=filtered.knowledge_entries,
+            conversation_summary=conversation_summary,
+            corrections=filtered.corrections,
+            resolved_topics=filtered.resolved_topics,
+            is_closing=filtered.is_closing,
         )
 
         if not ai_response:
@@ -985,12 +1071,13 @@ def api_suggest_ai_response(conversation_id):
                 'messages_used': [
                     {'sender': m.sender_type, 'preview': m.content[:100]} for m in messages
                 ],
-                'guest_profile': profile if profile else None,
+                'guest_profile': filtered.guest_profile if profile else None,
                 'property': property_info.get('name') if property_info else None,
                 'reservation': bool(reservation_info),
                 'tone': tone,
                 'has_host_instructions': bool(host_instructions and host_instructions.strip()),
                 'conversation_subject': conversation.subject,
+                'context_filter': filtered.filter_log,
             }
 
         return jsonify(result)

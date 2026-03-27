@@ -420,7 +420,9 @@ Return ONLY the JSON object:"""
             reservation_info: Optional[Dict[str, Any]] = None,
             knowledge_entries: Optional[List[Dict[str, Any]]] = None,
             conversation_summary: Optional[str] = None,
-            corrections: Optional[List[Dict[str, Any]]] = None
+            corrections: Optional[List[Dict[str, Any]]] = None,
+            resolved_topics: Optional[List[str]] = None,
+            is_closing: bool = False
     ) -> Optional[str]:
         """
         Generate a personalized AI response for a guest.
@@ -454,7 +456,9 @@ Return ONLY the JSON object:"""
             reservation_info=reservation_info,
             knowledge_entries=knowledge_entries,
             conversation_summary=conversation_summary,
-            corrections=corrections
+            corrections=corrections,
+            resolved_topics=resolved_topics,
+            is_closing=is_closing
         )
 
         # Log what the AI actually receives for debugging
@@ -639,7 +643,9 @@ Return ONLY the JSON object:"""
             reservation_info: Optional[Dict[str, Any]] = None,
             knowledge_entries: Optional[List[Dict[str, Any]]] = None,
             conversation_summary: Optional[str] = None,
-            corrections: Optional[List[Dict[str, Any]]] = None
+            corrections: Optional[List[Dict[str, Any]]] = None,
+            resolved_topics: Optional[List[str]] = None,
+            is_closing: bool = False
     ) -> List[Dict[str, str]]:
         """Build chat messages array with proper roles for the Ollama chat API.
 
@@ -650,6 +656,20 @@ Return ONLY the JSON object:"""
             List of {role, content} message dicts
         """
         messages = []
+
+        # Shortcut: for closing/gratitude messages, use a minimal prompt
+        if is_closing:
+            guest_name = guest_profile.get('name', 'the guest') if guest_profile else 'the guest'
+            closing_system = (
+                f"You are a vacation rental host. The guest ({guest_name}) is thanking you "
+                "for your help. Reply briefly and warmly in the SAME LANGUAGE as the guest's message. "
+                "Keep it to 1-2 sentences. Do NOT bring up any other topics."
+            )
+            messages.append({'role': 'system', 'content': closing_system})
+            clean_latest = self._strip_html(latest_message)
+            clean_latest = self._strip_email_quotes(clean_latest)
+            messages.append({'role': 'user', 'content': clean_latest or latest_message.strip()})
+            return messages
 
         # Get guest's preferred language if stored
         guest_language = guest_profile.get('language', None) if guest_profile else None
@@ -744,12 +764,25 @@ Return ONLY the JSON object:"""
         if host_instructions and host_instructions.strip():
             system_parts.append(f"\n=== HOST INSTRUCTIONS ===\n{host_instructions.strip()}\n===")
 
-        if conversation_summary:
+        if resolved_topics:
+            topics_text = "\n".join(f"- {topic}" for topic in resolved_topics[:8])
             system_parts.append(
-                f"\n=== CONVERSATION SUMMARY (older messages not shown below) ===\n"
-                f"{conversation_summary}\n"
-                f"=== The recent messages below continue from this summary. ==="
+                f"\n=== ALREADY RESOLVED (do NOT address these topics again) ===\n"
+                f"{topics_text}\n==="
             )
+
+        if conversation_summary:
+            if resolved_topics:
+                system_parts.append(
+                    f"\n=== CONVERSATION SUMMARY (older messages, for background only) ===\n"
+                    f"{conversation_summary}\n==="
+                )
+            else:
+                system_parts.append(
+                    f"\n=== CONVERSATION SUMMARY (older messages, for background only) ===\n"
+                    f"{conversation_summary}\n"
+                    f"=== These topics are ALREADY RESOLVED. Do NOT bring them up again unless the guest's latest message asks about them. ==="
+                )
 
         if corrections:
             corrections_text = self._format_corrections(corrections)

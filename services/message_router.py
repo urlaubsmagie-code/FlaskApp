@@ -583,20 +583,35 @@ class MessageRouter:
         except Exception as e:
             logger.warning(f"Failed to load corrections: {e}")
 
+        # Apply context filter
+        from .context_filter import ContextFilter
+        filtered = ContextFilter.filter(
+            latest_message=trigger_message.content,
+            conversation_history=[m.to_dict() for m in messages],
+            knowledge_entries=knowledge_entries,
+            guest_profile=profile,
+            property_info=property_info,
+            corrections=corrections,
+            reservation_info=reservation_info,
+        )
+        logger.debug(f"[CONTEXT FILTER] auto-respond: {filtered.filter_log}")
+
         # Generate response
         response_text = self.ai_service.generate_guest_response(
-            guest_profile=profile,
+            guest_profile=filtered.guest_profile,
             conversation_history=[m.to_dict() for m in messages],
             latest_message=trigger_message.content,
-            property_info=property_info,
+            property_info=filtered.property_info,
             tone=tone,
             host_instructions=host_instructions,
             conversation_subject=conversation.subject,
             max_history=max_history,
-            reservation_info=reservation_info,
-            knowledge_entries=knowledge_entries,
+            reservation_info=filtered.reservation_info,
+            knowledge_entries=filtered.knowledge_entries,
             conversation_summary=conversation_summary,
-            corrections=corrections
+            corrections=filtered.corrections,
+            resolved_topics=filtered.resolved_topics,
+            is_closing=filtered.is_closing,
         )
 
         if not response_text:
