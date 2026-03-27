@@ -921,13 +921,13 @@ Return ONLY the JSON object:"""
             if not content.strip():
                 continue
 
+            label = sender_labels.get(sender_type, 'Guest')
+
             # Skip duplicate content (use label to pool owner+ai under Host)
             content_key = (label, content.strip())
             if content_key in seen_content:
                 continue
             seen_content.add(content_key)
-
-            label = sender_labels.get(sender_type, 'Guest')
             # Truncate very long messages to keep the log scannable
             if len(content) > 500:
                 content = content[:500] + "..."
