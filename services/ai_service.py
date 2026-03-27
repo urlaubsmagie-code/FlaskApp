@@ -647,13 +647,14 @@ Return ONLY the JSON object:"""
             resolved_topics: Optional[List[str]] = None,
             is_closing: bool = False
     ) -> List[Dict[str, str]]:
-        """Build chat messages array with proper roles for the Ollama chat API.
+        """Build chat messages for the Ollama chat API.
 
-        Uses native user/assistant roles so the model understands the full
-        conversation structure and can see what was already said/asked.
+        Architecture: conversation history goes into the system prompt as a
+        read-only log.  The ONLY user turn is the guest's latest message.
+        This prevents small models from responding to old messages.
 
         Returns:
-            List of {role, content} message dicts
+            List of exactly 2 dicts: [system, user]
         """
         messages = []
 
@@ -677,21 +678,19 @@ Return ONLY the JSON object:"""
         # Resolve tone instruction
         tone_instruction = self.TONE_INSTRUCTIONS.get(tone, self.TONE_INSTRUCTIONS['friendly_professional'])
 
-        # Clean latest message early so we can reference it in the system prompt
+        # Clean latest message
         clean_latest = self._strip_html(latest_message)
         clean_latest = self._strip_email_quotes(clean_latest)
         if not clean_latest.strip():
             clean_latest = latest_message.strip()
 
-        # Pre-scan: count consecutive trailing guest messages for dynamic system prompt
-        # Uses raw conversation_history (available from method params) since clean_history isn't built yet
-        # Cap at max_history since truncation may reduce what actually appears in chat turns
+        # Count consecutive trailing guest messages for multi-message handling
         unanswered_count = min(
             self._count_trailing_guest_messages(conversation_history),
             max_history
         )
 
-        # --- System message: role, rules, and context ---
+        # --- Build system prompt ---
         now = datetime.utcnow()
         system_parts = [
             "You are a vacation rental host writing a reply to a guest.",
@@ -699,34 +698,34 @@ Return ONLY the JSON object:"""
             f"Current date/time: {now.strftime('%A, %d %B %Y, %H:%M')} UTC.",
             "",
             "Rules:",
-            "- Reply ONLY in the SAME LANGUAGE as the guest's latest message.",
+            "- Reply ONLY in the SAME LANGUAGE as the guest's message below.",
             "- Write ONLY the reply text. No subject lines, no 'Subject:', no signatures.",
             "- NEVER re-ask questions the guest already answered.",
             "- NEVER repeat information you already provided.",
             "- If you don't know specific details (WiFi password, door code, prices), say you'll check — NEVER invent details.",
-            "",
-            "=== YOUR TASK ===",
+            "- The CONVERSATION LOG below is for context only — do NOT re-answer old topics.",
         ]
 
-        if unanswered_count >= 2:
-            system_parts.extend([
-                f"The guest has sent {unanswered_count} unanswered messages (numbered [1]-[{unanswered_count}] in their turn below).",
-                "Address ALL of them in a single reply.",
-            ])
-        else:
-            system_parts.extend([
-                f'The guest\'s LATEST message is: "{clean_latest[:300]}"',
-                "Your reply MUST answer THIS specific message. Ignore old topics from the conversation history that are NOT related to this message.",
-            ])
-
-        system_parts.extend([
-            "The conversation history below is for context only — do NOT re-answer topics the host already addressed.",
-            "===",
-        ])
         if guest_language:
             system_parts.append(f"- The guest's preferred language is: {guest_language}.")
 
-        # Embed context (guest profile + property) in the system message
+        # Task instruction
+        system_parts.append("")
+        if unanswered_count >= 2:
+            system_parts.extend([
+                "=== YOUR TASK ===",
+                f"The guest has sent {unanswered_count} unanswered messages (numbered [1]-[{unanswered_count}] below).",
+                "Address ALL of them in a single reply.",
+                "===",
+            ])
+        else:
+            system_parts.extend([
+                "=== YOUR TASK ===",
+                "Reply to the guest's new message below.",
+                "===",
+            ])
+
+        # Context sections (same as before — conditional)
         if guest_profile:
             profile_text = self._format_guest_profile(guest_profile)
             if profile_text:
@@ -753,7 +752,7 @@ Return ONLY the JSON object:"""
                 kb_text = self._format_knowledge_entries(regular_entries)
                 if kb_text:
                     system_parts.append(
-                        f"\n=== HOST KNOWLEDGE BASE (reference only — use ONLY facts relevant to the guest's current question) ===\n"
+                        f"\n=== HOST KNOWLEDGE BASE (use ONLY facts relevant to the guest's current question) ===\n"
                         f"{kb_text}\n==="
                     )
 
@@ -773,156 +772,44 @@ Return ONLY the JSON object:"""
             )
 
         if conversation_summary:
-            if resolved_topics:
-                system_parts.append(
-                    f"\n=== CONVERSATION SUMMARY (older messages, for background only) ===\n"
-                    f"{conversation_summary}\n==="
-                )
-            else:
-                system_parts.append(
-                    f"\n=== CONVERSATION SUMMARY (older messages, for background only) ===\n"
-                    f"{conversation_summary}\n"
-                    f"=== These topics are ALREADY RESOLVED. Do NOT bring them up again unless the guest's latest message asks about them. ==="
-                )
+            system_parts.append(
+                f"\n=== CONVERSATION SUMMARY (older messages, for background only) ===\n"
+                f"{conversation_summary}\n==="
+            )
 
         if corrections:
             corrections_text = self._format_corrections(corrections)
             if corrections_text:
                 system_parts.append(f"\n=== PAST CORRECTIONS (you made these mistakes before — don't repeat them) ===\n{corrections_text}\n===")
 
+        # Conversation log — the key change: history is now IN the system prompt
+        conversation_log = self._format_conversation_log(conversation_history, max_history)
+        if conversation_log:
+            system_parts.append(
+                f"\n=== CONVERSATION LOG (read-only context — do NOT respond to these messages) ===\n"
+                f"{conversation_log}\n==="
+            )
+
         messages.append({'role': 'system', 'content': "\n".join(system_parts)})
 
-        # --- Conversation history as native user/assistant turns ---
-        # Deduplicate by platform_message_id, clean content, keep recent turns
-        seen_platform_ids = set()
-        clean_history = []
-        for msg in conversation_history:
-            # Skip duplicate messages (same platform_message_id)
-            pmid = msg.get('platform_message_id')
-            if pmid:
-                if pmid in seen_platform_ids:
-                    continue
-                seen_platform_ids.add(pmid)
-
-            sender_type = msg.get('sender_type', 'guest')
-            content = msg.get('content', '').strip()
-            if not content:
-                continue
-
-            # Strip HTML tags (Smoobu wraps messages in HTML)
-            content = self._strip_html(content)
-
-            # Strip quoted replies and signatures from message content
-            stripped_content = self._strip_email_quotes(content)
-            # Use stripped version if it has content, otherwise keep original
-            content = stripped_content if stripped_content.strip() else content
-
-            # Skip empty-after-cleaning messages
-            if not content.strip():
-                continue
-
-            role = 'user' if sender_type == 'guest' else 'assistant'
-
-            # Add timestamp context for recency understanding
-            sent_at = msg.get('sent_at')
-            time_label = self._format_relative_time(sent_at, now) if sent_at else None
-
-            clean_history.append({
-                'role': role,
-                'content': content,
-                'sender_type': sender_type,
-                'time_label': time_label,
-            })
-
-        # Keep last N messages for context
-        recent_history = clean_history[-max_history:]
-
-        # Deduplicate consecutive same-content messages
-        deduped = []
-        seen_content = set()
-        for msg in recent_history:
-            key = (msg['role'], msg['content'])
-            if key not in seen_content:
-                seen_content.add(key)
-                deduped.append(msg)
-
-        # Collapse consecutive AI-only messages to just the last one.
-        # When auto_respond is off, multiple AI suggestions pile up — only
-        # the most recent suggestion matters. Owner messages are always kept.
-        collapsed = []
-        for msg in deduped:
-            if (collapsed and collapsed[-1]['role'] == 'assistant'
-                    and msg['role'] == 'assistant'):
-                prev_is_ai = collapsed[-1].get('sender_type') == 'ai'
-                curr_is_ai = msg.get('sender_type') == 'ai'
-                if prev_is_ai and curr_is_ai:
-                    # Both are AI suggestions — keep only the newer one
-                    collapsed[-1] = dict(msg)
-                elif prev_is_ai and not curr_is_ai:
-                    # Previous was AI suggestion, current is real owner message — keep owner
-                    collapsed[-1] = dict(msg)
+        # --- Single user turn: only the latest guest message ---
+        if unanswered_count >= 2:
+            # Build numbered multi-message user turn from trailing guest messages
+            trailing_messages = []
+            for msg in reversed(conversation_history):
+                if msg.get('sender_type') == 'guest':
+                    content = self._strip_html(msg.get('content', ''))
+                    content = self._strip_email_quotes(content)
+                    if content.strip():
+                        trailing_messages.append(content.strip())
                 else:
-                    # Previous is owner, current is AI or owner — merge
-                    collapsed[-1] = dict(collapsed[-1])
-                    collapsed[-1]['content'] += "\n\n" + msg['content']
-            else:
-                collapsed.append(dict(msg))
-
-        # Merge remaining consecutive same-role messages (Ollama requires alternating roles)
-        # For consecutive user messages: NUMBER them [1], [2], [3] when 2+ consecutive
-        # For consecutive assistant messages: merge them together
-        # Add short relative timestamps as prefixes for temporal awareness
-        merged = []
-        # Track consecutive user messages for numbering
-        _consecutive_user_count = 0
-
-        for msg in collapsed:
-            time_prefix = f"[{msg['time_label']}] " if msg.get('time_label') else ""
-            content_with_time = f"{time_prefix}{msg['content']}"
-
-            if merged and merged[-1]['role'] == msg['role']:
-                if msg['role'] == 'user':
-                    _consecutive_user_count += 1
-                    if _consecutive_user_count == 2:
-                        # Retroactively number the first message
-                        merged[-1]['content'] = f"[1] {merged[-1]['content']}"
-                    # Number this message
-                    numbered = f"[{_consecutive_user_count}] {content_with_time}"
-                    merged[-1]['content'] += "\n" + numbered
-                else:
-                    merged[-1]['content'] += "\n\n" + content_with_time
-            else:
-                if msg['role'] == 'user':
-                    _consecutive_user_count = 1
-                else:
-                    _consecutive_user_count = 0
-                merged.append({'role': msg['role'], 'content': content_with_time})
-
-        # Ensure conversation starts with a user message (required by some models).
-        # Instead of dropping the initial assistant turn (which loses owner context),
-        # insert a synthetic user message as a bridge.
-        if merged and merged[0]['role'] == 'assistant':
-            merged.insert(0, {'role': 'user', 'content': '[Previous conversation:]'})
-
-        # Ensure conversation ends with a user message (required by most models).
-        # When the latest guest message is already the final turn, we still add
-        # a marker to help the model focus on it specifically.
-        if merged and merged[-1]['role'] == 'user':
-            # Latest guest message is already the final user turn.
-            # Add a focus marker to the last message so the model doesn't drift
-            # to older conversation topics.
-            merged[-1]['content'] = merged[-1]['content'] + "\n\n[Reply to THIS message above.]"
-        elif merged and merged[-1]['role'] == 'assistant':
-            # Host/AI already replied to the last guest message.
-            # KEEP the assistant reply visible so the model knows what was already said
-            # (previously we popped it, which caused the model to re-answer old questions).
-            # Append the latest guest message as a new user turn for the model to respond to.
-            merged.append({'role': 'user', 'content': clean_latest + "\n\n[Reply to THIS message above.]"})
+                    break
+            trailing_messages.reverse()
+            # Number them [1], [2], ...
+            numbered = [f"[{i+1}] {text}" for i, text in enumerate(trailing_messages)]
+            messages.append({'role': 'user', 'content': "\n".join(numbered)})
         else:
-            # Empty conversation
-            merged.append({'role': 'user', 'content': clean_latest})
-
-        messages.extend(merged)
+            messages.append({'role': 'user', 'content': clean_latest})
 
         return messages
 
@@ -1016,6 +903,65 @@ Return ONLY the JSON object:"""
             else:
                 break
         return count
+
+    def _format_conversation_log(
+            self,
+            conversation_history: List[Dict[str, str]],
+            max_history: int = 10
+    ) -> str:
+        """Format conversation history as a compact text log for the system prompt.
+
+        Returns a string like:
+            Guest: What's the WiFi password?
+            Host: The WiFi password is XYZ.
+
+        Deduplicates by platform_message_id and content.
+        Strips HTML, email quotes, and empty messages.
+        Caps at max_history messages.
+        """
+        sender_labels = {'guest': 'Guest', 'owner': 'Host', 'ai': 'Host'}
+
+        seen_platform_ids = set()
+        seen_content = set()
+        lines = []
+
+        for msg in conversation_history:
+            # Skip duplicates by platform_message_id
+            pmid = msg.get('platform_message_id')
+            if pmid:
+                if pmid in seen_platform_ids:
+                    continue
+                seen_platform_ids.add(pmid)
+
+            sender_type = msg.get('sender_type', 'guest')
+            content = msg.get('content', '').strip()
+            if not content:
+                continue
+
+            # Clean content
+            content = self._strip_html(content)
+            stripped = self._strip_email_quotes(content)
+            content = stripped if stripped.strip() else content
+
+            if not content.strip():
+                continue
+
+            # Skip duplicate content
+            content_key = (sender_type, content.strip())
+            if content_key in seen_content:
+                continue
+            seen_content.add(content_key)
+
+            label = sender_labels.get(sender_type, 'Guest')
+            # Truncate very long messages to keep the log scannable
+            if len(content) > 500:
+                content = content[:500] + "..."
+            lines.append(f"{label}: {content.strip()}")
+
+        # Keep last N messages
+        lines = lines[-max_history:]
+
+        return "\n".join(lines)
 
     @staticmethod
     def _strip_think_tags(text: str) -> str:
