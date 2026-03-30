@@ -628,7 +628,7 @@ Return ONLY the JSON object:"""
     TONE_INSTRUCTIONS = {
         'friendly_professional': "Be warm, helpful, and professional.",
         'formal': "Be polite, formal, and professional. Use formal language (Sie in German).",
-        'casual': "Be relaxed and conversational, like chatting with a friend.",
+        'casual': "Be relaxed and conversational, like chatting with a friend. Use informal language (du in German, tú in Spanish).",
         'concise': "Be brief and to the point. Short sentences, no filler.",
     }
 
