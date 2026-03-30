@@ -689,10 +689,11 @@ Return ONLY the JSON object:"""
                 for e in regular:
                     label = e.get('label', '')
                     value = e.get('value', '')
-                    kb_lines.append(f"- {label}: {value[:80]}")
+                    val = value[:80] + ("..." if len(value) > 80 else "")
+                    kb_lines.append(f"- {label}: {val}")
                 parts.append("Info:\n" + "\n".join(kb_lines))
 
-        # 6. Conversation log (last 4 messages)
+        # 6. Conversation log (last 4 messages — intentionally low for 8B model focus)
         conversation_log = self._format_conversation_log(conversation_history, max_history=4)
         if conversation_log:
             parts.append(f"Recent messages:\n{conversation_log}")
@@ -700,13 +701,15 @@ Return ONLY the JSON object:"""
         # 7. YOUR TASK (at the end for model attention)
         parts.append("")
         if unanswered_count >= 2:
+            # Multi-message: texts are in the user turn as numbered list [1], [2], ...
             parts.append(
-                f"TASK: The guest sent {unanswered_count} unanswered messages. "
+                f"TASK: The guest sent {unanswered_count} unanswered messages below. "
                 "Address ALL of them in one reply."
             )
         else:
+            task_text = clean_latest[:300] + ("..." if len(clean_latest) > 300 else "")
             parts.append(
-                f'TASK: The guest\'s new message is: "{clean_latest[:300]}"\n'
+                f'TASK: The guest\'s new message is: "{task_text}"\n'
                 "Reply to THIS message only."
             )
 
@@ -1313,7 +1316,6 @@ Return ONLY the JSON object:"""
 
         return "Reservation: " + ", ".join(parts) if parts else ""
 
-    @staticmethod
     @staticmethod
     def _format_corrections(corrections: List[Dict[str, Any]], max_chars: int = 1500) -> str:
         """Format correction entries for the AI system prompt."""
