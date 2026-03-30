@@ -1,0 +1,349 @@
+{% extends "chatbot/base.html" %}
+
+{% block title %}Hilfe{% endblock %}
+
+{% block extra_css %}
+<style>
+    .help-container { padding: 24px; max-width: 900px; overflow-y: auto; height: 100%; }
+    .help-container h1 { font-size: 1.5em; margin: 0 0 20px; display: flex; align-items: center; gap: 10px; }
+
+    .help-section { margin-bottom: 28px; }
+    .help-section h2 { font-size: 1.15em; margin: 0 0 12px; color: var(--primary-color, #2563eb); display: flex; align-items: center; gap: 8px; }
+    .help-section h3 { font-size: 1em; margin: 16px 0 8px; }
+    .help-section p { font-size: 0.9em; line-height: 1.6; color: var(--text-color, #333); margin: 0 0 10px; }
+    .help-section ul { font-size: 0.9em; line-height: 1.6; margin: 0 0 10px; padding-left: 20px; }
+    .help-section li { margin-bottom: 6px; }
+
+    .help-card { background: var(--card-bg, #fff); border: 1px solid var(--border-color, #ddd); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+    .help-card h3 { margin-top: 0; }
+
+    .help-tip { background: var(--hover-bg, #f0f4ff); border-left: 4px solid var(--primary-color, #2563eb); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 0.88em; }
+    .help-tip strong { color: var(--primary-color, #2563eb); }
+
+    .help-shortcut { display: inline-block; background: var(--border-color, #e5e7eb); padding: 2px 8px; border-radius: 4px; font-family: monospace; font-size: 0.85em; }
+
+    .ai-warning-banner { display: flex; align-items: center; gap: 14px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 14px 18px; margin-bottom: 24px; cursor: pointer; transition: background 0.2s; }
+    .ai-warning-banner:hover { background: #fee2e2; }
+    .ai-warning-banner i { font-size: 1.6em; color: #dc2626; flex-shrink: 0; }
+    .ai-warning-banner span { font-size: 0.92em; font-weight: 600; color: #991b1b; }
+    .ai-warning-banner .chevron { margin-left: auto; color: #dc2626; transition: transform 0.2s; }
+    .ai-warning-banner.open .chevron { transform: rotate(180deg); }
+    .ai-warning-detail { display: none; background: #fef2f2; border: 1px solid #fecaca; border-top: none; border-radius: 0 0 10px 10px; padding: 16px 20px; margin-top: -12px; margin-bottom: 24px; font-size: 0.9em; line-height: 1.7; color: #7f1d1d; }
+    .ai-warning-detail.show { display: block; }
+    :root[data-theme="dark"] .ai-warning-banner { background: #3b1111; border-color: #7f1d1d; }
+    :root[data-theme="dark"] .ai-warning-banner:hover { background: #4a1515; }
+    :root[data-theme="dark"] .ai-warning-banner span { color: #fca5a5; }
+    :root[data-theme="dark"] .ai-warning-banner i, :root[data-theme="dark"] .ai-warning-banner .chevron { color: #f87171; }
+    :root[data-theme="dark"] .ai-warning-detail { background: #3b1111; border-color: #7f1d1d; color: #fecaca; }
+
+    .help-icon-label { display: inline-flex; align-items: center; gap: 6px; }
+    .help-icon-label i { width: 20px; text-align: center; }
+
+    @media (max-width: 768px) {
+        .help-container { padding: 16px; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="help-container">
+    <h1><i class="fas fa-question-circle"></i> Hilfe</h1>
+
+    <div class="ai-warning-banner" onclick="toggleAiWarning()">
+        <i class="fas fa-robot"></i>
+        <span>Wichtiger Hinweis zur KI</span>
+        <i class="fas fa-chevron-down chevron"></i>
+    </div>
+    <div class="ai-warning-detail" id="aiWarningDetail">
+        Die KI ist ein hilfreiches Werkzeug, aber sie kann Fehler machen. Automatische Antworten sollten nicht zu lange ohne Aufsicht laufen — bitte überprüfe regelmäßig die Konversationen und die Freigabe-Warteschlange.<br><br>
+        Wir arbeiten kontinuierlich daran, die KI zu verbessern und genauere Antworten zu liefern. Sollte dir ein Fehler auffallen, bearbeite die Antwort einfach vor dem Senden — das System lernt daraus.<br><br>
+        Vielen Dank für euer Verständnis und eure Unterstützung!
+    </div>
+
+    <div class="knowledge-tabs">
+        <button class="knowledge-tab active" onclick="switchHelpTab('posteingang', this)">
+            <i class="fas fa-inbox"></i> Posteingang
+        </button>
+        <button class="knowledge-tab" onclick="switchHelpTab('chat', this)">
+            <i class="fas fa-comments"></i> Chat
+        </button>
+        <button class="knowledge-tab" onclick="switchHelpTab('ki', this)">
+            <i class="fas fa-robot"></i> KI
+        </button>
+        <button class="knowledge-tab" onclick="switchHelpTab('gaeste', this)">
+            <i class="fas fa-users"></i> Gäste
+        </button>
+        <button class="knowledge-tab" onclick="switchHelpTab('weiteres', this)">
+            <i class="fas fa-ellipsis-h"></i> Weiteres
+        </button>
+    </div>
+
+    <!-- ==================== POSTEINGANG ==================== -->
+    <div id="tab-posteingang" class="tab-content">
+        <div class="help-section">
+            <h2><i class="fas fa-inbox"></i> Der Posteingang</h2>
+            <p>Der Posteingang ist die Startseite und zeigt alle Konversationen mit Gästen auf einen Blick. Jede Karte zeigt den Gästenamen, die Unterkunft, die letzte Nachricht und den Status.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-eye"></i> Was du auf jeder Karte siehst</h3>
+            <ul>
+                <li><strong>Gästename</strong> — oben links auf der Karte</li>
+                <li><strong>Unterkunft</strong> — direkt unter dem Namen</li>
+                <li><strong>Letzte Nachricht</strong> — eine Vorschau der letzten Nachricht. Der Absender wird angezeigt:
+                    <ul>
+                        <li><strong>Ich:</strong> — Nachricht wurde von dir oder dem Team gesendet</li>
+                        <li><strong>KI:</strong> — Nachricht wurde von der KI generiert und gesendet</li>
+                        <li>Kein Prefix — die Nachricht ist vom Gast</li>
+                    </ul>
+                </li>
+                <li><strong>Zeitstempel</strong> — wann die letzte Aktivität war</li>
+                <li><strong>Plattform</strong> — Airbnb, Booking.com, E-Mail etc.</li>
+            </ul>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-circle" style="color:#2563eb;font-size:0.7em;"></i> Ungelesen-Markierung</h3>
+            <p>Konversationen mit ungelesenen Gastnachrichten werden <strong>fett hervorgehoben</strong> und mit einem blauen Punkt markiert. Die rote Zahl im Menü zeigt die Gesamtanzahl ungelesener Konversationen.</p>
+            <div class="help-tip">
+                <strong>Tipp:</strong> Klicke auf "Alle gelesen" oben rechts, um alle Konversationen als gelesen zu markieren.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-filter"></i> Filter und Suche</h3>
+            <p>Du kannst den Posteingang filtern nach:</p>
+            <ul>
+                <li><strong>Status</strong> — Aktiv, Geschlossen, Alle</li>
+                <li><strong>Plattform</strong> — Airbnb, Booking.com, E-Mail</li>
+                <li><strong>Ungelesen</strong> — nur Konversationen mit ungelesenen Nachrichten</li>
+                <li><strong>Eskaliert</strong> — Konversationen, die besondere Aufmerksamkeit brauchen</li>
+                <li><strong>Suche</strong> — nach Gästename oder Unterkunft suchen</li>
+            </ul>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-exclamation-triangle" style="color:#f59e0b;"></i> Status-Symbole</h3>
+            <ul>
+                <li><span class="help-icon-label"><i class="fas fa-robot" style="color:#2563eb;"></i> <strong>Blaues Roboter-Symbol</strong></span> — KI ist aktiv, antwortet aber nicht automatisch</li>
+                <li><span class="help-icon-label"><i class="fas fa-robot" style="color:#22c55e;"></i> <strong>Grünes Roboter-Symbol</strong></span> — KI antwortet automatisch auf Gastnachrichten</li>
+                <li><span class="help-icon-label"><i class="fas fa-exclamation-triangle" style="color:#f59e0b;"></i> <strong>Eskaliert</strong></span> — ein Thema wurde erkannt, das menschliche Aufmerksamkeit benötigt</li>
+                <li><span class="help-icon-label"><i class="fas fa-clock" style="color:#8b5cf6;"></i> <strong>KI-Freigabe</strong></span> — die KI hat eine Antwort erstellt, die auf deine Freigabe wartet</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- ==================== CHAT ==================== -->
+    <div id="tab-chat" class="tab-content" style="display:none;">
+        <div class="help-section">
+            <h2><i class="fas fa-comments"></i> Chat & Nachrichten</h2>
+            <p>Im Chat-Bereich siehst du den gesamten Nachrichtenverlauf mit einem Gast und kannst Nachrichten senden.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-paper-plane"></i> Nachrichten senden</h3>
+            <p>Schreibe deine Nachricht in das Textfeld unten und klicke auf <strong>Senden</strong>. Die Nachricht wird direkt über die jeweilige Plattform (Airbnb, Booking.com usw.) an den Gast gesendet.</p>
+            <div class="help-tip">
+                <strong>Tipp:</strong> Du kannst auch <strong>Enter</strong> drücken, um schnell zu senden. Für einen Zeilenumbruch nutze <strong>Shift+Enter</strong>.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-robot"></i> KI-Antwort generieren</h3>
+            <p>Klicke auf den <strong>"KI-Antwort"</strong> Button, um eine Antwort von der KI erstellen zu lassen. Die KI berücksichtigt dabei:</p>
+            <ul>
+                <li>Das gesamte Gästeprofil (Familie, Haustiere, Vorlieben, etc.)</li>
+                <li>Die Unterkunfts-Details</li>
+                <li>Den bisherigen Gesprächsverlauf</li>
+                <li>Die Wissensdatenbank</li>
+                <li>Gelernte Korrekturen aus früheren Bearbeitungen</li>
+            </ul>
+            <p>Die generierte Antwort erscheint im Textfeld. Du kannst sie <strong>bearbeiten</strong>, bevor du sie sendest.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-lightbulb"></i> KI-Vorschlag für eine bestimmte Nachricht</h3>
+            <p>Neben jeder Gastnachricht siehst du einen <strong>blauen Glühbirnen-Button</strong>. Klicke darauf, um eine KI-Antwort speziell für <strong>diese eine Nachricht</strong> zu generieren.</p>
+            <ul>
+                <li>Die KI antwortet gezielt auf die ausgewählte Nachricht — nicht auf die gesamte Konversation</li>
+                <li>Der Entwurf erscheint im Textfeld unten — du kannst ihn bearbeiten oder löschen</li>
+                <li>Nützlich, wenn mehrere Gastnachrichten unbeantwortet sind und du einzeln antworten möchtest</li>
+            </ul>
+            <div class="help-tip">
+                <strong>Tipp:</strong> Der "KI-Vorschlag" Button unten im Textfeld bezieht sich immer auf die gesamte Konversation. Die Glühbirne an der Nachricht ist präziser.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-edit"></i> KI-Antwort bearbeiten (Korrekturen)</h3>
+            <p>Wenn du eine KI-Antwort bearbeitest bevor du sie sendest, <strong>lernt das System daraus</strong>. Die Korrektur wird in der Wissensdatenbank gespeichert und die KI wird in Zukunft ähnliche Fehler vermeiden.</p>
+            <div class="help-tip">
+                <strong>Beispiel:</strong> Die KI schreibt "Der Pool ist beheizt" — du änderst es zu "Der Pool ist nicht beheizt und im Winter geschlossen." Beim nächsten Mal weiß die KI Bescheid.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-check-circle" style="color:#22c55e;"></i> Freigabe-System</h3>
+            <p>Wenn die KI automatisch antwortet (Auto-Respond aktiv), werden Antworten <strong>nicht sofort gesendet</strong>, sondern warten auf deine Freigabe.</p>
+            <ul>
+                <li><strong>Freigeben</strong> — die Antwort wird an den Gast gesendet</li>
+                <li><strong>Bearbeiten</strong> — du kannst den Text anpassen und dann senden</li>
+                <li><strong>Ablehnen</strong> — die Antwort wird verworfen</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- ==================== KI ==================== -->
+    <div id="tab-ki" class="tab-content" style="display:none;">
+        <div class="help-section">
+            <h2><i class="fas fa-robot"></i> KI-System</h2>
+            <p>Die KI kann Nachrichten für dich generieren und in manchen Fällen auch automatisch antworten. Hier erfährst du, wie du sie am besten nutzt.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-toggle-on"></i> KI ein- und ausschalten</h3>
+            <p>Im Chat-Bereich findest du zwei Schalter:</p>
+            <ul>
+                <li><strong>KI aktivieren</strong> — erlaubt es, den "KI-Antwort" Button zu nutzen. Die KI antwortet aber noch nicht automatisch.</li>
+                <li><strong>Auto-Respond</strong> — die KI antwortet <strong>automatisch</strong> auf neue Gastnachrichten. Die Antwort geht aber erst durch die Freigabe-Warteschlange.</li>
+            </ul>
+            <div class="help-tip">
+                <strong>Wichtig:</strong> Auto-Respond kann nur aktiviert werden, wenn KI bereits eingeschaltet ist.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-shield-alt"></i> Sicherheitsmaßnahmen</h3>
+            <p>Die KI hat mehrere eingebaute Schutzfunktionen:</p>
+            <ul>
+                <li><strong>Freigabe-Warteschlange</strong> — automatische Antworten werden nie direkt gesendet, sondern warten auf Bestätigung</li>
+                <li><strong>Eskalation</strong> — bei heiklen Themen (Beschwerden, Schäden, rechtliche Fragen) wird die Konversation automatisch als "Braucht Aufmerksamkeit" markiert</li>
+                <li><strong>Eingeschränkte Themen</strong> — die KI verweigert Antworten zu bestimmten sensiblen Themen und verweist auf das Team</li>
+                <li><strong>Qualitätskontrolle</strong> — die KI prüft ihre eigene Antwort auf Länge, Inhalt und Angemessenheit</li>
+            </ul>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-brain"></i> Wie die KI lernt</h3>
+            <p>Die KI nutzt mehrere Informationsquellen:</p>
+            <ul>
+                <li><strong>Gästeprofil</strong> — gespeicherte Infos über den Gast (Familie, Allergien, Vorlieben)</li>
+                <li><strong>Wissensdatenbank</strong> — Regeln, Infos und Anweisungen die du hinterlegt hast</li>
+                <li><strong>Korrekturen</strong> — wenn du KI-Antworten bearbeitest, merkt sich das System die Verbesserung</li>
+                <li><strong>Gesprächsverlauf</strong> — die letzten Nachrichten in der Konversation</li>
+                <li><strong>Unterkunfts-Details</strong> — Name, Adresse und Beschreibung der Unterkunft</li>
+            </ul>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-bell-slash"></i> Benachrichtigungen und KI</h3>
+            <p>Wenn Auto-Respond für eine Konversation aktiviert ist, werden <strong>keine Push-Benachrichtigungen</strong> gesendet — die KI kümmert sich ja darum. Du wirst nur benachrichtigt, wenn:</p>
+            <ul>
+                <li>Die KI ausgeschaltet ist</li>
+                <li>Eine Eskalation ausgelöst wird</li>
+                <li>Eine KI-Antwort auf deine Freigabe wartet</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- ==================== GÄSTE ==================== -->
+    <div id="tab-gaeste" class="tab-content" style="display:none;">
+        <div class="help-section">
+            <h2><i class="fas fa-users"></i> Gästeprofile & Erinnerungen</h2>
+            <p>Das System merkt sich automatisch Details über jeden Gast. So kannst du (und die KI) persönlicher kommunizieren.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-user-circle"></i> Gästeprofil ansehen</h3>
+            <p>Klicke im Chat auf den <strong>Gästenamen</strong> oben, um das Profil zu öffnen. Dort siehst du:</p>
+            <ul>
+                <li><strong>Kontaktdaten</strong> — E-Mail, Telefon, Plattform-IDs</li>
+                <li><strong>Gespeicherte Details</strong> — alles, was das System über den Gast gelernt hat</li>
+                <li><strong>Alle Konversationen</strong> — auch frühere Aufenthalte</li>
+            </ul>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-memory"></i> Automatische Erinnerungen</h3>
+            <p>Das System extrahiert automatisch wichtige Informationen aus <strong>allen Nachrichten</strong> — sowohl vom Gast als auch von dir. Zum Beispiel:</p>
+            <ul>
+                <li><span class="help-icon-label"><i class="fas fa-users"></i> <strong>Familie</strong></span> — "Wir kommen mit 2 Kindern" wird als Familieninfo gespeichert</li>
+                <li><span class="help-icon-label"><i class="fas fa-paw"></i> <strong>Haustiere</strong></span> — "Wir bringen unseren Hund Bello mit"</li>
+                <li><span class="help-icon-label"><i class="fas fa-heart"></i> <strong>Vorlieben</strong></span> — "Wir lieben Wandern"</li>
+                <li><span class="help-icon-label"><i class="fas fa-exclamation-circle"></i> <strong>Allergien</strong></span> — "Meine Frau ist allergisch gegen Nüsse"</li>
+                <li><span class="help-icon-label"><i class="fas fa-star"></i> <strong>Interessen</strong></span> — "Gibt es gute Restaurants in der Nähe?"</li>
+                <li><span class="help-icon-label"><i class="fas fa-concierge-bell"></i> <strong>Sonderwünsche</strong></span> — "Können wir einen Late-Check-out haben?"</li>
+            </ul>
+            <div class="help-tip">
+                <strong>Tipp:</strong> Du kannst Details auch manuell hinzufügen oder löschen im Gästeprofil.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-redo"></i> Wiederkehrende Gäste</h3>
+            <p>Wenn ein Gast erneut bucht, wird er automatisch erkannt (über E-Mail, Telefonnummer oder Plattform-ID). Alle gespeicherten Erinnerungen sind sofort wieder verfügbar — die KI kann den Gast dann persönlich begrüßen.</p>
+        </div>
+    </div>
+
+    <!-- ==================== WEITERES ==================== -->
+    <div id="tab-weiteres" class="tab-content" style="display:none;">
+        <div class="help-section">
+            <h2><i class="fas fa-ellipsis-h"></i> Weitere Funktionen</h2>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-book"></i> Wissensdatenbank</h3>
+            <p>In der Wissensdatenbank kannst du Informationen hinterlegen, die die KI bei der Antwortgenerierung nutzt. Es gibt drei Arten:</p>
+            <ul>
+                <li><strong>Regeln</strong> — feste Anweisungen für die KI (z.B. "Antworte immer auf Deutsch")</li>
+                <li><strong>Infos</strong> — Fakten über Unterkünfte (z.B. "WLAN-Passwort: Gast2024")</li>
+                <li><strong>Korrekturen</strong> — automatisch gespeicherte Verbesserungen aus bearbeiteten KI-Antworten</li>
+            </ul>
+            <p>Einträge können <strong>global</strong> (für alle Unterkünfte) oder für eine <strong>bestimmte Unterkunft</strong> gelten.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-bell"></i> Benachrichtigungen</h3>
+            <p>Es gibt zwei Arten von Benachrichtigungen:</p>
+            <ul>
+                <li><strong>In-App</strong> — der rote Badge im Menü und grüne Hinweise innerhalb der App (immer aktiv)</li>
+                <li><strong>Push-Benachrichtigungen</strong> — Browser-Benachrichtigungen, auch wenn die App nicht offen ist. Aktiviere sie über das <i class="fas fa-bell"></i> Glocken-Symbol in der Leiste oben.</li>
+            </ul>
+            <div class="help-tip">
+                <strong>Hinweis:</strong> Push-Benachrichtigungen werden <strong>nicht</strong> gesendet, wenn die KI automatisch antwortet (Auto-Respond aktiv).
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-moon"></i> Dark Mode</h3>
+            <p>Du kannst zwischen hellem und dunklem Design wechseln. Klicke auf das <i class="fas fa-moon"></i> Mond-Symbol oben in der Leiste.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-language"></i> Sprache</h3>
+            <p>Die Oberfläche kann zwischen Deutsch und Englisch umgeschaltet werden. Klicke auf das <i class="fas fa-globe"></i> Sprach-Symbol oben in der Leiste.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-volume-up"></i> Ton-Benachrichtigungen</h3>
+            <p>Bei neuen Nachrichten kann ein Benachrichtigungston abgespielt werden. Aktiviere oder deaktiviere ihn über das <i class="fas fa-volume-up"></i> Lautsprecher-Symbol in der Leiste.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleAiWarning() {
+    const banner = document.querySelector('.ai-warning-banner');
+    const detail = document.getElementById('aiWarningDetail');
+    banner.classList.toggle('open');
+    detail.classList.toggle('show');
+}
+
+function switchHelpTab(tab, btn) {
+    document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+    document.getElementById('tab-' + tab).style.display = '';
+    document.querySelectorAll('.knowledge-tab').forEach(el => el.classList.remove('active'));
+    btn.classList.add('active');
+}
+</script>
+{% endblock %}
