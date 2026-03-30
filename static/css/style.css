@@ -1074,6 +1074,39 @@ a {
     color: rgba(255, 255, 255, 0.7);
 }
 
+.message-header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-suggest-for-message {
+    background: none;
+    border: none;
+    color: var(--text-light);
+    cursor: pointer;
+    padding: 2px 4px;
+    font-size: 0.75rem;
+    border-radius: 4px;
+    opacity: 0.4;
+    transition: opacity 0.2s, color 0.2s;
+}
+
+.btn-suggest-for-message:hover {
+    opacity: 1;
+    color: var(--warning-color, #f59e0b);
+}
+
+.btn-suggest-for-message:disabled {
+    cursor: not-allowed;
+    opacity: 0.2;
+}
+
+.btn-suggest-for-message .fa-spinner {
+    opacity: 1;
+    color: var(--warning-color, #f59e0b);
+}
+
 .message-text {
     font-size: 0.9375rem;
     line-height: 1.5;
@@ -2117,6 +2150,12 @@ a {
 
     .message-time {
         font-size: 0.65rem;
+    }
+
+    .btn-suggest-for-message {
+        font-size: 0.85rem;
+        padding: 4px 6px;
+        opacity: 0.6;
     }
 
     /* --- Overflow menu button visible styling --- */
