@@ -137,20 +137,18 @@
                         {% elif message.sender_type == 'owner' %}{{ message.sender_user.display_name if message.sender_user else 'Team' }}
                         {% else %}<span data-i18n="conversation.ai">KI-Assistent</span>{% endif %}
                     </span>
-                    <span class="message-header-right">
-                        {% if message.sender_type == 'guest' %}
-                        <button class="btn-suggest-for-message" onclick="suggestForMessage({{ message.id }})"
-                            data-i18n-title="conversation.ai.suggestForMessage"
-                            title="KI-Antwort für diese Nachricht"
-                            {% if not conversation.ai_enabled %}disabled{% endif %}>
-                            <i class="fas fa-lightbulb"></i>
-                        </button>
-                        {% endif %}
-                        <span class="message-time">{{ message.sent_at.strftime('%d.%m.%Y %H:%M') if message.sent_at else '' }}</span>
-                    </span>
+                    <span class="message-time">{{ message.sent_at.strftime('%d.%m.%Y %H:%M') if message.sent_at else '' }}</span>
                 </div>
                 <div class="message-text">{{ message.content }}</div>
             </div>
+            {% if message.sender_type == 'guest' %}
+            <button class="btn-suggest-for-message" onclick="suggestForMessage({{ message.id }})"
+                data-i18n-title="conversation.ai.suggestForMessage"
+                title="KI-Antwort für diese Nachricht"
+                {% if not conversation.ai_enabled %}disabled{% endif %}>
+                <i class="fas fa-lightbulb"></i>
+            </button>
+            {% endif %}
         </div>
         {% endfor %}
 
@@ -228,5 +226,5 @@
         autoApprove: {{ 'true' if conversation.auto_approve else 'false' }}
     };
 </script>
-<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=14"></script>
+<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=15"></script>
 {% endblock %}

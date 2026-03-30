@@ -126,13 +126,11 @@ function loadOlderMessages() {
                     <div class="message-content">
                         <div class="message-header">
                             <span class="sender-name">${name}</span>
-                            <span class="message-header-right">
-                                ${suggestBtn}
-                                <span class="message-time">${time}</span>
-                            </span>
+                            <span class="message-time">${time}</span>
                         </div>
                         <div class="message-text">${escapeHtml(msg.content || '')}</div>
                     </div>
+                    ${suggestBtn}
                 `;
                 fragment.appendChild(msgDiv);
             });
@@ -906,13 +904,11 @@ function addMessageToUI(message, senderType) {
         <div class="message-content">
             <div class="message-header">
                 <span class="sender-name">${name}</span>
-                <span class="message-header-right">
-                    ${perMsgSuggestBtn}
-                    <span class="message-time">${time}</span>
-                </span>
+                <span class="message-time">${time}</span>
             </div>
             <div class="message-text">${escapeHtml(message.content || '')}</div>
         </div>
+        ${perMsgSuggestBtn}
     `;
 
     // Pending approval styling
