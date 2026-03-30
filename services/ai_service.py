@@ -38,7 +38,7 @@ class AIService:
         'va bene', 'capito', 'inteso', 'perfetto', 'bene',
     })
 
-    def __init__(self, ollama_url: str = 'http://localhost:11434', model: str = 'gemma2:9b', timeout: int = 120):
+    def __init__(self, ollama_url: str = 'http://localhost:11434', model: str = 'qwen2.5:14b', timeout: int = 120):
         self.ollama_url = ollama_url
         self.model = model
         self.timeout = timeout
@@ -422,7 +422,8 @@ Return ONLY the JSON object:"""
             conversation_summary: Optional[str] = None,
             corrections: Optional[List[Dict[str, Any]]] = None,
             resolved_topics: Optional[List[str]] = None,
-            is_closing: bool = False
+            is_closing: bool = False,
+            target_message_override: Optional[str] = None
     ) -> Optional[str]:
         """
         Generate a personalized AI response for a guest.
@@ -458,7 +459,8 @@ Return ONLY the JSON object:"""
             conversation_summary=conversation_summary,
             corrections=corrections,
             resolved_topics=resolved_topics,
-            is_closing=is_closing
+            is_closing=is_closing,
+            target_message_override=target_message_override
         )
 
         # Log what the AI actually receives for debugging
@@ -645,7 +647,8 @@ Return ONLY the JSON object:"""
             conversation_summary: Optional[str] = None,
             corrections: Optional[List[Dict[str, Any]]] = None,
             resolved_topics: Optional[List[str]] = None,
-            is_closing: bool = False
+            is_closing: bool = False,
+            target_message_override: Optional[str] = None
     ) -> List[Dict[str, str]]:
         """Build chat messages for the Ollama chat API.
 
@@ -776,7 +779,19 @@ Return ONLY the JSON object:"""
 
         # Task instruction at the END — models pay most attention to beginning + end
         system_parts.append("")
-        if unanswered_count >= 2:
+        if target_message_override:
+            clean_target = self._strip_html(target_message_override)
+            clean_target = self._strip_email_quotes(clean_target)
+            if not clean_target.strip():
+                clean_target = target_message_override.strip()
+            system_parts.extend([
+                "=== YOUR TASK ===",
+                "The guest sent the following message. Write a reply specifically to THIS message:",
+                f'"{clean_target[:300]}"',
+                "Focus ONLY on answering this message. Ignore everything else in the conversation.",
+                "===",
+            ])
+        elif unanswered_count >= 2:
             system_parts.extend([
                 "=== YOUR TASK ===",
                 f"The guest has sent {unanswered_count} unanswered messages below.",
@@ -885,21 +900,23 @@ Return ONLY the JSON object:"""
             conversation_history: List[Dict[str, str]],
             max_history: int = 10
     ) -> str:
-        """Format conversation history as a compact text log for the system prompt.
+        """Format conversation history as a numbered, timestamped log.
 
         Returns a string like:
-            Guest: What's the WiFi password?
-            Host: The WiFi password is XYZ.
+            [1] Guest (2 days ago): What's the WiFi password?
+            [2] Host (2 days ago): The WiFi password is XYZ.
+            [3] Guest (5 min ago): Where is the parking card?  ← LATEST
 
         Deduplicates by platform_message_id and content.
         Strips HTML, email quotes, and empty messages.
         Caps at max_history messages.
         """
         sender_labels = {'guest': 'Guest', 'owner': 'Host', 'ai': 'Host'}
+        now = datetime.utcnow()
 
         seen_platform_ids = set()
         seen_content = set()
-        lines = []
+        entries = []
 
         for msg in conversation_history:
             # Skip duplicates by platform_message_id
@@ -932,12 +949,55 @@ Return ONLY the JSON object:"""
             # Truncate messages to keep the log compact (reduces distraction for 8B models)
             if len(content) > 150:
                 content = content[:150] + "..."
-            lines.append(f"{label}: {content.strip()}")
+
+            # Parse timestamp for relative time
+            time_ago = self._relative_time(msg.get('sent_at'), now)
+
+            entries.append((label, time_ago, content.strip()))
 
         # Keep last N messages
-        lines = lines[-max_history:]
+        entries = entries[-max_history:]
+
+        # Build numbered lines with LATEST marker on last entry
+        lines = []
+        for i, (label, time_ago, content) in enumerate(entries, 1):
+            marker = "  ← LATEST" if i == len(entries) else ""
+            lines.append(f"[{i}] {label} ({time_ago}): {content}{marker}")
 
         return "\n".join(lines)
+
+    @staticmethod
+    def _relative_time(sent_at_value, now: datetime) -> str:
+        """Convert a sent_at value (ISO string or datetime) to a relative time string."""
+        if not sent_at_value:
+            return "unknown"
+
+        if isinstance(sent_at_value, str):
+            try:
+                sent_dt = datetime.fromisoformat(sent_at_value.replace('Z', '+00:00')).replace(tzinfo=None)
+            except (ValueError, TypeError):
+                return "unknown"
+        elif isinstance(sent_at_value, datetime):
+            sent_dt = sent_at_value.replace(tzinfo=None)
+        else:
+            return "unknown"
+
+        delta = now - sent_dt
+        seconds = int(delta.total_seconds())
+
+        if seconds < 0:
+            return "just now"
+        elif seconds < 60:
+            return "just now"
+        elif seconds < 3600:
+            mins = seconds // 60
+            return f"{mins} min ago"
+        elif seconds < 86400:
+            hours = seconds // 3600
+            return f"{hours}h ago"
+        else:
+            days = seconds // 86400
+            return f"{days}d ago"
 
     @staticmethod
     def _strip_think_tags(text: str) -> str:
