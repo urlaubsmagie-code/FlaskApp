@@ -698,6 +698,11 @@ function toggleAI() {
         if (mobileAutoRespondBtn) mobileAutoRespondBtn.disabled = !aiEnabled;
         const mobileAutoRespondStatus = document.getElementById('mobileAutoRespondStatus');
         if (mobileAutoRespondStatus) mobileAutoRespondStatus.textContent = autoRespond ? 'ON' : 'OFF';
+
+        // Sync per-message suggest lightbulb buttons
+        document.querySelectorAll('.btn-suggest-for-message').forEach(btn => {
+            btn.disabled = !aiEnabled;
+        });
     })
     .catch(err => console.error('Failed to toggle AI:', err));
 }

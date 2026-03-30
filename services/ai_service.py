@@ -809,7 +809,14 @@ Return ONLY the JSON object:"""
         messages.append({'role': 'system', 'content': "\n".join(system_parts)})
 
         # --- Single user turn: only the latest guest message ---
-        if unanswered_count >= 2:
+        if target_message_override:
+            # Per-message suggest: always send only the targeted message
+            clean_target = self._strip_html(target_message_override)
+            clean_target = self._strip_email_quotes(clean_target)
+            if not clean_target.strip():
+                clean_target = target_message_override.strip()
+            messages.append({'role': 'user', 'content': clean_target})
+        elif unanswered_count >= 2:
             # Build numbered multi-message user turn from trailing guest messages
             trailing_messages = []
             for msg in reversed(conversation_history):
