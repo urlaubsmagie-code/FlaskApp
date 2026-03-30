@@ -527,6 +527,7 @@ def api_search():
                 'guest_name': r['guest_name'],
                 'guest_id': r['guest_id'],
                 'subject': r['subject'],
+                'property_name': r.get('property_name'),
                 'platform': r['platform'],
                 'match_count': 0,
                 'first_snippet': None
@@ -1138,6 +1139,93 @@ def api_suggest_ai_response(conversation_id):
     except Exception as e:
         logger.error(f"Unexpected error generating AI suggestion: {e}", exc_info=True)
         return jsonify({'error': f'AI suggestion failed: {str(e)}'}), 500
+
+
+@chatbot_bp.route('/api/conversations/<int:conversation_id>/ai-suggest-for-message', methods=['POST'])
+def api_suggest_for_message(conversation_id):
+    """Generate an AI suggestion targeting a specific guest message"""
+    conversation = Conversation.query.get_or_404(conversation_id)
+
+    if not conversation.ai_enabled:
+        return jsonify({'error': 'AI is disabled for this conversation'}), 400
+
+    request_data = request.get_json(silent=True) or {}
+    message_id = request_data.get('message_id')
+    if not message_id:
+        return jsonify({'error': 'message_id is required'}), 400
+
+    # Validate message belongs to this conversation and is from a guest
+    target_message = Message.query.filter_by(
+        id=message_id,
+        conversation_id=conversation_id,
+        sender_type='guest'
+    ).first()
+    if not target_message:
+        return jsonify({'error': 'Guest message not found in this conversation'}), 404
+
+    ai_service = get_ai_service()
+    memory_service = get_memory_service()
+
+    if not ai_service:
+        return jsonify({'error': 'AI service not initialized'}), 503
+
+    if not ai_service.test_connection():
+        return jsonify({'error': 'Cannot connect to Ollama. Is the server running?'}), 503
+
+    try:
+        tone = AISettings.get('ai_response_tone', 'friendly_professional')
+        host_instructions = AISettings.get('host_instructions', '')
+        max_history = int(AISettings.get('max_conversation_history', '10'))
+
+        # Get conversation history for read-only context
+        messages = conversation.messages.filter(
+            db.or_(Message.approval_status.is_(None), Message.approval_status == 'approved')
+        ).order_by(Message.sent_at.desc()).limit(max_history).all()
+        messages.reverse()
+
+        # Get guest profile and property info
+        profile = memory_service.get_guest_profile(conversation.guest_id) if memory_service else {}
+        property_info = conversation.property.to_dict() if conversation.property else None
+
+        # Clean target message content
+        target_content = target_message.content or ''
+
+        # Generate with slimmed-down context: no KB, no reservation, no corrections,
+        # no summary, no resolved topics — just history + profile + property + instructions
+        ai_response = ai_service.generate_guest_response(
+            guest_profile=profile,
+            conversation_history=[m.to_dict() for m in messages],
+            latest_message=target_content,
+            property_info=property_info,
+            tone=tone,
+            host_instructions=host_instructions,
+            conversation_subject=conversation.subject,
+            max_history=max_history,
+            reservation_info=None,
+            knowledge_entries=None,
+            conversation_summary=None,
+            corrections=None,
+            resolved_topics=None,
+            is_closing=False,
+            target_message_override=target_content,
+        )
+
+        if not ai_response:
+            return jsonify({'error': 'AI response timed out. The model may be loading - try again.'}), 504
+
+        return jsonify({
+            'suggestion': ai_response,
+            'target_message_id': message_id,
+        })
+
+    except MemoryError:
+        logger.error("MemoryError during per-message AI suggestion")
+        db.session.rollback()
+        return jsonify({'error': 'Out of memory. Try a smaller model in Settings.'}), 503
+    except Exception as e:
+        logger.error(f"Error in per-message AI suggest: {e}", exc_info=True)
+        db.session.rollback()
+        return jsonify({'error': f'AI generation failed: {str(e)}'}), 500
 
 
 @chatbot_bp.route('/api/guests/<int:guest_id>', methods=['GET'])
