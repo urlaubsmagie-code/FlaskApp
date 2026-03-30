@@ -632,6 +632,86 @@ Return ONLY the JSON object:"""
         'concise': "Be brief and to the point. Short sentences, no filler.",
     }
 
+    def _build_compact_prompt(
+            self,
+            guest_profile: Dict[str, Any],
+            conversation_history: List[Dict[str, str]],
+            clean_latest: str,
+            unanswered_count: int,
+            tone: Optional[str] = None,
+            host_instructions: Optional[str] = None,
+            reservation_info: Optional[Dict[str, Any]] = None,
+            knowledge_entries: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
+        """Build a compact system prompt (~400-600 tokens) for KI-Vorschlag / KI-Antwort.
+
+        Keeps only what the 8B model needs to answer the latest guest message:
+        role, rules, guest name, reservation one-liner, host instructions,
+        top KB entries, short conversation log, and the task instruction.
+
+        Excludes: full guest profile, property details, conversation summary,
+        resolved topics, corrections, escalation entries.
+        """
+        now = datetime.utcnow()
+        tone_instruction = self.TONE_INSTRUCTIONS.get(tone, self.TONE_INSTRUCTIONS['friendly_professional'])
+
+        # 1. Role + rules + tone (compact)
+        parts = [
+            "You are a vacation rental host replying to a guest.",
+            tone_instruction,
+            f"Date: {now.strftime('%d %b %Y')}.",
+            "Rules: Reply in the guest's language. Never invent details — say you'll check. Don't re-ask answered questions.",
+        ]
+
+        # 2. Guest name + language
+        guest_name = guest_profile.get('name', 'the guest') if guest_profile else 'the guest'
+        guest_language = guest_profile.get('language') if guest_profile else None
+        if guest_language:
+            parts.append(f"Guest: {guest_name} (speaks {guest_language})")
+        else:
+            parts.append(f"Guest: {guest_name}")
+
+        # 3. Reservation one-liner
+        if reservation_info:
+            res_compact = self._format_reservation_compact(reservation_info)
+            if res_compact:
+                parts.append(res_compact)
+
+        # 4. Host instructions
+        if host_instructions and host_instructions.strip():
+            parts.append(f"Host instructions: {host_instructions.strip()}")
+
+        # 5. KB entries (top 3 only, no escalation)
+        if knowledge_entries:
+            regular = [e for e in knowledge_entries if e.get('category') != 'escalation'][:3]
+            if regular:
+                kb_lines = []
+                for e in regular:
+                    label = e.get('label', '')
+                    value = e.get('value', '')
+                    kb_lines.append(f"- {label}: {value[:80]}")
+                parts.append("Info:\n" + "\n".join(kb_lines))
+
+        # 6. Conversation log (last 4 messages)
+        conversation_log = self._format_conversation_log(conversation_history, max_history=4)
+        if conversation_log:
+            parts.append(f"Recent messages:\n{conversation_log}")
+
+        # 7. YOUR TASK (at the end for model attention)
+        parts.append("")
+        if unanswered_count >= 2:
+            parts.append(
+                f"TASK: The guest sent {unanswered_count} unanswered messages. "
+                "Address ALL of them in one reply."
+            )
+        else:
+            parts.append(
+                f'TASK: The guest\'s new message is: "{clean_latest[:300]}"\n'
+                "Reply to THIS message only."
+            )
+
+        return "\n".join(parts)
+
     def _build_chat_messages(
             self,
             guest_profile: Dict[str, Any],
@@ -675,12 +755,6 @@ Return ONLY the JSON object:"""
             messages.append({'role': 'user', 'content': clean_latest or latest_message.strip()})
             return messages
 
-        # Get guest's preferred language if stored
-        guest_language = guest_profile.get('language', None) if guest_profile else None
-
-        # Resolve tone instruction
-        tone_instruction = self.TONE_INSTRUCTIONS.get(tone, self.TONE_INSTRUCTIONS['friendly_professional'])
-
         # Clean latest message
         clean_latest = self._strip_html(latest_message)
         clean_latest = self._strip_email_quotes(clean_latest)
@@ -692,6 +766,52 @@ Return ONLY the JSON object:"""
             self._count_trailing_guest_messages(conversation_history),
             max_history
         )
+
+        # --- Prompt mode selection ---
+        # Per-message suggest (lightbulb): uses the full prompt with target_message_override
+        # KI-Vorschlag / KI-Antwort: uses the compact prompt for 8B model focus
+        if not target_message_override:
+            system_content = self._build_compact_prompt(
+                guest_profile=guest_profile,
+                conversation_history=conversation_history,
+                clean_latest=clean_latest,
+                unanswered_count=unanswered_count,
+                tone=tone,
+                host_instructions=host_instructions,
+                reservation_info=reservation_info,
+                knowledge_entries=knowledge_entries,
+            )
+            messages.append({'role': 'system', 'content': system_content})
+
+            # User turn: latest guest message(s)
+            if unanswered_count >= 2:
+                trailing_messages = []
+                for msg in reversed(conversation_history):
+                    if msg.get('sender_type') == 'guest':
+                        content = self._strip_html(msg.get('content', ''))
+                        content = self._strip_email_quotes(content)
+                        if content.strip():
+                            trailing_messages.append(content.strip())
+                    else:
+                        break
+                trailing_messages.reverse()
+
+                if len(trailing_messages) >= 2:
+                    numbered = [f"[{i+1}] {text}" for i, text in enumerate(trailing_messages)]
+                    messages.append({'role': 'user', 'content': "\n".join(numbered)})
+                else:
+                    messages.append({'role': 'user', 'content': trailing_messages[0] if trailing_messages else clean_latest})
+            else:
+                messages.append({'role': 'user', 'content': clean_latest})
+
+            return messages
+
+        # --- Per-message suggest: full prompt path (unchanged) ---
+        # Get guest's preferred language if stored
+        guest_language = guest_profile.get('language', None) if guest_profile else None
+
+        # Resolve tone instruction
+        tone_instruction = self.TONE_INSTRUCTIONS.get(tone, self.TONE_INSTRUCTIONS['friendly_professional'])
 
         # --- Build system prompt ---
         now = datetime.utcnow()
@@ -1169,6 +1289,29 @@ Return ONLY the JSON object:"""
         if reservation_info.get('apartment') and reservation_info['apartment'].get('name'):
             lines.append(f"- Property: {reservation_info['apartment']['name']}")
         return "\n".join(lines)
+
+    def _format_reservation_compact(self, reservation_info: Dict[str, Any]) -> str:
+        """Format reservation as a single compact line for the slim prompt."""
+        parts = []
+        arrival = reservation_info.get('arrival') or reservation_info.get('check_in')
+        departure = reservation_info.get('departure') or reservation_info.get('check_out')
+        if arrival and departure:
+            parts.append(f"{arrival} to {departure}")
+        elif arrival:
+            parts.append(f"Check-in: {arrival}")
+
+        adults = reservation_info.get('adults')
+        children = reservation_info.get('children')
+        if adults and children:
+            parts.append(f"{adults} adults + {children} children")
+        elif adults:
+            parts.append(f"{adults} guests")
+
+        apt = reservation_info.get('apartment', {})
+        if apt and apt.get('name'):
+            parts.append(f"Property: {apt['name']}")
+
+        return "Reservation: " + ", ".join(parts) if parts else ""
 
     @staticmethod
     @staticmethod
