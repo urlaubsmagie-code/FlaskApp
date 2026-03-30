@@ -693,10 +693,12 @@ Return ONLY the JSON object:"""
                     kb_lines.append(f"- {label}: {val}")
                 parts.append("Info:\n" + "\n".join(kb_lines))
 
-        # 6. Conversation log (last 4 messages — intentionally low for 8B model focus)
-        conversation_log = self._format_conversation_log(conversation_history, max_history=4)
-        if conversation_log:
-            parts.append(f"Recent messages:\n{conversation_log}")
+        # 6. Recent host replies only (exclude guest messages to prevent model fixating on old questions)
+        host_only_history = [m for m in conversation_history if m.get('sender_type') in ('owner', 'ai')]
+        if host_only_history:
+            conversation_log = self._format_conversation_log(host_only_history, max_history=2)
+            if conversation_log:
+                parts.append(f"Your recent replies:\n{conversation_log}")
 
         # 7. YOUR TASK (at the end for model attention)
         parts.append("")
