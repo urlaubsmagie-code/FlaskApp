@@ -48,6 +48,7 @@ const translations = {
         'conversation.send': 'Senden',
         'conversation.placeholder': 'Nachricht eingeben...',
         'conversation.ai.suggest': 'KI-Vorschlag',
+        'conversation.ai.suggestForMessage': 'KI-Antwort für diese Nachricht',
         'conversation.ai.generate': 'KI-Antwort senden',
         'conversation.ai.generating': 'Generiere...',
         'conversation.ai.error': 'KI nicht erreichbar. Läuft Ollama?',
@@ -278,7 +279,7 @@ const translations = {
         'settings.users.add': 'Benutzer hinzufügen',
         'settings.users.delete': 'Benutzer löschen',
         'settings.users.resetPassword': 'Passwort zurücksetzen',
-        'settings.users.help': 'Alle Benutzer haben gleiche Rechte. Jeder kann andere Benutzer hinzufügen oder entfernen.',
+        'settings.users.help': 'Admins können Einstellungen, Statistiken und Debug-Seiten sehen und Benutzer verwalten.',
 
         // Platforms
         'platform.email': 'E-Mail',
@@ -381,6 +382,8 @@ const translations = {
         'inbox.needsAttention': 'Braucht Aufmerksamkeit',
         'inbox.aiActive': 'KI aktiv',
         'inbox.aiPaused': 'KI pausiert',
+        'inbox.senderMe': 'Ich',
+        'inbox.senderAI': 'KI',
         'inbox.filter.escalated': 'Eskaliert',
 
         // Conversation escalation
@@ -459,6 +462,7 @@ const translations = {
         'conversation.send': 'Send',
         'conversation.placeholder': 'Type a message...',
         'conversation.ai.suggest': 'AI Suggest',
+        'conversation.ai.suggestForMessage': 'AI suggestion for this message',
         'conversation.ai.generate': 'Send AI Response',
         'conversation.ai.generating': 'Generating...',
         'conversation.ai.error': 'AI not reachable. Is Ollama running?',
@@ -689,7 +693,7 @@ const translations = {
         'settings.users.add': 'Add User',
         'settings.users.delete': 'Delete User',
         'settings.users.resetPassword': 'Reset Password',
-        'settings.users.help': 'All users have equal rights. Anyone can add or remove other users.',
+        'settings.users.help': 'Admins can access Settings, Statistics, and Debug pages, and manage users.',
 
         // Platforms
         'platform.email': 'Email',
@@ -792,6 +796,8 @@ const translations = {
         'inbox.needsAttention': 'Needs Attention',
         'inbox.aiActive': 'AI Active',
         'inbox.aiPaused': 'AI Paused',
+        'inbox.senderMe': 'Me',
+        'inbox.senderAI': 'AI',
         'inbox.filter.escalated': 'Escalated',
 
         // Conversation escalation
