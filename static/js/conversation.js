@@ -113,12 +113,23 @@ function loadOlderMessages() {
                     const d = new Date(msg.sent_at);
                     time = d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
                 }
+                const suggestBtn = msg.sender_type === 'guest'
+                    ? `<button class="btn-suggest-for-message" onclick="suggestForMessage(${msg.id})"
+                        data-i18n-title="conversation.ai.suggestForMessage"
+                        title="${i18n.t('conversation.ai.suggestForMessage')}"
+                        ${!aiEnabled ? 'disabled' : ''}>
+                        <i class="fas fa-lightbulb"></i>
+                       </button>`
+                    : '';
                 msgDiv.innerHTML = `
                     <div class="message-avatar"><i class="fas ${icon}"></i></div>
                     <div class="message-content">
                         <div class="message-header">
                             <span class="sender-name">${name}</span>
-                            <span class="message-time">${time}</span>
+                            <span class="message-header-right">
+                                ${suggestBtn}
+                                <span class="message-time">${time}</span>
+                            </span>
                         </div>
                         <div class="message-text">${escapeHtml(msg.content || '')}</div>
                     </div>
@@ -604,6 +615,64 @@ function suggestAIResponse() {
     });
 }
 
+function suggestForMessage(messageId) {
+    pendingCorrectionOriginal = null;
+    const input = document.getElementById('messageInput');
+    const suggestBtn = document.getElementById('suggestAiBtn');
+    const generateBtn = document.getElementById('generateAiBtn');
+
+    // Find and animate the clicked lightbulb button
+    const msgDiv = document.querySelector(`.message[data-message-id="${messageId}"]`);
+    const perMsgBtn = msgDiv ? msgDiv.querySelector('.btn-suggest-for-message') : null;
+
+    // Disable all AI buttons during generation
+    suggestBtn.disabled = true;
+    generateBtn.disabled = true;
+    if (perMsgBtn) {
+        perMsgBtn.disabled = true;
+        perMsgBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    }
+
+    if (activeAiController) activeAiController.abort();
+    activeAiController = new AbortController();
+    const signal = activeAiController.signal;
+
+    fetch(`/chatbot/api/conversations/${conversationId}/ai-suggest-for-message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message_id: messageId }),
+        signal: signal
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            showAiError(data.error);
+        } else {
+            input.value = data.suggestion;
+            localStorage.setItem(draftKey, data.suggestion);
+            input.focus();
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 200) + 'px';
+            // Scroll to the input area so the host sees the draft
+            input.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    })
+    .catch(err => {
+        if (err.name === 'AbortError') return;
+        console.error('Failed to generate per-message AI suggestion:', err);
+        showAiError(i18n.t('conversation.ai.error') || 'AI not reachable. Is Ollama running?');
+    })
+    .finally(() => {
+        activeAiController = null;
+        suggestBtn.disabled = !aiEnabled;
+        generateBtn.disabled = !aiEnabled;
+        if (perMsgBtn) {
+            perMsgBtn.disabled = !aiEnabled;
+            perMsgBtn.innerHTML = '<i class="fas fa-lightbulb"></i>';
+        }
+    });
+}
+
 function toggleAI() {
     fetch(`/chatbot/api/conversations/${conversationId}/toggle-ai`, {
         method: 'POST'
@@ -819,12 +888,23 @@ function addMessageToUI(message, senderType) {
         time = new Date().toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
 
+    const perMsgSuggestBtn = actualSenderType === 'guest' && message.id
+        ? `<button class="btn-suggest-for-message" onclick="suggestForMessage(${message.id})"
+            data-i18n-title="conversation.ai.suggestForMessage"
+            title="${i18n.t('conversation.ai.suggestForMessage')}"
+            ${!aiEnabled ? 'disabled' : ''}>
+            <i class="fas fa-lightbulb"></i>
+           </button>`
+        : '';
     messageDiv.innerHTML = `
         <div class="message-avatar"><i class="fas ${icon}"></i></div>
         <div class="message-content">
             <div class="message-header">
                 <span class="sender-name">${name}</span>
-                <span class="message-time">${time}</span>
+                <span class="message-header-right">
+                    ${perMsgSuggestBtn}
+                    <span class="message-time">${time}</span>
+                </span>
             </div>
             <div class="message-text">${escapeHtml(message.content || '')}</div>
         </div>
