@@ -37,6 +37,12 @@
                     {{ conversation.platform|capitalize }}
                     {% if conversation.property %}- {{ conversation.property.name }}{% elif conversation.subject %}- {{ conversation.subject }}{% endif %}
                 </span>
+                {% if conversation.check_in and conversation.check_out %}
+                <span class="conversation-stay-dates">
+                    {{ conversation.check_in.strftime('%d.%m') }} – {{ conversation.check_out.strftime('%d.%m') }}
+                    ({{ (conversation.check_out - conversation.check_in).days }}n)
+                </span>
+                {% endif %}
             </div>
         </div>
         <div class="conversation-actions">
@@ -67,6 +73,11 @@
                 <span class="toggle-status" data-i18n="conversation.escalation.resolve">Lösen</span>
             </button>
             {% endif %}
+            {% if conversation.platform == 'smoobu' and conversation.smoobu_reservation_id %}
+            <button class="btn btn-icon" onclick="syncConversation()" id="syncBtn" title="Nachrichten synchronisieren">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+            {% endif %}
             <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="btn btn-icon" data-i18n-title="conversation.guest.profile" title="Gästeprofil anzeigen">
                 <i class="fas fa-user"></i>
             </a>
@@ -93,6 +104,12 @@
             <button class="overflow-menu-item btn-escalation-resolve" onclick="resolveEscalation()" id="mobileResolveBtn">
                 <i class="fas fa-check-circle"></i>
                 <span data-i18n="conversation.escalation.resolve">Als gelöst markieren</span>
+            </button>
+            {% endif %}
+            {% if conversation.platform == 'smoobu' and conversation.smoobu_reservation_id %}
+            <button class="overflow-menu-item" onclick="syncConversation()" id="mobileSyncBtn">
+                <i class="fas fa-sync-alt"></i>
+                <span>Synchronisieren</span>
             </button>
             {% endif %}
             <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="overflow-menu-item">
@@ -226,5 +243,5 @@
         autoApprove: {{ 'true' if conversation.auto_approve else 'false' }}
     };
 </script>
-<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=15"></script>
+<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=16"></script>
 {% endblock %}
