@@ -108,7 +108,7 @@
                         <span class="guest-name">{{ conv.guest.name or conv.guest.email or 'Unknown Guest' }}</span>
                         <span class="conversation-time" data-timestamp="{{ conv.updated_at.isoformat() if conv.updated_at else '' }}" title="{{ conv.updated_at.strftime('%d.%m.%Y %H:%M') if conv.updated_at else '' }}">{{ conv.updated_at.strftime('%d.%m %H:%M') if conv.updated_at else '' }}</span>
                     </div>
-                    <div class="conversation-subject">{{ conv.property.name if conv.property else conv.subject or 'No subject' }}</div>
+                    <div class="conversation-subject">{{ conv.property.name if conv.property else conv.subject or 'No subject' }}{% if conv.check_in and conv.check_out %} <span class="stay-dates">{{ conv.check_in.strftime('%d.%m') }} – {{ conv.check_out.strftime('%d.%m') }} ({{ (conv.check_out - conv.check_in).days }}n)</span>{% endif %}</div>
                     <div class="conversation-preview">
                         {% if conv.last_message %}
                             {% if conv.last_message.sender_type == 'owner' %}{{ conv.last_message.sender_user.display_name if conv.last_message.sender_user else 'Team' }}: {% elif conv.last_message.sender_type == 'ai' %}KI: {% endif %}{{ conv.last_message.content[:80] }}{% if conv.last_message.content|length > 80 %}...{% endif %}
