@@ -32,11 +32,14 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
 
+    last_seen = db.Column(db.DateTime, nullable=True)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     assigned_conversations = db.relationship('Conversation', backref='assigned_user', lazy='dynamic')
+    sessions = db.relationship('UserSession', backref='user', lazy='dynamic')
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -56,6 +59,23 @@ class User(UserMixin, db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
+
+
+class UserSession(db.Model):
+    """Tracks user login sessions for online-time statistics"""
+    __tablename__ = 'user_session'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
+    started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    last_active_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def duration_minutes(self):
+        """Session duration in minutes"""
+        return (self.last_active_at - self.started_at).total_seconds() / 60.0
+
+    def __repr__(self):
+        return f'<UserSession {self.id}: user={self.user_id}>'
 
 
 class PushSubscription(db.Model):
@@ -236,6 +256,10 @@ class Conversation(db.Model):
     # Smoobu reservation link
     smoobu_reservation_id = db.Column(db.String(100), index=True)
 
+    # Reservation stay dates (from Smoobu)
+    check_in = db.Column(db.Date, nullable=True)
+    check_out = db.Column(db.Date, nullable=True)
+
     # Property association (optional)
     property_id = db.Column(db.Integer, db.ForeignKey('property.id', ondelete='SET NULL'), nullable=True)
 
@@ -274,6 +298,8 @@ class Conversation(db.Model):
             'assigned_user_name': self.assigned_user.display_name if self.assigned_user else None,
             'property_id': self.property_id,
             'property_name': self.property.name if self.property else None,
+            'check_in': self.check_in.isoformat() if self.check_in else None,
+            'check_out': self.check_out.isoformat() if self.check_out else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'guest': self.guest.to_dict() if self.guest else None,
