@@ -578,6 +578,12 @@ a {
     margin-bottom: 4px;
 }
 
+.conversation-subject .stay-dates {
+    color: var(--text-light);
+    font-size: 0.8125rem;
+    margin-left: 4px;
+}
+
 .conversation-preview {
     font-size: 0.8125rem;
     color: var(--text-light);
@@ -892,6 +898,13 @@ a {
     color: var(--text-light);
 }
 
+.conversation-stay-dates {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    display: block;
+    margin-top: 1px;
+}
+
 .conversation-actions {
     display: flex;
     align-items: center;
@@ -1003,6 +1016,7 @@ a {
 
 .message.guest {
     align-self: flex-start;
+    position: relative;
 }
 
 .message.owner,
@@ -1087,14 +1101,16 @@ a {
     align-items: center;
     justify-content: center;
     transition: opacity 0.2s, transform 0.2s;
-    align-self: center;
-    flex-shrink: 0;
     opacity: 0.7;
+    position: absolute;
+    right: -36px;
+    top: 50%;
+    transform: translateY(-50%);
 }
 
 .btn-suggest-for-message:hover {
     opacity: 1;
-    transform: scale(1.1);
+    transform: translateY(-50%) scale(1.1);
 }
 
 .btn-suggest-for-message:disabled {
@@ -2117,7 +2133,7 @@ a {
     }
 
     .message {
-        max-width: 80%;
+        max-width: 75%;
         gap: 8px;
     }
 
@@ -2152,10 +2168,10 @@ a {
     }
 
     .btn-suggest-for-message {
-        width: 32px;
-        height: 32px;
-        font-size: 0.85rem;
-        opacity: 0.8;
+        width: 22px;
+        height: 22px;
+        font-size: 0.65rem;
+        right: -28px;
     }
 
     /* --- Overflow menu button visible styling --- */
@@ -2378,7 +2394,7 @@ a {
     }
 
     .message {
-        max-width: 88%;
+        max-width: 82%;
     }
 }
 
