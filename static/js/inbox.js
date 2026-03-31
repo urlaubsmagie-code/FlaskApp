@@ -40,6 +40,15 @@ function formatStatus(status) {
     return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
 
+function formatStayDates(checkIn, checkOut) {
+    if (!checkIn || !checkOut) return '';
+    const ci = new Date(checkIn + 'T00:00:00');
+    const co = new Date(checkOut + 'T00:00:00');
+    const nights = Math.round((co - ci) / 86400000);
+    const fmt = d => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return `${fmt(ci)} \u2013 ${fmt(co)} (${nights}n)`;
+}
+
 function createConversationCard(conv) {
     const card = document.createElement('a');
     card.href = `/chatbot/conversation/${conv.id}`;
@@ -88,7 +97,7 @@ function createConversationCard(conv) {
                 <span class="guest-name">${escapeHtml(guestName)}</span>
                 <span class="conversation-time" data-timestamp="${conv.updated_at || ''}" title="${formatAbsoluteTime(conv.updated_at)}">${formatRelativeTime(conv.updated_at)}</span>
             </div>
-            <div class="conversation-subject">${escapeHtml(conv.property_name || conv.subject || 'No subject')}</div>
+            <div class="conversation-subject">${escapeHtml(conv.property_name || conv.subject || 'No subject')}${conv.check_in && conv.check_out ? ` <span class="stay-dates">${formatStayDates(conv.check_in, conv.check_out)}</span>` : ''}</div>
             <div class="conversation-preview">${escapeHtml(preview)}</div>
         </div>
         <div class="conversation-meta">
@@ -507,7 +516,7 @@ function renderSearchResults(data) {
 
         const iconClass = platformIcons[result.platform] || 'fas fa-comment';
         const guestName = escapeHtml(result.guest_name || 'Unknown Guest');
-        const subject = escapeHtml(result.subject || '');
+        const subject = escapeHtml(result.property_name || result.subject || '');
         const matchLabel = result.match_count > 1 ? `<span class="match-count">(${result.match_count} matches)</span>` : '';
         const snippet = result.first_snippet || '';  // Already sanitized server-side
 
