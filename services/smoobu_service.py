@@ -426,6 +426,20 @@ class SmoobuService:
                 existing_conv = conv_by_platform_id.get(f"smoobu-{reservation_id}")
                 total_from_api = msg_data.get('total_items', 0) if isinstance(msg_data, dict) else len(msg_data if isinstance(msg_data, list) else [])
                 if existing_conv:
+                    # Backfill check_in/check_out if missing (runs even when no new messages)
+                    if not existing_conv.check_in or not existing_conv.check_out:
+                        res_detail = self.get_reservation(reservation_id)
+                        if res_detail:
+                            ci = _parse_smoobu_date(
+                                res_detail.get('arrival') or res_detail.get('check-in'))
+                            co = _parse_smoobu_date(
+                                res_detail.get('departure') or res_detail.get('check-out'))
+                            if ci and not existing_conv.check_in:
+                                existing_conv.check_in = ci
+                            if co and not existing_conv.check_out:
+                                existing_conv.check_out = co
+                            db.session.commit()
+
                     known_ids = known_ids_by_conv.get(existing_conv.id, set())
                     if total_from_api <= len(known_ids):
                         continue
