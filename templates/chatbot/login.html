@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - ChatBotAI</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #7B2332;
+            --primary-hover: #5E1A27;
+            --bg-primary: #ffffff;
+            --bg-secondary: #ffffff;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --text-light: #94a3b8;
+            --border-color: #e2e8f0;
+            --danger-color: #ef4444;
+        }
+        :root[data-theme="dark"] {
+            --bg-primary: #1A0F12;
+            --bg-secondary: #2A1519;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-light: #64748b;
+            --border-color: #3D2025;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .login-header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .login-header p {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 0.9375rem;
+            font-family: inherit;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(123, 35, 50, 0.1);
+        }
+        .remember-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 24px;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+        .remember-row input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--primary-color);
+        }
+        .btn-login {
+            width: 100%;
+            padding: 12px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9375rem;
+            font-weight: 500;
+            font-family: inherit;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn-login:hover { background: var(--primary-hover); }
+        .error-message {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        :root[data-theme="dark"] .error-message {
+            background: #450a0a;
+            border-color: #7f1d1d;
+            color: #fca5a5;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="login-header">
+            <img src="{{ url_for('chatbot.static', filename='img/um-logo.png') }}" alt="Urlaubsmagie" style="width: 80px; height: auto; margin-bottom: 12px;">
+            <h1>ChatBotAI</h1>
+            <p data-i18n="auth.loginSubtitle">Melden Sie sich an, um fortzufahren</p>
+        </div>
+
+        {% if error %}
+        <div class="error-message">
+            <i class="fas fa-exclamation-circle"></i>
+            <span>{{ error }}</span>
+        </div>
+        {% endif %}
+
+        <form method="POST">
+            <div class="form-group">
+                <label for="username" data-i18n="auth.username">Benutzername</label>
+                <input type="text" id="username" name="username" value="{{ username or '' }}" required autofocus>
+            </div>
+            <div class="form-group">
+                <label for="password" data-i18n="auth.password">Passwort</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <div class="remember-row">
+                <input type="checkbox" id="remember" name="remember">
+                <label for="remember" data-i18n="auth.rememberMe">Angemeldet bleiben</label>
+            </div>
+            <button type="submit" class="btn-login">
+                <i class="fas fa-sign-in-alt"></i>
+                <span data-i18n="auth.login">Anmelden</span>
+            </button>
+        </form>
+    </div>
+
+    <script>
+        // Apply saved theme from localStorage
+        const theme = localStorage.getItem('chatbot_theme');
+        if (theme === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        }
+    </script>
+</body>
+</html>
