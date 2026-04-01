@@ -62,16 +62,18 @@
    Dark Mode
    ============================================================================ */
 :root[data-theme="dark"] {
-    --bg-primary: #0f172a;
-    --bg-secondary: #1e293b;
-    --card-bg: #1e293b;
+    --primary-color: #8B2D3C;
+    --primary-hover: #7B2332;
+    --bg-primary: #1A0F12;
+    --bg-secondary: #2A1519;
+    --card-bg: #2A1519;
     --text-primary: #f1f5f9;
     --text-secondary: #94a3b8;
     --text-light: #64748b;
-    --border-color: #334155;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+    --border-color: #3D2025;
+    --shadow-sm: 0 1px 2px rgba(26, 15, 18, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(26, 15, 18, 0.4);
+    --shadow-lg: 0 10px 15px -3px rgba(26, 15, 18, 0.4);
 }
 
 :root[data-theme="dark"] .search-box input,
@@ -85,7 +87,7 @@
 }
 
 :root[data-theme="dark"] .memory-item:hover {
-    background-color: #334155;
+    background-color: #3D2025;
 }
 
 :root[data-theme="dark"] dialog.edit-modal {
