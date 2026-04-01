@@ -17,7 +17,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('chatbot.static', filename='css/style.css') }}?v=24">
+    <link rel="stylesheet" href="{{ url_for('chatbot.static', filename='css/style.css') }}?v=33">
 
     {% block extra_css %}{% endblock %}
 </head>
@@ -73,6 +73,24 @@
                 </li>
                 {% endif %}
             </ul>
+
+            {% if online_users %}
+            <div class="online-users">
+                <div class="online-users-header">
+                    <i class="fas fa-circle" style="color:#22c55e;font-size:0.5em;"></i>
+                    <span data-i18n="nav.online">Online</span>
+                    <span class="online-count">{{ online_users|length }}</span>
+                </div>
+                <div class="online-users-list">
+                    {% for user in online_users %}
+                    <div class="online-user">
+                        <span class="online-avatar">{{ user.display_name[0]|upper }}</span>
+                        <span class="online-name">{{ user.display_name }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
 
             <div class="sidebar-footer">
                 <!-- User Menu -->
@@ -182,6 +200,23 @@
                     </select>
                 </div>
             </div>
+            {% if online_users %}
+            <div class="account-panel-online">
+                <div class="account-panel-online-header">
+                    <i class="fas fa-circle" style="color:#22c55e;font-size:0.5em;"></i>
+                    <span data-i18n="nav.online">Online</span>
+                    <span class="online-count">{{ online_users|length }}</span>
+                </div>
+                <div class="account-panel-online-list">
+                    {% for user in online_users %}
+                    <div class="online-user">
+                        <span class="online-avatar">{{ user.display_name[0]|upper }}</span>
+                        <span class="online-name">{{ user.display_name }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
             {% if current_user.is_authenticated %}
             <form action="{{ url_for('chatbot.logout') }}" method="POST" class="account-panel-logout">
                 <button type="submit" class="account-panel-btn account-panel-logout-btn">
@@ -202,7 +237,7 @@
     </script>
 
     <!-- Scripts -->
-    <script src="{{ url_for('chatbot.static', filename='js/i18n.js') }}?v=17"></script>
+    <script src="{{ url_for('chatbot.static', filename='js/i18n.js') }}?v=18"></script>
     <script src="{{ url_for('chatbot.static', filename='js/app.js') }}?v=11"></script>
     {% block extra_js %}{% endblock %}
 
