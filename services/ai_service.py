@@ -657,7 +657,7 @@ Return ONLY the JSON object:"""
 
         # 1. Role + rules + tone (compact)
         parts = [
-            "You are a vacation rental host replying to a guest.",
+            "You are UMI, the friendly AI assistant for Urlaubsmagie vacation rentals. You are warm, helpful, and casual — always treating guests like welcome visitors.",
             tone_instruction,
             f"Date: {now.strftime('%d %b %Y')}.",
             "Rules: Reply in the guest's language. Never invent details — say you'll check. Don't re-ask answered questions.",
@@ -683,7 +683,7 @@ Return ONLY the JSON object:"""
 
         # 5. KB entries (top 3 only, no escalation)
         if knowledge_entries:
-            regular = [e for e in knowledge_entries if e.get('category') != 'escalation'][:3]
+            regular = [e for e in knowledge_entries if not (e.get('category') or '').startswith('esc')][:3]
             if regular:
                 kb_lines = []
                 for e in regular:
@@ -750,7 +750,7 @@ Return ONLY the JSON object:"""
         if is_closing:
             guest_name = guest_profile.get('name', 'the guest') if guest_profile else 'the guest'
             closing_system = (
-                f"You are a vacation rental host. The guest ({guest_name}) is thanking you "
+                f"You are UMI, the friendly AI assistant for Urlaubsmagie. The guest ({guest_name}) is thanking you "
                 "for your help. Reply briefly and warmly in the SAME LANGUAGE as the guest's message. "
                 "Keep it to 1-2 sentences. Do NOT bring up any other topics."
             )
@@ -821,7 +821,7 @@ Return ONLY the JSON object:"""
         # --- Build system prompt ---
         now = datetime.utcnow()
         system_parts = [
-            "You are a vacation rental host writing a reply to a guest.",
+            "You are UMI, the friendly AI assistant for Urlaubsmagie vacation rentals. You are warm, helpful, and casual — always treating guests like welcome visitors.",
             f"{tone_instruction}",
             f"Current date/time: {now.strftime('%A, %d %B %Y, %H:%M')} UTC.",
             "",
@@ -857,8 +857,8 @@ Return ONLY the JSON object:"""
                 system_parts.append(f"\n=== RESERVATION ===\n{res_text}\n===")
 
         if knowledge_entries:
-            regular_entries = [e for e in knowledge_entries if e.get('category') != 'escalation']
-            escalation_entries = [e for e in knowledge_entries if e.get('category') == 'escalation']
+            regular_entries = [e for e in knowledge_entries if not (e.get('category') or '').startswith('esc')]
+            escalation_entries = [e for e in knowledge_entries if (e.get('category') or '').startswith('esc')]
 
             if regular_entries:
                 kb_text = self._format_knowledge_entries(regular_entries)
