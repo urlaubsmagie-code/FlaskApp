@@ -721,9 +721,9 @@ a {
 /* Unread Conversation Indicators */
 .conversation-card.unread {
     position: relative;
-    background: #eff6ff;
+    background: var(--primary-light, #F9E8EB);
     border-left: 4px solid var(--primary-color);
-    box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.1);
+    box-shadow: inset 0 0 0 1px rgba(123, 35, 50, 0.1);
 }
 
 .conversation-card.unread .conversation-avatar {
@@ -2707,8 +2707,8 @@ dialog.edit-modal .form-group input {
 
 dialog.edit-modal .form-group input:focus {
     outline: none;
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(123, 35, 50, 0.1);
 }
 
 dialog.edit-modal .modal-footer {
@@ -2802,12 +2802,12 @@ dialog.merge-modal {
 }
 
 .memory-value[data-editable="true"]:hover {
-    background-color: rgba(37, 99, 235, 0.1);
+    background-color: rgba(123, 35, 50, 0.1);
 }
 
 .memory-value[contenteditable="true"],
 .memory-value[contenteditable="plaintext-only"] {
-    outline: 2px solid #2563eb;
+    outline: 2px solid var(--primary-color);
     background-color: white;
     min-width: 50px;
 }
@@ -2870,7 +2870,7 @@ dialog.merge-modal {
 
 .memory-add-form input:focus {
     outline: none;
-    border-color: #2563eb;
+    border-color: var(--primary-color);
 }
 
 .memory-add-form input::placeholder {
