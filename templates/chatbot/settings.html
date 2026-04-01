@@ -13,13 +13,13 @@
         <!-- AI Settings -->
         <div class="settings-card">
             <div class="card-header">
-                <h2><i class="fas fa-robot"></i> <span data-i18n="settings.ai.title">KI-Konfiguration</span></h2>
+                <h2><i class="fas fa-robot"></i> <span data-i18n="settings.ai.title">UMI-Konfiguration</span></h2>
             </div>
             <div class="card-body">
                 <form id="aiSettingsForm">
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label for="masterAiEnabled" data-i18n="settings.ai.masterSwitch">KI-Hauptschalter</label>
+                            <label for="masterAiEnabled" data-i18n="settings.ai.masterSwitch">UMI-Hauptschalter</label>
                             <p class="setting-description" data-i18n="settings.ai.masterSwitch.desc">Wenn AUS, werden keine automatischen Antworten gesendet — gilt für alle Konversationen</p>
                         </div>
                         <label class="toggle-switch">
@@ -45,8 +45,8 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label for="approvalQueueEnabled" data-i18n="settings.ai.approvalQueue">KI-Freigabe</label>
-                            <p class="setting-description" data-i18n="settings.ai.approvalQueue.desc">KI-Antworten müssen vor dem Versand genehmigt werden</p>
+                            <label for="approvalQueueEnabled" data-i18n="settings.ai.approvalQueue">UMI-Freigabe</label>
+                            <p class="setting-description" data-i18n="settings.ai.approvalQueue.desc">UMI-Antworten müssen vor dem Versand genehmigt werden</p>
                         </div>
                         <label class="toggle-switch">
                             <input type="checkbox" id="approvalQueueEnabled" name="approval_queue_enabled"
@@ -59,7 +59,7 @@
                     <div class="setting-item">
                         <div class="setting-info">
                             <label for="autoApproveNew" data-i18n="settings.ai.autoApproveNew">Auto-Freigabe für neue Konversationen</label>
-                            <p class="setting-description" data-i18n="settings.ai.autoApproveNew.desc">Neue Konversationen starten mit aktivierter Auto-Freigabe (KI sendet sofort)</p>
+                            <p class="setting-description" data-i18n="settings.ai.autoApproveNew.desc">Neue Konversationen starten mit aktivierter Auto-Freigabe (UMI sendet sofort)</p>
                         </div>
                         <label class="toggle-switch">
                             <input type="checkbox" id="autoApproveNew" name="auto_approve_new_conversations"
@@ -95,7 +95,7 @@
                     <div class="setting-item">
                         <div class="setting-info">
                             <label for="responseTone" data-i18n="settings.ai.tone">Antwortton</label>
-                            <p class="setting-description" data-i18n="settings.ai.tone.desc">Ton für KI-generierte Antworten auswählen</p>
+                            <p class="setting-description" data-i18n="settings.ai.tone.desc">Ton für UMI-generierte Antworten auswählen</p>
                         </div>
                         <select id="responseTone" name="ai_response_tone" class="setting-select">
                             {% set current_tone = settings|selectattr('key', 'equalto', 'ai_response_tone')|map(attribute='value')|first or 'friendly_professional' %}
@@ -109,7 +109,7 @@
                     <div class="setting-item">
                         <div class="setting-info">
                             <label for="maxHistory" data-i18n="settings.ai.history">Konversationsverlauf</label>
-                            <p class="setting-description" data-i18n="settings.ai.history.desc">Anzahl der vorherigen Nachrichten für KI-Kontext</p>
+                            <p class="setting-description" data-i18n="settings.ai.history.desc">Anzahl der vorherigen Nachrichten für UMI-Kontext</p>
                         </div>
                         <input type="number" id="maxHistory" name="max_conversation_history"
                             value="{{ settings|selectattr('key', 'equalto', 'max_conversation_history')|map(attribute='value')|first or '10' }}"
@@ -119,7 +119,7 @@
                     <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
                         <div class="setting-info" style="margin-bottom: 10px;">
                             <label for="hostInstructions" data-i18n="settings.ai.hostInstructions">Host-Anweisungen</label>
-                            <p class="setting-description" data-i18n="settings.ai.hostInstructions.desc">Eigene Anweisungen, die die KI bei jeder Antwort berücksichtigen soll</p>
+                            <p class="setting-description" data-i18n="settings.ai.hostInstructions.desc">Eigene Anweisungen, die UMI bei jeder Antwort berücksichtigen soll</p>
                         </div>
                         <textarea id="hostInstructions" name="host_instructions" class="setting-textarea" rows="5"
                             data-i18n-placeholder="settings.ai.hostInstructions.placeholder"
@@ -132,10 +132,11 @@
                         </p>
                     </div>
 
+                    {% if current_user.is_admin %}
                     <div class="setting-item">
                         <div class="setting-info">
                             <label for="aiTemperature" data-i18n="settings.ai.temperature">Temperatur</label>
-                            <p class="setting-description" data-i18n="settings.ai.temperature.desc">Kreativität der KI-Antworten (0.0 = vorhersagbar, 1.0 = kreativ)</p>
+                            <p class="setting-description" data-i18n="settings.ai.temperature.desc">Kreativität der UMI-Antworten (0.0 = vorhersagbar, 1.0 = kreativ)</p>
                         </div>
                         <div class="range-with-value">
                             <input type="range" id="aiTemperature" name="ai_temperature"
@@ -149,12 +150,13 @@
                     <div class="setting-item">
                         <div class="setting-info">
                             <label for="aiMaxTokens" data-i18n="settings.ai.maxTokens">Max. Tokens</label>
-                            <p class="setting-description" data-i18n="settings.ai.maxTokens.desc">Maximale Länge der KI-Antworten (128-4096)</p>
+                            <p class="setting-description" data-i18n="settings.ai.maxTokens.desc">Maximale Länge der UMI-Antworten (128-4096)</p>
                         </div>
                         <input type="number" id="aiMaxTokens" name="ai_max_tokens"
                             value="{{ settings|selectattr('key', 'equalto', 'ai_max_tokens')|map(attribute='value')|first or '1024' }}"
                             min="128" max="4096" step="128" class="setting-input">
                     </div>
+                    {% endif %}
 
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-save"></i> <span data-i18n="settings.ai.save">Einstellungen speichern</span>
@@ -163,10 +165,11 @@
             </div>
         </div>
 
-        <!-- AI Model Selection -->
+        <!-- AI Model Selection (admin only) -->
+        {% if current_user.is_admin %}
         <div class="settings-card">
             <div class="card-header">
-                <h2><i class="fas fa-brain"></i> <span data-i18n="settings.model.title">KI-Modell</span></h2>
+                <h2><i class="fas fa-brain"></i> <span data-i18n="settings.model.title">UMI-Modell</span></h2>
             </div>
             <div class="card-body">
                 <!-- Connection Status -->
@@ -231,7 +234,7 @@
                         <i class="fas fa-check"></i> <span data-i18n="settings.model.apply">Modell anwenden</span>
                     </button>
                     <button class="btn btn-secondary" onclick="testAI()">
-                        <i class="fas fa-vial"></i> <span data-i18n="settings.server.test">KI-Verbindung testen</span>
+                        <i class="fas fa-vial"></i> <span data-i18n="settings.server.test">UMI-Verbindung testen</span>
                     </button>
                 </div>
 
@@ -243,6 +246,7 @@
                 </div>
             </div>
         </div>
+        {% endif %}
 
         <!-- Properties -->
         <div class="settings-card">
@@ -254,7 +258,7 @@
                     <!-- Populated by JavaScript -->
                 </div>
                 <p class="no-data" id="propertiesEmpty" style="display:none;" data-i18n="settings.properties.empty">Noch keine Unterkünfte konfiguriert</p>
-                <p class="help-text" data-i18n="settings.properties.help">Unterkünfte helfen der KI, relevantere Antworten zu geben.</p>
+                <p class="help-text" data-i18n="settings.properties.help">Unterkünfte helfen UMI, relevantere Antworten zu geben.</p>
                 <button class="btn btn-secondary" onclick="openPropertyModal()">
                     <i class="fas fa-plus"></i> <span data-i18n="settings.properties.add">Unterkunft hinzufügen</span>
                 </button>
@@ -278,7 +282,8 @@
             </div>
         </div>
 
-        <!-- User Management -->
+        <!-- User Management (admin only) -->
+        {% if current_user.is_admin %}
         <div class="settings-card">
             <div class="card-header">
                 <h2><i class="fas fa-users-cog"></i> <span data-i18n="settings.users.title">Benutzerverwaltung</span></h2>
@@ -287,14 +292,14 @@
                 <div class="users-list" id="usersList">
                     <!-- Populated by JavaScript -->
                 </div>
-                <p class="help-text" data-i18n="settings.users.help">Alle Benutzer haben gleiche Rechte. Jeder kann andere Benutzer hinzufügen oder entfernen.</p>
+                <p class="help-text" data-i18n="settings.users.help">Admins können Einstellungen, Statistiken und Debug-Seiten sehen und Benutzer verwalten.</p>
                 <button class="btn btn-secondary" onclick="openUserModal()">
                     <i class="fas fa-user-plus"></i> <span data-i18n="settings.users.add">Benutzer hinzufügen</span>
                 </button>
             </div>
         </div>
 
-        <!-- Platform Integrations -->
+        <!-- Platform Integrations (admin only) -->
         <div class="settings-card">
             <div class="card-header">
                 <h2><i class="fas fa-plug"></i> <span data-i18n="settings.integrations.title">Plattform-Integrationen</span></h2>
@@ -325,7 +330,7 @@
                             <i class="fas fa-cogs"></i> <span data-i18n="settings.integrations.processUnread">Ungelesene verarbeiten</span>
                         </button>
                     </div>
-                    <p class="help-text" data-i18n="settings.integrations.gmailHelp">Abrufen importiert E-Mails in den Posteingang. Verarbeiten führt KI auf ungelesene E-Mails aus.</p>
+                    <p class="help-text" data-i18n="settings.integrations.gmailHelp">Abrufen importiert E-Mails in den Posteingang. Verarbeiten führt UMI auf ungelesene E-Mails aus.</p>
                 </div>
 
                 <!-- Smoobu -->
@@ -367,7 +372,7 @@
             </div>
             <div class="card-body">
                 <p class="help-text" style="margin-bottom: 15px;" data-i18n="settings.filter.desc">
-                    Nur E-Mails, die diesen Filtern entsprechen, werden verarbeitet. Dies verhindert, dass persönliche E-Mails von der KI bearbeitet werden.
+                    Nur E-Mails, die diesen Filtern entsprechen, werden verarbeitet. Dies verhindert, dass persönliche E-Mails von UMI bearbeitet werden.
                 </p>
 
                 <form id="emailFilterForm">
@@ -426,6 +431,7 @@ confirmation</textarea>
                 </form>
             </div>
         </div>
+        {% endif %}
     </div>
 </div>
 
@@ -479,8 +485,9 @@ confirmation</textarea>
         }
     }
 
+    {% if current_user.is_admin %}
     // ============================================
-    // AI Model Management
+    // AI Model Management (admin only)
     // ============================================
 
     let installedModels = [];
@@ -738,6 +745,8 @@ confirmation</textarea>
             showNotification('Error saving settings: ' + err.message, 'error');
         });
     });
+
+    {% endif %}
 
     // ============================================
     // Property Management
@@ -1005,8 +1014,9 @@ confirmation</textarea>
         .catch(err => showNotification('Error: ' + err.message, 'error'));
     }
 
+    {% if current_user.is_admin %}
     // ============================================
-    // Gmail Integration Functions
+    // Gmail Integration Functions (admin only)
     // ============================================
 
     let gmailConnected = false;
@@ -1186,20 +1196,31 @@ confirmation</textarea>
                     list.innerHTML = '<p class="no-data">No users</p>';
                     return;
                 }
+                const currentUserId = {{ current_user.id }};
                 list.innerHTML = data.users.map(u => `
                     <div class="user-item">
                         <div class="user-item-avatar">${escapeHtml((u.display_name || '?')[0].toUpperCase())}</div>
                         <div class="user-item-info">
-                            <span class="user-item-name">${escapeHtml(u.display_name)}</span>
+                            <span class="user-item-name">
+                                ${escapeHtml(u.display_name)}
+                                ${u.is_admin ? '<span class="badge badge-admin">Admin</span>' : ''}
+                            </span>
                             <span class="user-item-username">@${escapeHtml(u.username)}</span>
                         </div>
                         <div class="user-item-actions">
+                            ${u.id !== currentUserId ? `
+                                <button class="btn btn-icon btn-sm" onclick="toggleAdmin(${u.id}, '${escapeHtml(u.display_name)}', ${u.is_admin})" title="${u.is_admin ? 'Remove admin' : 'Make admin'}">
+                                    <i class="fas fa-${u.is_admin ? 'user-minus' : 'user-shield'}"></i>
+                                </button>
+                            ` : ''}
                             <button class="btn btn-icon btn-sm" onclick="resetPassword(${u.id}, '${escapeHtml(u.display_name)}')" title="Reset password">
                                 <i class="fas fa-key"></i>
                             </button>
-                            <button class="btn btn-icon btn-sm" onclick="deleteUser(${u.id}, '${escapeHtml(u.display_name)}')" title="Delete">
-                                <i class="fas fa-trash"></i>
-                            </button>
+                            ${u.id !== currentUserId ? `
+                                <button class="btn btn-icon btn-sm" onclick="deleteUser(${u.id}, '${escapeHtml(u.display_name)}')" title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            ` : ''}
                         </div>
                     </div>
                 `).join('');
@@ -1253,6 +1274,23 @@ confirmation</textarea>
                     showNotification('Error: ' + data.error, 'error');
                 } else {
                     showNotification('User deleted', 'success');
+                    loadUsers();
+                }
+            })
+            .catch(err => showNotification('Error: ' + err.message, 'error'));
+    }
+
+    function toggleAdmin(userId, displayName, currentlyAdmin) {
+        const action = currentlyAdmin ? 'Admin-Rechte entfernen von' : 'Admin-Rechte geben an';
+        if (!confirm(`${action} "${displayName}"?`)) return;
+
+        fetch(`/chatbot/api/users/${userId}/admin`, { method: 'PUT' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    showNotification('Error: ' + data.error, 'error');
+                } else {
+                    showNotification(data.is_admin ? `${displayName} ist jetzt Admin` : `Admin-Rechte von ${displayName} entfernt`, 'success');
                     loadUsers();
                 }
             })
@@ -1464,13 +1502,16 @@ confirmation</textarea>
 
     // Check Smoobu status on page load
     checkSmoobuStatus();
+    {% endif %}
 
     // Load settings on page load
     document.addEventListener('DOMContentLoaded', function() {
-        loadEmailFilterSettings();
         loadProperties();
         loadTemplates();
+        {% if current_user.is_admin %}
+        loadEmailFilterSettings();
         loadUsers();
+        {% endif %}
     });
 </script>
 
@@ -1839,6 +1880,17 @@ confirmation</textarea>
     .user-item-name { font-weight: 500; display: block; font-size: 0.875rem; }
     .user-item-username { font-size: 0.75rem; color: #64748b; }
     .user-item-actions { display: flex; gap: 4px; }
+    .badge-admin {
+        display: inline-block;
+        background: var(--primary-color, #3b82f6);
+        color: #fff;
+        font-size: 0.65rem;
+        font-weight: 600;
+        padding: 1px 6px;
+        border-radius: 9999px;
+        margin-left: 6px;
+        vertical-align: middle;
+    }
 
     dialog.settings-modal .form-row .form-group { margin-bottom: 0; }
     dialog.settings-modal .form-check {

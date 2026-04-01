@@ -70,20 +70,20 @@ function createConversationCard(conv) {
     if (conv.last_message && conv.last_message.content) {
         let prefix = '';
         if (conv.last_message.sender_type === 'owner') prefix = (conv.last_message.sender_name || i18n.t('inbox.senderMe') || 'Ich') + ': ';
-        else if (conv.last_message.sender_type === 'ai') prefix = (i18n.t('inbox.senderAI') || 'KI') + ': ';
+        else if (conv.last_message.sender_type === 'ai') prefix = (i18n.t('inbox.senderAI') || 'UMI') + ': ';
         const content = conv.last_message.content;
         const maxLen = 80 - prefix.length;
         preview = prefix + (content.length > maxLen ? content.substring(0, maxLen) + '...' : content);
     }
 
     const aiBadge = conv.ai_enabled
-        ? `<span class="ai-badge ${conv.auto_respond ? 'auto-respond-on' : 'auto-respond-off'}" title="${conv.auto_respond ? (i18n.t('inbox.aiActive') || 'KI aktiv') : (i18n.t('inbox.aiPaused') || 'KI pausiert')}"><i class="fas fa-robot"></i></span>`
+        ? `<span class="ai-badge ${conv.auto_respond ? 'auto-respond-on' : 'auto-respond-off'}" title="${conv.auto_respond ? (i18n.t('inbox.aiActive') || 'UMI aktiv') : (i18n.t('inbox.aiPaused') || 'UMI pausiert')}"><i class="fas fa-robot"></i></span>`
         : '';
     const escalationLabel = conv.escalated
         ? `<span class="escalation-badge"><i class="fas fa-exclamation-triangle"></i> ${i18n.t('inbox.needsAttention') || 'Braucht Aufmerksamkeit'}</span>`
         : '';
     const approvalLabel = conv.has_pending_approval
-        ? `<span class="badge badge-approval"><i class="fas fa-clock"></i> ${i18n.t('inbox.badge.pendingApproval') || 'KI-Freigabe'}</span>`
+        ? `<span class="badge badge-approval"><i class="fas fa-clock"></i> ${i18n.t('inbox.badge.pendingApproval') || 'UMI-Freigabe'}</span>`
         : '';
     const srText = !conv.is_read ? '<span class="sr-only">Unread</span>' : '';
 
@@ -101,7 +101,7 @@ function createConversationCard(conv) {
             <div class="conversation-preview">${escapeHtml(preview)}</div>
         </div>
         <div class="conversation-meta">
-            <span class="platform-badge ${conv.platform}">${conv.platform.charAt(0).toUpperCase() + conv.platform.slice(1)}</span>
+            <span class="platform-badge ${(conv.display_platform || conv.platform).toLowerCase().replace('booking.com', 'booking').replace(/\s/g, '')}">${escapeHtml(conv.display_platform || conv.platform)}</span>
             ${aiBadge}
             ${escalationLabel}
             ${approvalLabel}
@@ -149,7 +149,7 @@ function updateConversationCard(card, conv) {
         if (conv.last_message && conv.last_message.content) {
             let prefix = '';
             if (conv.last_message.sender_type === 'owner') prefix = (conv.last_message.sender_name || i18n.t('inbox.senderMe') || 'Ich') + ': ';
-            else if (conv.last_message.sender_type === 'ai') prefix = (i18n.t('inbox.senderAI') || 'KI') + ': ';
+            else if (conv.last_message.sender_type === 'ai') prefix = (i18n.t('inbox.senderAI') || 'UMI') + ': ';
             const content = conv.last_message.content;
             const maxLen = 80 - prefix.length;
             preview = prefix + (content.length > maxLen ? content.substring(0, maxLen) + '...' : content);
@@ -190,7 +190,7 @@ function updateConversationCard(card, conv) {
     if (conv.has_pending_approval && !existingApprovalBadge) {
         const approvalBadge = document.createElement('span');
         approvalBadge.className = 'badge badge-approval';
-        approvalBadge.innerHTML = `<i class="fas fa-clock"></i> ${i18n.t('inbox.badge.pendingApproval') || 'KI-Freigabe'}`;
+        approvalBadge.innerHTML = `<i class="fas fa-clock"></i> ${i18n.t('inbox.badge.pendingApproval') || 'UMI-Freigabe'}`;
         metaEl.insertBefore(approvalBadge, statusEl);
     } else if (!conv.has_pending_approval && existingApprovalBadge) {
         existingApprovalBadge.remove();
@@ -201,8 +201,8 @@ function updateConversationCard(card, conv) {
         existingAiBadge.classList.toggle('auto-respond-on', !!conv.auto_respond);
         existingAiBadge.classList.toggle('auto-respond-off', !conv.auto_respond);
         existingAiBadge.title = conv.auto_respond
-            ? (i18n.t('inbox.aiActive') || 'KI aktiv')
-            : (i18n.t('inbox.aiPaused') || 'KI pausiert');
+            ? (i18n.t('inbox.aiActive') || 'UMI aktiv')
+            : (i18n.t('inbox.aiPaused') || 'UMI pausiert');
     }
 }
 
@@ -541,7 +541,7 @@ function renderSearchResults(data) {
                 <div class="search-snippet">${snippet}</div>
             </div>
             <div class="conversation-meta">
-                <span class="platform-badge ${result.platform || ''}">${(result.platform || '').charAt(0).toUpperCase() + (result.platform || '').slice(1)}</span>
+                <span class="platform-badge ${(result.display_platform || result.platform || '').toLowerCase().replace('booking.com', 'booking').replace(/\s/g, '')}">${escapeHtml(result.display_platform || result.platform || '')}</span>
             </div>
         `;
 

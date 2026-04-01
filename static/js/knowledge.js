@@ -10,7 +10,13 @@ const CATEGORY_LABELS = {
     house_rules: { de: 'Hausregeln', en: 'House Rules' },
     emergency: { de: 'Notfallkontakte', en: 'Emergency Contacts' },
     faq: { de: 'Häufige Fragen', en: 'FAQ / Common Questions' },
-    escalation: { de: 'Eskalation', en: 'Escalation' },
+    esc_maintenance: { de: 'Wartung / Reparatur', en: 'Maintenance / Repair' },
+    esc_cleanliness: { de: 'Sauberkeit', en: 'Cleanliness' },
+    esc_noise: { de: 'Lärm / Nachbarn', en: 'Noise / Neighbors' },
+    esc_payment: { de: 'Zahlung / Erstattung', en: 'Payment / Refund' },
+    esc_access: { de: 'Schlüssel / Zugang', en: 'Keys / Access' },
+    esc_emergency: { de: 'Notfall', en: 'Emergency' },
+    esc_other: { de: 'Sonstiges', en: 'Other' },
     correction: { de: 'Korrektur', en: 'Correction' },
 };
 
@@ -21,13 +27,22 @@ const CATEGORY_ICONS = {
     house_rules: 'fa-clipboard-list',
     emergency: 'fa-phone-alt',
     faq: 'fa-question-circle',
-    escalation: 'fa-exclamation-triangle',
+    esc_maintenance: 'fa-wrench',
+    esc_cleanliness: 'fa-broom',
+    esc_noise: 'fa-volume-up',
+    esc_payment: 'fa-credit-card',
+    esc_access: 'fa-key',
+    esc_emergency: 'fa-ambulance',
+    esc_other: 'fa-ellipsis-h',
     correction: 'fa-spell-check',
 };
 
-const CATEGORY_ORDER = ['general', 'checkin_checkout', 'nearby', 'house_rules', 'emergency', 'faq', 'escalation', 'correction'];
+const CATEGORY_ORDER = ['general', 'checkin_checkout', 'nearby', 'house_rules', 'emergency', 'faq',
+    'esc_maintenance', 'esc_cleanliness', 'esc_noise', 'esc_payment', 'esc_access', 'esc_emergency', 'esc_other',
+    'correction'];
 
 const KNOWLEDGE_CATEGORIES = ['general', 'checkin_checkout', 'nearby', 'house_rules', 'emergency', 'faq'];
+const ESCALATION_CATEGORIES = ['esc_maintenance', 'esc_cleanliness', 'esc_noise', 'esc_payment', 'esc_access', 'esc_emergency', 'esc_other'];
 
 const knowledgeApp = {
     entries: [],
@@ -70,7 +85,7 @@ const knowledgeApp = {
         if (this.currentTab === 'knowledge') {
             filtered = this.entries.filter(e => KNOWLEDGE_CATEGORIES.includes(e.category || 'general'));
         } else if (this.currentTab === 'escalation') {
-            filtered = this.entries.filter(e => e.category === 'escalation');
+            filtered = this.entries.filter(e => ESCALATION_CATEGORIES.includes(e.category) || e.category === 'escalation');
         } else if (this.currentTab === 'corrections') {
             filtered = this.entries.filter(e => e.category === 'correction');
             this.renderCorrections(filtered);
@@ -84,11 +99,11 @@ const knowledgeApp = {
             let emptyText, hintText, icon;
             if (this.currentTab === 'escalation') {
                 emptyText = typeof i18n !== 'undefined' ? i18n.t('knowledge.empty') : 'Noch keine Einträge vorhanden';
-                hintText = typeof i18n !== 'undefined' ? i18n.t('knowledge.empty.hint') : 'Fügen Sie Fakten hinzu, die die KI bei Gästeanfragen nutzen soll.';
+                hintText = typeof i18n !== 'undefined' ? i18n.t('knowledge.empty.hint') : 'Fügen Sie Fakten hinzu, die UMI bei Gästeanfragen nutzen soll.';
                 icon = 'fa-exclamation-triangle';
             } else {
                 emptyText = typeof i18n !== 'undefined' ? i18n.t('knowledge.empty') : 'Noch keine Einträge vorhanden';
-                hintText = typeof i18n !== 'undefined' ? i18n.t('knowledge.empty.hint') : 'Fügen Sie Fakten hinzu, die die KI bei Gästeanfragen nutzen soll.';
+                hintText = typeof i18n !== 'undefined' ? i18n.t('knowledge.empty.hint') : 'Fügen Sie Fakten hinzu, die UMI bei Gästeanfragen nutzen soll.';
                 icon = 'fa-book-open';
             }
             container.innerHTML =
@@ -150,7 +165,7 @@ const knowledgeApp = {
 
         if (!entries.length) {
             const emptyText = typeof i18n !== 'undefined' ? i18n.t('knowledge.corrections.empty') : 'Noch keine Korrekturen';
-            const hintText = typeof i18n !== 'undefined' ? i18n.t('knowledge.corrections.empty.hint') : 'Wenn Sie KI-Entwürfe bearbeiten, lernt die KI automatisch daraus.';
+            const hintText = typeof i18n !== 'undefined' ? i18n.t('knowledge.corrections.empty.hint') : 'Wenn Sie UMI-Entwürfe bearbeiten, lernt UMI automatisch daraus.';
             container.innerHTML =
                 '<div class="settings-card"><div class="card-body" style="text-align:center;padding:40px;color:var(--text-secondary);">' +
                 '<i class="fas fa-spell-check" style="font-size:48px;margin-bottom:15px;opacity:0.3;"></i>' +
@@ -159,7 +174,7 @@ const knowledgeApp = {
             return;
         }
 
-        const originalLabel = typeof i18n !== 'undefined' ? i18n.t('knowledge.corrections.original') : 'KI sagte';
+        const originalLabel = typeof i18n !== 'undefined' ? i18n.t('knowledge.corrections.original') : 'UMI sagte';
         const correctedLabel = typeof i18n !== 'undefined' ? i18n.t('knowledge.corrections.corrected') : 'Richtig ist';
 
         let html = '<div class="settings-card"><div class="card-body" style="padding: 0;">';
@@ -206,18 +221,50 @@ const knowledgeApp = {
         container.innerHTML = html;
     },
 
+    // Filter category dropdown to show only options relevant to the current tab
+    updateCategoryOptions(selectedValue) {
+        const select = document.getElementById('entryCategory');
+        const categoryRow = select.closest('.setting-item');
+        const valueRow = document.getElementById('entryValue').closest('.setting-item');
+        const allOptions = select.querySelectorAll('option');
+
+        // Hide category entirely for corrections
+        if (this.currentTab === 'corrections') {
+            categoryRow.style.display = 'none';
+            valueRow.style.display = '';
+            select.value = 'correction';
+            return;
+        }
+
+        // Hide Information field for escalation (category + label is enough)
+        valueRow.style.display = this.currentTab === 'escalation' ? 'none' : '';
+        categoryRow.style.display = '';
+
+        let allowedCategories;
+        if (this.currentTab === 'escalation') {
+            allowedCategories = ESCALATION_CATEGORIES;
+        } else {
+            allowedCategories = KNOWLEDGE_CATEGORIES;
+        }
+
+        allOptions.forEach(opt => {
+            opt.style.display = allowedCategories.includes(opt.value) ? '' : 'none';
+        });
+
+        // Set selected value
+        if (selectedValue && allowedCategories.includes(selectedValue)) {
+            select.value = selectedValue;
+        } else {
+            select.value = allowedCategories[0];
+        }
+    },
+
     openAddModal() {
         document.getElementById('entryId').value = '';
         document.getElementById('knowledgeForm').reset();
         document.querySelector('input[name="scope"][value="global"]').checked = true;
         this.toggleScope();
-
-        // Pre-set category based on current tab
-        if (this.currentTab === 'corrections') {
-            document.getElementById('entryCategory').value = 'correction';
-        } else if (this.currentTab === 'escalation') {
-            document.getElementById('entryCategory').value = 'escalation';
-        }
+        this.updateCategoryOptions();
 
         const titleEl = document.getElementById('modalTitle');
         titleEl.setAttribute('data-i18n', 'knowledge.add');
@@ -230,9 +277,9 @@ const knowledgeApp = {
         if (!entry) return;
 
         document.getElementById('entryId').value = entry.id;
-        document.getElementById('entryCategory').value = entry.category;
         document.getElementById('entryLabel').value = entry.label;
         document.getElementById('entryValue').value = entry.value;
+        this.updateCategoryOptions(entry.category);
 
         if (entry.property_id) {
             document.querySelector('input[name="scope"][value="property"]').checked = true;

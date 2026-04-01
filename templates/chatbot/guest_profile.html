@@ -17,9 +17,14 @@
         <div class="profile-card">
             <div class="card-header">
                 <h2 data-i18n="guest.info">Kontaktinformationen</h2>
-                <button type="button" class="btn btn-sm btn-secondary" onclick="openEditGuestModal()">
-                    <i class="fas fa-edit"></i> <span data-i18n="common.edit">Bearbeiten</span>
-                </button>
+                <div class="card-header-actions">
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="openMergeGuestModal()">
+                        <i class="fas fa-compress-arrows-alt"></i> <span data-i18n="guest.merge.title">Zusammenführen</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="openEditGuestModal()">
+                        <i class="fas fa-edit"></i> <span data-i18n="common.edit">Bearbeiten</span>
+                    </button>
+                </div>
             </div>
             <div class="card-body">
                 <div class="profile-avatar">
@@ -75,7 +80,7 @@
         <div class="profile-card memory-card">
             <div class="card-header">
                 <h2><i class="fas fa-brain"></i> <span data-i18n="guest.memories">Erinnerungen</span></h2>
-                <span class="memory-badge" data-i18n="guest.memories.aiExtracted">KI-extrahiert</span>
+                <span class="memory-badge" data-i18n="guest.memories.aiExtracted">UMI-extrahiert</span>
             </div>
             <div class="card-body">
                 <!-- Family -->
@@ -191,6 +196,36 @@
                         <div class="memory-add-form" data-detail-type="allergy">
                             <input type="text" class="memory-key-input" placeholder="Type (e.g., food)">
                             <input type="text" class="memory-value-input" placeholder="Allergy details">
+                            <button type="button" class="btn btn-sm btn-primary add-memory-btn" onclick="addMemory(this)">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Booking Details -->
+                <div class="memory-section">
+                    <h3><i class="fas fa-calendar-alt"></i> <span data-i18n="guest.memories.booking">Buchungsdetails</span></h3>
+                    <div class="memory-items" id="bookingItems">
+                        {% if profile.booking %}
+                            {% for item in profile.booking %}
+                            <div class="memory-item" data-id="{{ item.id }}">
+                                <span class="memory-key">{{ item.key|replace('_', ' ')|title }}</span>
+                                <span class="memory-value" data-detail-id="{{ item.id }}" data-editable="true">{{ item.value }}</span>
+                                <span class="memory-confidence" title="Confidence: {{ (item.confidence * 100)|round }}%">
+                                    {{ (item.confidence * 100)|round }}%
+                                </span>
+                                <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="no-data" data-i18n="guest.memories.noBooking">Keine Buchungsdetails erfasst</p>
+                        {% endif %}
+                        <div class="memory-add-form" data-detail-type="booking">
+                            <input type="text" class="memory-key-input" placeholder="Type (e.g., num_guests)">
+                            <input type="text" class="memory-value-input" placeholder="Value">
                             <button type="button" class="btn btn-sm btn-primary add-memory-btn" onclick="addMemory(this)">
                                 <i class="fas fa-plus"></i>
                             </button>
@@ -336,14 +371,72 @@
             </div>
         </form>
     </dialog>
+
+    <!-- Merge Guest Modal -->
+    <dialog id="mergeGuestModal" class="edit-modal merge-modal" aria-labelledby="mergeGuestTitle">
+        <div class="modal-header">
+            <h2 id="mergeGuestTitle" data-i18n="guest.merge.title">Gäste zusammenführen</h2>
+            <button type="button" class="btn-close" onclick="closeMergeGuestModal()" aria-label="Close">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p class="merge-description" data-i18n="guest.merge.description">Wählen Sie einen Gast, der in dieses Profil zusammengeführt werden soll. Alle Konversationen und Erinnerungen werden übertragen.</p>
+
+            <!-- Step 1: Select Guest -->
+            <div id="mergeStep1">
+                <div class="form-group">
+                    <label for="mergeTargetSelect" data-i18n="guest.merge.selectGuest">Gast auswählen</label>
+                    <select id="mergeTargetSelect" class="guest-dropdown" style="width:100%;">
+                        <option value="">-- Select --</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeMergeGuestModal()" data-i18n="common.cancel">Abbrechen</button>
+                    <button type="button" class="btn btn-primary" onclick="previewMerge()" data-i18n="guest.merge.preview">Vorschau</button>
+                </div>
+            </div>
+
+            <!-- Step 2: Preview -->
+            <div id="mergeStep2" style="display:none;">
+                <div class="merge-preview-grid" id="mergePreviewGrid">
+                    <div class="merge-preview-item">
+                        <span class="merge-preview-value" id="mergePreviewConversations">0</span>
+                        <span class="merge-preview-label" data-i18n="guest.merge.conversations">Konversationen</span>
+                    </div>
+                    <div class="merge-preview-item">
+                        <span class="merge-preview-value" id="mergePreviewDetails">0</span>
+                        <span class="merge-preview-label" data-i18n="guest.merge.details">Erinnerungen</span>
+                    </div>
+                    <div class="merge-preview-item">
+                        <span class="merge-preview-value" id="mergePreviewPlatforms">0</span>
+                        <span class="merge-preview-label" data-i18n="guest.merge.platforms">Plattformen</span>
+                    </div>
+                </div>
+                <div class="merge-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span data-i18n="guest.merge.warning">Der ausgewählte Gast wird nach dem Zusammenführen gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.</span>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="showMergeStep1()" data-i18n="common.cancel">Zurück</button>
+                    <button type="button" class="btn btn-primary" style="background:var(--danger-color);" onclick="executeMerge()" data-i18n="guest.merge.confirm">Zusammenführen bestätigen</button>
+                </div>
+            </div>
+        </div>
+    </dialog>
 </div>
 
 <script>
     const guestId = {{ guest.id }};
 
-    function saveNotes() {
-        // TODO: Implement notes saving via API
-        alert('Notes saved! (API endpoint to be implemented)');
+    async function saveNotes() {
+        const notes = document.getElementById('guestNotes').value;
+        try {
+            await apiRequest(`/chatbot/api/guests/${guestId}`, 'PATCH', { notes: notes });
+            showNotification('Notes saved', 'success');
+        } catch (error) {
+            showNotification('Failed to save notes', 'error');
+        }
     }
 
     // Guest edit modal
@@ -541,5 +634,108 @@
 
     // Initialize inline editing on all editable elements
     document.querySelectorAll('.memory-value[data-editable="true"]').forEach(initInlineEditing);
+
+    // =========================================================================
+    // Guest Merge
+    // =========================================================================
+    const mergeGuestModal = document.getElementById('mergeGuestModal');
+    let mergeTargetId = null;
+
+    function openMergeGuestModal() {
+        populateMergeGuestDropdown();
+        showMergeStep1();
+        mergeGuestModal.showModal();
+    }
+
+    function closeMergeGuestModal() {
+        mergeGuestModal.close();
+        mergeTargetId = null;
+    }
+
+    mergeGuestModal.addEventListener('click', (e) => {
+        if (e.target === mergeGuestModal) closeMergeGuestModal();
+    });
+
+    function showMergeStep1() {
+        document.getElementById('mergeStep1').style.display = '';
+        document.getElementById('mergeStep2').style.display = 'none';
+    }
+
+    async function populateMergeGuestDropdown() {
+        const select = document.getElementById('mergeTargetSelect');
+        select.innerHTML = '<option value="">-- Select --</option>';
+        try {
+            const response = await fetch('/chatbot/api/guests');
+            if (!response.ok) return;
+            const data = await response.json();
+            data.guests
+                .filter(g => g.id !== guestId)
+                .sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || ''))
+                .forEach(g => {
+                    const opt = document.createElement('option');
+                    opt.value = g.id;
+                    opt.textContent = g.name || g.email || 'Guest #' + g.id;
+                    select.appendChild(opt);
+                });
+        } catch (err) {
+            console.error('Failed to load guests for merge:', err);
+        }
+    }
+
+    async function previewMerge() {
+        const targetId = parseInt(document.getElementById('mergeTargetSelect').value);
+        if (!targetId) {
+            showNotification(i18n.t('guest.merge.selectGuest'), 'error');
+            return;
+        }
+        mergeTargetId = targetId;
+
+        try {
+            const response = await fetch(`/chatbot/api/guests/${guestId}/merge-preview`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_guest_id: targetId })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                showNotification(data.error || 'Preview failed', 'error');
+                return;
+            }
+
+            document.getElementById('mergePreviewConversations').textContent = data.conversations;
+            document.getElementById('mergePreviewDetails').textContent = data.details;
+            document.getElementById('mergePreviewPlatforms').textContent = data.platform_ids.length;
+
+            document.getElementById('mergeStep1').style.display = 'none';
+            document.getElementById('mergeStep2').style.display = '';
+        } catch (err) {
+            console.error('Merge preview failed:', err);
+            showNotification('Preview failed', 'error');
+        }
+    }
+
+    async function executeMerge() {
+        if (!mergeTargetId) return;
+
+        try {
+            const response = await fetch(`/chatbot/api/guests/${guestId}/merge`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_guest_id: mergeTargetId })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                showNotification(data.error || 'Merge failed', 'error');
+                return;
+            }
+
+            showNotification(i18n.t('guest.merge.success'), 'success');
+            closeMergeGuestModal();
+            setTimeout(() => location.reload(), 1000);
+        } catch (err) {
+            console.error('Merge failed:', err);
+            showNotification('Merge failed', 'error');
+        }
+    }
 </script>
 {% endblock %}

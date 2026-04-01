@@ -59,7 +59,7 @@
             <button class="filter-btn" data-filter-status="pending_owner" data-i18n="inbox.filter.pending">Ausstehend</button>
             <button class="filter-btn" data-filter-status="closed" data-i18n="inbox.filter.closed">Geschlossen</button>
             <button class="filter-btn" data-filter-status="escalated" data-i18n="inbox.filter.escalated">Eskaliert</button>
-            <button class="filter-btn" data-filter-status="pending_approval" data-i18n="inbox.filter.pendingApproval">KI-Freigabe</button>
+            <button class="filter-btn" data-filter-status="pending_approval" data-i18n="inbox.filter.pendingApproval">UMI-Freigabe</button>
         </div>
 
         <!-- Guest Filter Dropdown -->
@@ -111,14 +111,14 @@
                     <div class="conversation-subject">{{ conv.property.name if conv.property else conv.subject or 'No subject' }}{% if conv.check_in and conv.check_out %} <span class="stay-dates">{{ conv.check_in.strftime('%d.%m') }} – {{ conv.check_out.strftime('%d.%m') }} ({{ (conv.check_out - conv.check_in).days }}n)</span>{% endif %}</div>
                     <div class="conversation-preview">
                         {% if conv.last_message %}
-                            {% if conv.last_message.sender_type == 'owner' %}{{ conv.last_message.sender_user.display_name if conv.last_message.sender_user else 'Team' }}: {% elif conv.last_message.sender_type == 'ai' %}KI: {% endif %}{{ conv.last_message.content[:80] }}{% if conv.last_message.content|length > 80 %}...{% endif %}
+                            {% if conv.last_message.sender_type == 'owner' %}{{ conv.last_message.sender_user.display_name if conv.last_message.sender_user else 'Team' }}: {% elif conv.last_message.sender_type == 'ai' %}UMI: {% endif %}{{ conv.last_message.content[:80] }}{% if conv.last_message.content|length > 80 %}...{% endif %}
                         {% else %}
                             No messages yet
                         {% endif %}
                     </div>
                 </div>
                 <div class="conversation-meta">
-                    <span class="platform-badge {{ conv.platform }}">{{ conv.platform|capitalize }}</span>
+                    <span class="platform-badge {{ conv.display_platform|lower|replace('booking.com', 'booking')|replace(' ', '') }}">{{ conv.display_platform }}</span>
                     {% if conv.ai_enabled %}
                         <span class="ai-badge"><i class="fas fa-robot"></i></span>
                     {% endif %}
@@ -155,5 +155,5 @@
 
 <script src="{{ url_for('chatbot.static', filename='js/polling.js') }}?v=8"></script>
 <script src="{{ url_for('chatbot.static', filename='js/filter-state.js') }}?v=10"></script>
-<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=18"></script>
+<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=19"></script>
 {% endblock %}

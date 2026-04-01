@@ -16,6 +16,7 @@
             <i class="fas fa-arrow-left"></i>
         </a>
         <div class="conversation-title">
+            {% set dp = conversation.display_platform %}
             <div class="guest-avatar" data-guest-name="{{ guest.name or guest.email or '' }}">
                 {% if conversation.platform == 'email' %}
                     <i class="fas fa-envelope"></i>
@@ -34,8 +35,12 @@
                     {{ guest.name or guest.email or 'Unbekannter Gast' }}
                 </a>
                 <span class="conversation-meta-text">
-                    {{ conversation.platform|capitalize }}
-                    {% if conversation.property %}- {{ conversation.property.name }}{% elif conversation.subject %}- {{ conversation.subject }}{% endif %}
+                    {% if conversation.property %}{{ conversation.property.name }}{% elif conversation.subject %}{{ conversation.subject }}{% endif %}
+                    {% if 'airbnb' in dp|lower %}
+                        <span class="platform-mini-badge airbnb">AB</span>
+                    {% elif 'booking' in dp|lower %}
+                        <span class="platform-mini-badge booking">BK</span>
+                    {% endif %}
                 </span>
                 {% if conversation.check_in and conversation.check_out %}
                 <span class="conversation-stay-dates">
@@ -52,11 +57,11 @@
                     <option value="" data-i18n="conversation.property.none">-- Unterkunft --</option>
                 </select>
             </div>
-            <button class="btn btn-icon" onclick="toggleAI()" data-i18n-title="conversation.ai.toggle" title="KI-Antworten" id="aiToggleBtn">
+            <button class="btn btn-icon" onclick="toggleAI()" data-i18n-title="conversation.ai.toggle" title="UMI-Antworten" id="aiToggleBtn">
                 <i class="fas fa-robot"></i>
                 <span class="toggle-status" data-ai-on="{{ 'AN' }}" data-ai-off="{{ 'AUS' }}">{{ 'AN' if conversation.ai_enabled else 'AUS' }}</span>
             </button>
-            <button class="btn btn-icon {{ 'auto-respond-active' if conversation.auto_respond else '' }}" onclick="toggleAutoRespond()" data-i18n-title="conversation.ai.autoRespond" title="Automatische KI-Antwort" id="autoRespondBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
+            <button class="btn btn-icon {{ 'auto-respond-active' if conversation.auto_respond else '' }}" onclick="toggleAutoRespond()" data-i18n-title="conversation.ai.autoRespond" title="Automatische UMI-Antwort" id="autoRespondBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
                 <i class="fas fa-bolt"></i>
                 <span class="toggle-status" id="autoRespondStatus">{{ 'AN' if conversation.auto_respond else 'AUS' }}</span>
             </button>
@@ -94,7 +99,7 @@
             </div>
             <button class="overflow-menu-item" onclick="toggleAI()" id="mobileAiToggleBtn">
                 <i class="fas fa-robot"></i>
-                <span>KI: <span class="toggle-status" id="mobileAiStatus">{{ 'AN' if conversation.ai_enabled else 'AUS' }}</span></span>
+                <span>UMI: <span class="toggle-status" id="mobileAiStatus">{{ 'AN' if conversation.ai_enabled else 'AUS' }}</span></span>
             </button>
             <button class="overflow-menu-item" onclick="toggleAutoRespond()" id="mobileAutoRespondBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
                 <i class="fas fa-bolt"></i>
@@ -152,7 +157,7 @@
                     <span class="sender-name">
                         {% if message.sender_type == 'guest' %}{{ guest.name or 'Gast' }}
                         {% elif message.sender_type == 'owner' %}{{ message.sender_user.display_name if message.sender_user else 'Team' }}
-                        {% else %}<span data-i18n="conversation.ai">KI-Assistent</span>{% endif %}
+                        {% else %}<span data-i18n="conversation.ai">UMI-Assistent</span>{% endif %}
                     </span>
                     <span class="message-time">{{ message.sent_at.strftime('%d.%m.%Y %H:%M') if message.sent_at else '' }}</span>
                 </div>
@@ -161,7 +166,7 @@
             {% if message.sender_type == 'guest' %}
             <button class="btn-suggest-for-message" onclick="suggestForMessage({{ message.id }})"
                 data-i18n-title="conversation.ai.suggestForMessage"
-                title="KI-Antwort für diese Nachricht"
+                title="UMI-Antwort für diese Nachricht"
                 {% if not conversation.ai_enabled %}disabled{% endif %}>
                 <i class="fas fa-lightbulb"></i>
             </button>
@@ -190,10 +195,10 @@
                 </div>
             </div>
             <button class="btn btn-secondary" onclick="suggestAIResponse()" id="suggestAiBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
-                <i class="fas fa-lightbulb"></i> <span data-i18n="conversation.ai.suggest">KI-Vorschlag</span>
+                <i class="fas fa-lightbulb"></i> <span data-i18n="conversation.ai.suggest">UMI-Vorschlag</span>
             </button>
             <button class="btn btn-secondary" onclick="generateAIResponse()" id="generateAiBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
-                <i class="fas fa-magic"></i> <span data-i18n="conversation.ai.create">KI-Antwort erstellen</span>
+                <i class="fas fa-magic"></i> <span data-i18n="conversation.ai.create">UMI-Antwort erstellen</span>
             </button>
         </div>
         <form class="message-form" id="messageForm" onsubmit="sendMessage(event)">
