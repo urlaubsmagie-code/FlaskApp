@@ -93,7 +93,13 @@
                     <option value="house_rules" data-i18n="knowledge.cat.rules">Hausregeln</option>
                     <option value="emergency" data-i18n="knowledge.cat.emergency">Notfallkontakte</option>
                     <option value="faq" data-i18n="knowledge.cat.faq">Häufige Fragen</option>
-                    <option value="escalation" data-i18n="knowledge.cat.escalation">Eskalation</option>
+                    <option value="esc_maintenance" data-i18n="knowledge.cat.esc_maintenance">Wartung / Reparatur</option>
+                    <option value="esc_cleanliness" data-i18n="knowledge.cat.esc_cleanliness">Sauberkeit</option>
+                    <option value="esc_noise" data-i18n="knowledge.cat.esc_noise">Lärm / Nachbarn</option>
+                    <option value="esc_payment" data-i18n="knowledge.cat.esc_payment">Zahlung / Erstattung</option>
+                    <option value="esc_access" data-i18n="knowledge.cat.esc_access">Schlüssel / Zugang</option>
+                    <option value="esc_emergency" data-i18n="knowledge.cat.esc_emergency">Notfall</option>
+                    <option value="esc_other" data-i18n="knowledge.cat.esc_other">Sonstiges</option>
                     <option value="correction" data-i18n="knowledge.cat.correction">Korrektur</option>
                 </select>
             </div>
@@ -120,5 +126,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('chatbot.static', filename='js/knowledge.js') }}?v=2"></script>
+<script src="{{ url_for('chatbot.static', filename='js/knowledge.js') }}?v=4"></script>
 {% endblock %}
