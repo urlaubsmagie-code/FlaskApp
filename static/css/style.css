@@ -209,10 +209,15 @@ a {
     transition: all 0.2s;
 }
 
-.nav-link:hover,
-.nav-link.active {
+.nav-link:hover {
     background: rgba(255, 255, 255, 0.1);
     color: var(--text-white);
+}
+
+.nav-link.active {
+    background: #7B2332;
+    color: var(--text-white);
+    border-left: 3px solid #F9E8EB;
 }
 
 .nav-link i {
