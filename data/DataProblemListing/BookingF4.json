@@ -1,0 +1,530 @@
+[{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Perfekt organisiert, Top Lage, sauber und komfortabel",
+  "dislikedText": null,
+  "reviewDate": "2025-11-10T09:21:55.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Family",
+  "userName": "Christian"
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-11-08T21:12:05.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Natalie"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": "Sehr geräumig, sauber. Super freundliche Vermieter.",
+  "dislikedText": "Ich finde es immer sehr schade, dass es für so viele Betten, zu wenig Geschirr gibt (genügend Wassergläser, Weingläser,..)",
+  "reviewDate": "2025-11-03T08:28:32.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Marie"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": "The apartment was big and very suitable for 6 people and a child",
+  "dislikedText": "There could be more cleaner in there",
+  "reviewDate": "2025-10-24T15:05:37.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Family",
+  "userName": "Dalia"
+},
+{
+  "rating": 6,
+  "reviewTitle": "Gute Ausgangslage zum Wandern , sonst nicht überzeugend",
+  "likedText": "Die Wohnung ist gut ausgestattet,  alles ist ausreichend vorhanden an Geschirr,  Staubsauger,  Besen, Spülmaschinentabs.\n Nette Dekoration.\nWir waren zum Wandern dort und die Wohnung eignet sich gut als Ausgangspunkt .\n\nDie Kontakt im Vorwege war sehr freundlich.",
+  "dislikedText": "Das Treppenhaus ist völlig verdreckt, mit toten Insekten, klebrigen Flecken an Wänden, Boden und Geländern. Dies ist dann der 1. Eindruck :-(\n\nDie Wohnung wurde gereinigt,  allerdings darf man nicht genauer hinsehen: Schimmel an den Fenstern,  im Bad. Die Dunstabzugshaube trieft vor Fett, die Nische vom Müll ist verdreckt. Das Sofa mit Flecken und völlig durchgesessen.\n\nEs sind in den Zimmern zu wenig Abstellmöglichkeiten.\n\nLaut Beschreibung gibt es Waschmaschine und Trockner in der Wohnung.  Das stimmt nicht. Im Haus gegenüber gibt es je drei für ALLE Wohnungen. Absolute Glücksache, ein freies Gerät zu erwischen.",
+  "reviewDate": "2025-08-24T09:51:32.000Z",
+  "numberOfNights": 7,
+  "travelerType": "Group",
+  "userName": "Sandra"
+},
+{
+  "rating": 9,
+  "reviewTitle": "Miłe, przestronne mieszkanie w dobrym miejscu",
+  "likedText": "Jest blisko parking dla jednego auta, kuchnia jest dobrze wyposażona, blisko market Penny.",
+  "dislikedText": "Jeden klucz przy 7 osobach mieszkających w obiekcie to mało. A wejście do klatki schodowej wymaga klucza. Klatka schodowa w budynku nie była czysta.",
+  "reviewDate": "2025-07-19T08:13:27.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Group",
+  "userName": "Marcin"
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-07-17T20:33:31.000Z",
+  "numberOfNights": 7,
+  "travelerType": "Family",
+  "userName": "Anna"
+},
+{
+  "rating": 5,
+  "reviewTitle": "Urlaub ohne hohe Ansprüche",
+  "likedText": "Größe der Wohnung war gut und ausreichend für 6 Personen. \nDie Fotoleinwände sind sehr schön und auch andere einzelne liebevolle Dekoelemente haben die Wohnung ansehnlicher gemacht.",
+  "dislikedText": "Der Flur hat einem direkt die Urlaubsstimmung vermiest. Es war dreckig und hat gestunken. Das war wirklich unangenehm. \nDie Betten haben gequietscht. \nSchlechtes Internet.\nIm Allgemeinen schon ziemlich abgewohnt.",
+  "reviewDate": "2025-07-03T20:20:38.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Group",
+  "userName": "Daniel"
+},
+{
+  "rating": 10,
+  "reviewTitle": "Ausgezeichnet",
+  "likedText": "The fact thats the property is lying among the nature and the proper management.",
+  "dislikedText": null,
+  "reviewDate": "2025-06-24T08:50:28.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Hamid"
+},
+{
+  "rating": 9,
+  "reviewTitle": "Jesteśmy bardzo zadowoleni",
+  "likedText": "Sporo miejsca w każdym pokoju. Przestronnie i wygodnie.",
+  "dislikedText": null,
+  "reviewDate": "2025-06-22T09:18:04.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Family",
+  "userName": "Zuzanna"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-06-09T17:45:41.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Hans"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": "Die Wohnung ist schön groß und alles ist sauber und gepflegt. In der Küche ist alles vorhanden was man braucht, sogar Salz und Öl. Die Betten sind gemütlich. Ein eigener Parkplatz zu der Wohnung ist gegenüber, praktisch in der Stadt.",
+  "dislikedText": null,
+  "reviewDate": "2025-05-28T19:45:15.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Group",
+  "userName": "Anatoli"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-04-26T20:01:58.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Family",
+  "userName": "Yana"
+},
+{
+  "rating": 6,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-04-25T18:50:34.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Family",
+  "userName": "Heyde"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-04-19T10:18:20.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Group",
+  "userName": "Sabine"
+},
+{
+  "rating": 5,
+  "reviewTitle": null,
+  "likedText": "Das geräumige Wohnzimmer war als Aufenthaltsraum gut geeignet. Die Schlafzimmer waren mit Liebe zum Detail gut ausgestattet. Auch die Küche war gut ausgestattet. Man hatte viele Gewürze, genügend Haushaltsartikel und so weiter. Es gab ein kleines Willkommensgeschenk und man wurde durch ein tolles Port Folio gut durch den Ablauf des Aufenthalts geführt.",
+  "dislikedText": "Leider hat die Unterkunft meinen hygienischen Standards nicht erfüllt. Allein der Treppenaufgang stank fürchterlich und sah mega dreckig aus. Man öffnete die Haustür zur Wohnung und eine Mischung aus Reinigungsmittel und alter Gestank kam sofort entgegen. Das Badezimmerfenster war umrandet mit Schimmelecken und die Handtücher waren leider auch fleckig. Den Backofen mochte man auch nicht benutzen.",
+  "reviewDate": "2025-04-17T20:05:31.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Nicole"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-04-03T19:01:58.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Eva"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-03-16T09:05:32.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Stefanie"
+},
+{
+  "rating": 8,
+  "reviewTitle": "Klidný apartmán pro klidné výpravy",
+  "likedText": "Prostorný apartmán v klidném historickém městečku, blízkost náměstí, drobných prodejen, supermarketu.\r\nUbytování v soukromí - v bytovém domě, přesto je cítit zájem ubytovatele, aby se hosté chovali ohleduplně.\r\nPerfektní srozumitelné instrukce k celému pobytu v apartmánu i online. Ubytovací turistický poplatek se platí navíc a v hotovosti, odměnou je \"Gästekarte mobile\", která zajišťuje slevy a cestování veřejnou dopravou zdarma po Saském Švýcarsku.",
+  "dislikedText": null,
+  "reviewDate": "2025-03-07T22:31:12.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Family",
+  "userName": "Martin"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-02-05T20:20:04.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Family",
+  "userName": "Christiane"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-01-19T12:10:15.000Z",
+  "numberOfNights": 9,
+  "travelerType": "Group",
+  "userName": "Weco"
+},
+{
+  "rating": 9,
+  "reviewTitle": "Es hat uns sehr gut gefallen.",
+  "likedText": "Die wohnung war sehr groß und gemütlich.",
+  "dislikedText": "Alles war ok",
+  "reviewDate": "2025-01-01T21:57:58.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Müberra"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-12-28T13:18:17.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Schrock"
+},
+{
+  "rating": 10,
+  "reviewTitle": "Wundervoller Urlaub",
+  "likedText": "Sehr sauber, hübsch eingerichtet, alles vorhanden. Gemütlicher Whirlpool.",
+  "dislikedText": null,
+  "reviewDate": "2024-12-15T13:59:35.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Family",
+  "userName": "Rebekka"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-12-13T20:21:58.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Group",
+  "userName": "Maciej"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-12-06T20:01:00.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Group",
+  "userName": "Maciej"
+},
+{
+  "rating": 6,
+  "reviewTitle": "It is ok for one night sleep only, not much more",
+  "likedText": "Appartment is spacious, beds are good.",
+  "dislikedText": "The building of appartment is very shady, half of it is under renovation, front door is open 24/7. It didn’t feel safe, we even blocked appartment door for the night. Appartment is old but renovated, there is small cigarette smell all over. All facilities are in other building (washingmachine, pool…) across the city street, which is not meantioned in booking.",
+  "reviewDate": "2024-12-05T01:46:04.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Family",
+  "userName": "Sara"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": "Lage  und Größe der Wohnung ist top. Jedes Schlafzimmer hat ausreichend Platz für Sachen und Ablage.",
+  "dislikedText": null,
+  "reviewDate": "2024-11-24T20:56:12.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Katharina"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": "Alles vorhanden, ordentlich, ausreichend groß, mit 3 Schlafzimmern",
+  "dislikedText": "Es fehlen Haken im Bad und Trockenmöglichkeiten für die Handtücher.",
+  "reviewDate": "2024-11-01T20:28:41.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Group",
+  "userName": "Cornelia"
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": "große Zimmer, viel Platz, zweckmäßige Einrichtung; Küchenausstattung war gut; unkomplizierte Kommunikation mit dem Vermieter",
+  "dislikedText": "unsaubere Ecken, vorallem im Bad; teils Staubschicht auf den Möbeln; schmuddeliges Treppenhaus",
+  "reviewDate": "2024-10-12T07:05:39.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Group",
+  "userName": "Simon"
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": "Der Flur roch ziemlich doll nach Rauch.",
+  "reviewDate": "2024-09-23T08:43:29.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Sabrina"
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-09-16T13:47:43.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Benjamin"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-08-22T19:10:13.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Solo traveler",
+  "userName": "Katja"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-08-22T18:30:14.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Group",
+  "userName": "Paweł"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-07-15T05:12:32.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Anjuscha"
+},
+{
+  "rating": 4,
+  "reviewTitle": "Urlaubsmagie fühlt sich anders an",
+  "likedText": "Die Sehenswürdigkeiten \nDas Check in und das Check Out war ehr einfach und unkompliziert.",
+  "dislikedText": "Nachbarn reden sehr laut und nehmen Wörter in den Mund die mit einer Familie mit kleinen Kindern nicht sehr kinderfreundlich ist wenn man hier ihm Urlaub ist. \nNachbarn präsentieren sich freizügig auf ihren Balkon das ist für mich keine Urlaubsmagie .",
+  "reviewDate": "2024-07-14T15:39:38.000Z",
+  "numberOfNights": 7,
+  "travelerType": "Family",
+  "userName": "Kohl"
+},
+{
+  "rating": 7,
+  "reviewTitle": "Großzügiges Wohnen mit Einschränkungen",
+  "likedText": "Es war geräumig für eine 4-köpfige Familie, da jedes Kind sein Zimmer hatte. Der Pool und Wirlpool waren gut erreichbar.",
+  "dislikedText": "Die Wohnzimmer Couch hatte einen Brandfleck. Die Couch im Schlafzimmer hatte anderweitige Flecken. Der Boden war schon ziemlich ramponiert. \n\nDie Parkplätze sind zu eng geschnitten, da passen die Autos nicht wirklich nebeneinander. Meistens war 5:45 Uhr die Nacht vorbei, da die Untermieter lautstark auf dem Balkon agierten. \n\nDas Treppenhaus ist eine Zumutung an Sauberkeit.",
+  "reviewDate": "2024-06-27T19:17:59.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Family",
+  "userName": "Carsten"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-06-13T10:06:01.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Group",
+  "userName": "Krzysztof"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-05-18T14:49:18.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Borwin"
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": "Die Wohnung ist gross und gut ausgestattet. Sehr unkompliziertes Ein- und Auschecken. Gute Lage.",
+  "dislikedText": "Schmuddeliges Haus und etwas ungepflegte Umgebung ums Haus. Rauchgeschmack im Treppenhaus.",
+  "reviewDate": "2024-05-17T20:01:54.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Family",
+  "userName": "Daniela"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": "חדרים  גדולים  מאובזר ונקי",
+  "dislikedText": "הכניסה  והמדרגות מלוכלכת  ומדאכת",
+  "reviewDate": "2024-04-08T14:16:25.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Group",
+  "userName": "Amnon"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-03-16T09:45:25.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Group",
+  "userName": "Pia"
+},
+{
+  "rating": 7,
+  "reviewTitle": "Praktisch und zentrumsnah.",
+  "likedText": "Geräumige Wohnung für maximal 8 Personen und sehr gut ausgestattete Küche. Auch um die Wohnung während des Aufenthaltes zu reinigen ist alles da.",
+  "dislikedText": "Schon im Hausflur hat es nach Rauch gerochen und auch die Wohnung selbst wurde früher sicher von einem Raucher bewohnt. Leider riecht man das noch. Ein Austausch der gelben Lichtschalter und ein entfernen der vergilbten Haken an den Fenster sowie das Verschließen der ungenutzten Löcher in Decken und Wänden würde für mehr Urlaubsmagie sorgen. Ebenso würde dafür eine Couch sorgen, die nicht durchgesessen ist.",
+  "reviewDate": "2024-02-16T13:25:02.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Carolin"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Alles, von der geräumigen, sauberen Unterkunft bis zum unkomplizierten Ein und Auschecken.",
+  "dislikedText": null,
+  "reviewDate": "2024-01-18T16:11:42.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Sylvio"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-01-06T22:26:00.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Group",
+  "userName": "Katrin"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-01-01T22:46:55.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Oliver"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Bardzo fajny apartament",
+  "dislikedText": null,
+  "reviewDate": "2023-12-02T19:45:35.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Family",
+  "userName": "Serhii"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2023-11-06T07:22:30.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Family",
+  "userName": "Elise"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2023-10-29T20:08:01.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Group",
+  "userName": "Yves"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": "Czystość i wyposażenie, lokalizacją i obsługa",
+  "dislikedText": "Brak zamrażalki",
+  "reviewDate": "2023-10-19T15:55:28.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Maki"
+},
+{
+  "rating": 8,
+  "reviewTitle": "zeker goed en schoon, fijn contact!",
+  "likedText": "mooi en ruim",
+  "dislikedText": "niet direct aan tuin, muren buren iets wat gehorig ( klussen)",
+  "reviewDate": "2023-10-03T19:05:02.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Solo traveler",
+  "userName": "Martin"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Klíče jsme si vyzvedli v protějším domě v příslušné schránce. Byli jsme velmi spokojeni, byt byl zařízen nad očekávání. Čistý, prostorný v každém pokoji byli světla na dálkové ovládání + různé dekorace které velmi přidali na příjemné atmosféře. Manuál s informacemi v angličtině byl velmi užitečný, skvělý tipy na výlety a túry. O obrazech Saského Švýcarska nemluvě. Velmi neradi jsme odjížděli",
+  "dislikedText": null,
+  "reviewDate": "2023-10-01T16:07:55.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Solo traveler",
+  "userName": "Roman"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Sehr gräumig und sauber. Alles vorhanden was benötigt wird. Freundliches Personal. Tolle Sauna. Preis/Leistung ist super.",
+  "dislikedText": null,
+  "reviewDate": "2023-09-25T09:46:18.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Group",
+  "userName": "Christopher"
+}]

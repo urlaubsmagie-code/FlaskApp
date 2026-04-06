@@ -9,9 +9,9 @@ import os
 from collections import defaultdict
 import re
 
-JSON_FOLDER_PATH = r"C:\Users\admin\n8n-docker\files"
+JSON_FOLDER_PATH = r"C:\n8n_Docker\Files"
 BOOKING_JSON_FILE_NAME = "DatasetScrBooking.json"
-IDB_MAPPING_FILE = r"C:\Users\admin\Desktop\IDB.txt"
+IDB_MAPPING_FILE = r"C:\n8n_Docker\Files\IDB.txt"
 
 def extract_hotel_id_from_url(url):
     """Extract hotel ID from Booking URL"""

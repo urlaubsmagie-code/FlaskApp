@@ -1,0 +1,50 @@
+[{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-10-31T13:20:02.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Couple",
+  "userName": "Michael"
+},
+{
+  "rating": 5,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-08-05T06:57:56.000Z",
+  "numberOfNights": 6,
+  "travelerType": "Couple",
+  "userName": "Nadine"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-06-27T17:52:04.000Z",
+  "numberOfNights": 7,
+  "travelerType": "Solo traveler",
+  "userName": null
+},
+{
+  "rating": 9,
+  "reviewTitle": "Wieder da und wiederum angetan.",
+  "likedText": "Kleine aber feine Ferienwohnung recht zentral in Sebnitz. Sauber, hell und gut ausgestattet. Schön eingerichet und viele nützliche Untensielien vorhanden. Die digitale Gästemappe ist sehr gut, sämtliche Fragen werden dort beantwortet. Parkplatz neben dem Haus.",
+  "dislikedText": "Da es ein Altbau ist, gibt es einige hohe Schwellen und niedrige Durchgänge. Die Matratzen waren nicht so der Traum. Das sind aber alles Kleinigkeiten.",
+  "reviewDate": "2025-02-28T12:37:16.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Solo traveler",
+  "userName": "Michael"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-02-20T20:22:19.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Solo traveler",
+  "userName": "Jack"
+}]

@@ -1,0 +1,70 @@
+[{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": "Čistý, vyhřátý a plně vybavený apartmán. V takovém bych klidně bydlel. :-)",
+  "dislikedText": null,
+  "reviewDate": "2025-10-26T13:37:03.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Couple",
+  "userName": "Vratislav"
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-10-22T14:29:29.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Couple",
+  "userName": "Oliver"
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": "Czysto. Wygodne łóżka. Lokalizacja w centrum. Blisko sklep",
+  "dislikedText": "Brak parkingu.",
+  "reviewDate": "2025-09-21T06:27:36.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Grzegorz"
+},
+{
+  "rating": 8,
+  "reviewTitle": "Eine empfehlenswerte Unterkunft und super sauber, hier kann man soch wohlfühlen",
+  "likedText": "Super saubere Wohnung und sehr nette Gastgeber",
+  "dislikedText": "Wir hatten uns sehr auf den Whirlpool gefreut, leider war dieser teilweise schon abgebaut und leer",
+  "reviewDate": "2025-06-17T06:34:30.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Couple",
+  "userName": "Markus"
+},
+{
+  "rating": 7,
+  "reviewTitle": "Gut gelegene und komfortabele Ferienwohnung!",
+  "likedText": "Die Lage!",
+  "dislikedText": "Die Größe!",
+  "reviewDate": "2025-05-29T14:20:49.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Roland"
+},
+{
+  "rating": 8,
+  "reviewTitle": "Lovely garden terrace",
+  "likedText": "Clean and close to centre. The garden area across the street is a great place to sit out in the evenings, with tables, benches etc. Well equipped kitchen. Easy check in. We appreciated being able to check in at 14.00 rather than 16.00.",
+  "dislikedText": "For those travelling without a car, you should be aware that there are no left luggage facilities in Sebnitz. There are said to be lockers at Bad Schandau, so perhaps better to spend the day there rather than arrive early. Perhaps not an issue for the flat owners but something to take forward with the tourism office.",
+  "reviewDate": "2025-05-18T06:19:43.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Couple",
+  "userName": "Jane"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": "Die Ausstattung ist ok, es ist alles da und sauber. Der Blick auf die Mauer - naja …",
+  "dislikedText": "Das Bad war nicht so schön. Der Spiegelschrank über dem Waschbecken ist eher unpraktisch. Der Teppich im Bad war nicht schön. Die Flecken aus den Fließen und die vergilbte Abdeckung des Abzugs…",
+  "reviewDate": "2025-05-09T12:06:44.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Couple",
+  "userName": "Ulrike"
+}]

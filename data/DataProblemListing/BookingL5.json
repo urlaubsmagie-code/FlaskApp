@@ -1,0 +1,610 @@
+[{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-11-23T12:46:42.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Couple",
+  "userName": "Hawryluk"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-10-05T19:59:50.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Couple",
+  "userName": "Nadine"
+},
+{
+  "rating": 6,
+  "reviewTitle": "Wer günstig Urlaub machen möchte und wenig Ansprüche hat, ist hier richtig.",
+  "likedText": "Die Lage der Unterkuft war top und der Zugang wird durch Schlüsselboxen sehr vereinfacht. Der Parkplatz ist auch gut & bietet genügend Platz.",
+  "dislikedText": "Leider hat unser Zimmer extrem nach altem kaltem Fett gestunken, das war wirklich extrem. Wir haben den gestank auch mit Lüften nicht weg bekommen. \nZusätzlich hat das Bett bei jeder noch so kleinen Bewegung gequietscht, demnach waren beide Nächte für uns sehr kurz. Das Bad könnte definitiv mal eine Renovierung vertragen, die Dusche war schon total schwarz an den Türen.",
+  "reviewDate": "2025-09-12T13:22:11.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Couple",
+  "userName": "Martha"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-09-08T05:56:56.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Manuel"
+},
+{
+  "rating": 7,
+  "reviewTitle": "Jó ár-érték arány bosszantó hibákkal.",
+  "likedText": "Jó elhelyezkedés. 2 fő részére elegendő nagyságú a szoba. A felszereltség és tisztaság megfelelő. Jó kiindulópont kirándulásokhoz.",
+  "dislikedText": "A szobában 3 villanykörte nem működött, emiatt félhomály volt. A tulajdonosnak írtunk, de nem kaptunk a problémára segítséget. A konyhasarok szűkös. Az elektromos grill belseje piszkos volt.",
+  "reviewDate": "2025-07-27T19:09:31.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Couple",
+  "userName": "Friedrich"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Cazarea. Peisajul.",
+  "dislikedText": "Vremea. Ploaie pe tot parcursul sejurului.",
+  "reviewDate": "2025-07-13T08:48:16.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Couple",
+  "userName": "Constantin"
+},
+{
+  "rating": 10,
+  "reviewTitle": "Perfect",
+  "likedText": "Perfect",
+  "dislikedText": null,
+  "reviewDate": "2025-07-11T19:05:53.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Couple",
+  "userName": null
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-07-02T05:33:45.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Couple",
+  "userName": "Tobias"
+},
+{
+  "rating": 6,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-06-26T17:23:56.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Couple",
+  "userName": "Sławomir"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-06-22T13:22:45.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Couple",
+  "userName": null
+},
+{
+  "rating": 9,
+  "reviewTitle": "very good place peaceful and quiet. I recommend",
+  "likedText": "very nice and quiet place, quiet area, comfortable bed, I slept very well. Close to various attractions.",
+  "dislikedText": "the most annoying thing was the neighbors next door  who did not respect the silence of the night and they were very loud to until 1am.",
+  "reviewDate": "2025-04-23T13:13:47.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Family",
+  "userName": "Marek"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": "Gemütliche, gut eingerichtete Ferienwohnung",
+  "dislikedText": null,
+  "reviewDate": "2025-03-11T20:21:56.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Solo traveler",
+  "userName": "Kerstin"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-02-23T07:18:16.000Z",
+  "numberOfNights": 7,
+  "travelerType": "Couple",
+  "userName": "Konstantin"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-02-23T00:48:55.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Solo traveler",
+  "userName": "Dennis"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": "Kleine, gemütliche Ferienwohnung mit allem was man braucht. Wenn man allerdings aus Berlin mit Bus und Bahn anreist, wirds eher schwierig lange unterwegs zu sein, da die Gegend doch sehr abgelegen ist und der letzte Bus am Nachmittag faehrt. Zu Fuß von Bad schandau nicht moeglich. Die Decken fand ich persoehnlich fuer den Winter sehr duenn. Die Bitte, das Bett abzuziehen, Abwasch zu machen UND den Muell weg zu bringen, fand ich komisch... noch nie erlebt und viel in FeWo unterwegs. Preisleistung war voellig ok.",
+  "dislikedText": null,
+  "reviewDate": "2025-02-20T14:28:08.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Couple",
+  "userName": "Meike"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-02-10T06:44:20.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Couple",
+  "userName": "Rick"
+},
+{
+  "rating": 5,
+  "reviewTitle": null,
+  "likedText": "Das einzige was gut war ist die Ruhe die man dort hat. Das Zimmer war sauber.",
+  "dislikedText": "Die Küche ist zum zubereiten von Mahlzeiten nicht ausreichend  man hat keinen Platz. Das Inventar hätte man vorher mal auf Stabilität überprüfen können. Wir sind eher abgereist weil das Bad eine Katastrophe ist. Schimmel in der Dusche und in der Zimmerecke",
+  "reviewDate": "2025-02-08T12:23:45.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Couple",
+  "userName": "Michaela"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-01-25T16:51:41.000Z",
+  "numberOfNights": 7,
+  "travelerType": "Solo traveler",
+  "userName": "Jan"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2025-01-11T20:42:03.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Couple",
+  "userName": "Bartłomiej"
+},
+{
+  "rating": 7,
+  "reviewTitle": null,
+  "likedText": "zentrale lage. einfach super",
+  "dislikedText": "küchenausstattung. geschirr und gläser.",
+  "reviewDate": "2025-01-07T14:31:38.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Couple",
+  "userName": "Maik"
+},
+{
+  "rating": 9,
+  "reviewTitle": "Alles bestens",
+  "likedText": "Alles bestens.",
+  "dislikedText": null,
+  "reviewDate": "2024-12-26T11:30:27.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Solo traveler",
+  "userName": "Matthias"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": "Preis / Leistungsverhältnis \nSuper einfache Kommunikation - auch die digitale Gästemappe top\nGemütlich",
+  "dislikedText": "Nichts",
+  "reviewDate": "2024-11-19T10:46:14.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Solo traveler",
+  "userName": "Jan"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Bardzo dobre wyposażenie mieszkania, czysto. Lokalizacja świetna do zwiedzania",
+  "dislikedText": null,
+  "reviewDate": "2024-11-11T20:49:40.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Couple",
+  "userName": "Jakub"
+},
+{
+  "rating": 9,
+  "reviewTitle": "kleine, sehr gut ausgestattete FeWo",
+  "likedText": "Kleine Ferienwohnung/Zimmer mit Bad und kleiner Küchenzeile mit allem ausgestattet was man braucht. Dazu in einer super Lage und zu einem unschlagbaren Preis-Leistungsverhältnis.\nWir haben uns dort sehr wohl gefühlt.",
+  "dislikedText": null,
+  "reviewDate": "2024-10-26T06:49:24.000Z",
+  "numberOfNights": 6,
+  "travelerType": "Couple",
+  "userName": "Undine"
+},
+{
+  "rating": 10,
+  "reviewTitle": "Puiki patirtis",
+  "likedText": "Jaukus ir šiltas apartamentai. Malonu buvo rasti kavos aparatą ir kavos. Kadangi mažas miestelis tai televizija su jutube tikrai po žygio buvo labai gerai.",
+  "dislikedText": "Nebuvo",
+  "reviewDate": "2024-10-14T05:52:59.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Couple",
+  "userName": "Snieguole"
+},
+{
+  "rating": 9,
+  "reviewTitle": "Wir kommen gerne wieder",
+  "likedText": "Das Preis- Leistungs Verhältnis war sehr gut. \nKüche ist voll ausgestattet, Essbereich ist vorhanden, Bad und Schlafbereich verfügt über kleine Aufmerksamkeiten. Leider funktioniert der Fernseher nichtmehr einwandfrei. Die Lage ist super und man kommt schnell zu den beliebten Wandergebieten. Parkplätze gibt es Kostenlos vor der Tür.",
+  "dislikedText": "Der Fernseher",
+  "reviewDate": "2024-09-27T22:36:39.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Couple",
+  "userName": "Justine"
+},
+{
+  "rating": 10,
+  "reviewTitle": "Wir würden wieder kommen.",
+  "likedText": "Alles war top.",
+  "dislikedText": "🤷‍♀️",
+  "reviewDate": "2024-09-14T14:02:09.000Z",
+  "numberOfNights": 15,
+  "travelerType": "Couple",
+  "userName": "Jessica"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": "Es hat uns sehr gut gefallen.",
+  "dislikedText": "Internet war sehr schlecht, um TV zu schauen.\nDas die Kurtaxe am Ende auf den Tisch gelegt werden muss, müsste nochmal extra beschrieben werden. Danke",
+  "reviewDate": "2024-09-14T09:29:45.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Couple",
+  "userName": "Anke"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Ein sehr schönes, sauberes und gepflegtes Apartment. In der Küche war einfach alles vorhanden (sogar Kaffee für die Maschine). Wir waren angenehm überrascht. Ruhe und Stille... Wir können es empfehlen.",
+  "dislikedText": null,
+  "reviewDate": "2024-08-25T20:14:09.000Z",
+  "numberOfNights": 7,
+  "travelerType": "Couple",
+  "userName": "Jolanta"
+},
+{
+  "rating": 8,
+  "reviewTitle": "Wochenende in Lichtenhain",
+  "likedText": "Direkt zum Loswandern und Autostehenlassen :)) ruhig in schöner Lage.\nAusreichend für ein Wochenende, alles nötige war da.",
+  "dislikedText": "Uns fehlte ein Balkon bei diesem schönen Sommerwetter. Bei der einzigen Sitzecke vor dem Haus war nicht klar, wer sie nutzen darf , es gab ja mehrere FeWo.",
+  "reviewDate": "2024-08-04T23:19:19.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Couple",
+  "userName": "Michaela"
+},
+{
+  "rating": 9,
+  "reviewTitle": "Alles da für einen mehrtägigen Wanderurlaub",
+  "likedText": "Würde die Unterkunft zum günstigen Preis noch einmal buchen. Leider schwanken die Preise aber.",
+  "dislikedText": "Nichts zu meckern :)",
+  "reviewDate": "2024-08-03T16:39:34.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Solo traveler",
+  "userName": "Anne-marie"
+},
+{
+  "rating": 9,
+  "reviewTitle": "Grand lit et logement confortable",
+  "likedText": "Logement tres sympathique, confortable et bien equipe. Arrivee autonome avec une boite a cle facile d'utilisation. Grand lit tres confortable, ustensiles de cuisine, etc.\r\nLogement dans un petit hameau a proximite de chemin de randonnee (besoin d'une voiture pour y acceder mais parking disponible sur place)",
+  "dislikedText": null,
+  "reviewDate": "2024-07-18T11:24:44.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Couple",
+  "userName": "Tiphaine"
+},
+{
+  "rating": 8,
+  "reviewTitle": "Perfekt für einen Wanderurlaub",
+  "likedText": "Man könnte die Wohnung fast schon als \"Platzwunder\" bezeichnen: Alles, was man an Ausstattung braucht (vor allem ein großes Lob für die Küche) auf kleinstem Raum. Für eine Person oder ein Paar perfekt. Übrigens auch, was die Sauberkeit angeht.\r\nDas Haus ist in ruhiger Lage mit großzügigen Parkmöglichkeiten. Ein paar Wanderziele sind fußläufig erreichbar, zu den meisten \"Hotspots\" kommt man unter einer halben Stunde mit dem Auto hin.\r\nDirekt um die Ecke ist ein Campingplatz mit einem Restaurant, das unsere Erwartungen komplett übertroffen hat: ein echter Geheimtipp!\r\nDie Kommunikation mit den Gastgebern war auch echt unkompliziert und wir haben wahnsinnig viele Zusatzinfos bekommen — ein dickes Plus.",
+  "dislikedText": "Generell ist der Platz natürlich begrenzt (was uns vorher aber auch klar war). Der Esstisch ist relativ klein, im Bad hat man zu zweit auch nicht wirklich Platz und steht sich generell schnell im Weg. Wenn man aber nicht vor hat, die Tage nur drin zu verbringen, ist das eigentlich kein Problem.\r\nEin größeres Manko war das WLAN: Sehr lückenhaft, immer wieder ausgefallen (auch beim Fernseher). Auch da: kein großes Problem, aber arbeiten könnte man hier wahrscheinlich nicht reibungslos.",
+  "reviewDate": "2024-06-23T07:11:03.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Couple",
+  "userName": "Evgenia"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Das Zimmer war hübsch und gut ausgestattet.Der Zugang war sehr einfach und der Kontakt zu Urlaubsmagie bei Fragen war unkompliziert, freundlich und schnell.",
+  "dislikedText": null,
+  "reviewDate": "2024-06-08T09:55:48.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Strinzel"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": "Ein kleines feines Zimmer in guter Lage.\nEs war alles da, was man braucht, teilweise sogar mehr, auch Duschbad und Shampoo 👍🏼\nWir würden jederzeit wieder dort buchen!!!!",
+  "dislikedText": null,
+  "reviewDate": "2024-06-07T16:29:02.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Family",
+  "userName": "Martina"
+},
+{
+  "rating": 8,
+  "reviewTitle": "Sehr ruhige und sehr saubere Wohnung mit bequemen Betten",
+  "likedText": "Sehr ruhige Lage,sehr guter Kontakt mit Vermieterin.Dürfen uns im Garten entspannen. Parkplätze vor der Tür.Bequemer Bett.Klare Empfehlung. Waren sehr zufrieden.",
+  "dislikedText": "WLAN war nicht so stark,reichte nicht für TV.Ständig Probleme, aber damit kann man im Urlaub leben.\nNoch eine kleine Kommode oder eine größere ,damit man auch eine kleine Ablage hat wäre auch schöner.",
+  "reviewDate": "2024-06-02T13:33:35.000Z",
+  "numberOfNights": 7,
+  "travelerType": "Couple",
+  "userName": "Karina"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-05-28T16:31:40.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Petra"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Чистый и комфортный для отдыха номер. Все понравилось.",
+  "dislikedText": null,
+  "reviewDate": "2024-05-16T05:49:51.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Couple",
+  "userName": "Iryna"
+},
+{
+  "rating": 8,
+  "reviewTitle": "Ich hatte einen schönen Urlaub, die Lage war ideal für Wanderungen in der näheren Umgebung.",
+  "likedText": "Das war alles sehr sauber und ordentlich.",
+  "dislikedText": null,
+  "reviewDate": "2024-04-29T19:11:14.000Z",
+  "numberOfNights": 7,
+  "travelerType": "Solo traveler",
+  "userName": "Annkathrin"
+},
+{
+  "rating": 7,
+  "reviewTitle": "Preis- und Leistungsverhältnis steht hier ganz weit oben!",
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-04-17T07:16:25.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Couple",
+  "userName": "Sven"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-03-30T21:22:56.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Solo traveler",
+  "userName": "Aleksandr"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2024-03-26T13:59:54.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Family",
+  "userName": "Katrin"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "War alles super. Tolle Lage uns sehr freundliche Menschen überall :)",
+  "dislikedText": null,
+  "reviewDate": "2024-03-16T09:24:02.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Family",
+  "userName": "Johannes"
+},
+{
+  "rating": 7,
+  "reviewTitle": "Super Lage und Preis/Leistung ist fair.",
+  "likedText": "Die Lage mitten in der Sächsischen Schweiz ist super um verschiedenste Tagestouren zu wandern.",
+  "dislikedText": "Der Wasserdruck in der Dusche ist viel zu niedrig, das komplette Geschirr musste von uns am ersten Abend nochmal nach gereinigt werden und in einer Zimmerecke war Schimmel an der Wand. Ein Wasserkocher wäre noch eine gute Ergänzung zur Küche.",
+  "reviewDate": "2024-03-15T10:39:08.000Z",
+  "numberOfNights": 10,
+  "travelerType": "Couple",
+  "userName": "Til-eric"
+},
+{
+  "rating": 10,
+  "reviewTitle": "Sehr zu empfehlen",
+  "likedText": "Sehr gute Beschreibung zum Zugang  des Zimmers. \nNach der Öffnung der Zimmertür überraschte mich, durch eine eingeschaltete Lichterkette, eine sehr angenehme ,gemütliche Atmosphäre. \nEs war sehr sauber und sehr modern eingerichtet. \nIch habe mich sehr wohl gefühlt, und die leckere Schokolade....einfach toll, als wäre ich bei meinen Freunden eingeladen :-)",
+  "dislikedText": "Ich habe nur kurz einen Wasserkocher vermisst , aber wirklich nur sehr kurz, da es mit einem Topf auf der Herdplatte auch super funktioniert hat. Es gibt ansonsten nichts was ich vermisst habe:)",
+  "reviewDate": "2024-01-28T21:36:59.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Solo traveler",
+  "userName": "Katharina"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "10 / 10 die perfekte Unterkunft. Ich komme wieder.",
+  "dislikedText": null,
+  "reviewDate": "2024-01-21T20:26:24.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Solo traveler",
+  "userName": "Marcel"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Das Preis-Leistungsverhältnis war überirdisch gut. Ich hatte fast ein schlechtes Gewissen. Schlüsselübergabe erfolgte per Code, unkomplizierter geht  es nicht. Meine Partnerin hatte das Nebenzimmer gebucht und (ich schnarche leider zu laut) die Buchung des anderen Zimmers war dank dieses Systems eine Sache von Sekunden. Das Zimmer war toll, sauber und ist absolut weiterzuempfehlen. Das Haus ist im Dorf etwas versteckt, was ich aber als Vorteil sehe, da man dann nicht direkt an der Straße liegt. Es war dort wirklich ruhig.",
+  "dislikedText": "Mir fällt ehrlich gesagt nichts ein.",
+  "reviewDate": "2024-01-01T13:12:53.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Couple",
+  "userName": "Oliver"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Unbelievable price for such comfort",
+  "dislikedText": null,
+  "reviewDate": "2023-12-21T17:13:08.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Couple",
+  "userName": "Illia"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2023-12-17T21:12:07.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": null
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2023-12-08T05:02:10.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Group",
+  "userName": "Leppert"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2023-10-02T10:33:13.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Couple",
+  "userName": "Torsten"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Eine komplette Ausstattung an Küchenutensilien. Es war ausgezeichnet geputzt. \r\nWir konnten uns schlichtweg wie zu Hause fühle.",
+  "dislikedText": null,
+  "reviewDate": "2023-09-22T05:22:23.000Z",
+  "numberOfNights": 5,
+  "travelerType": "Couple",
+  "userName": "Ronja"
+},
+{
+  "rating": 8,
+  "reviewTitle": null,
+  "likedText": "Gemütliches Zimmer mit allem ausgestattet, was man benötigt. Die Lage ist super, Sebnitz und Bad Schandau erreicht man mit dem Auto in wenigen Minuten. Parkplätze am Haus. Idealer Ausgangspunkt für Wanderungen. Sehr netter Kontakt mit den Vermietern.",
+  "dislikedText": "Ein Wasserkocher wäre vielleicht zu empfehlen.",
+  "reviewDate": "2023-09-03T05:27:26.000Z",
+  "numberOfNights": 7,
+  "travelerType": "Family",
+  "userName": "Anonymus69"
+},
+{
+  "rating": 10,
+  "reviewTitle": "Wonderful, would definitely stay again",
+  "likedText": "Beautiful, spacious room. Good bed, good shower.",
+  "dislikedText": "We couldn’t find the house at first ha ha, hidden behind other houses on the square.",
+  "reviewDate": "2023-08-25T12:09:13.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Couple",
+  "userName": "Daniel"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2023-08-16T09:16:45.000Z",
+  "numberOfNights": 4,
+  "travelerType": "Couple",
+  "userName": "Błażej"
+},
+{
+  "rating": 9,
+  "reviewTitle": "We enjoyed our stay here. Comfortable tidy apartment with all amenities. The host was super helpful and responsive as we",
+  "likedText": "Ammenities, spacious, comfortable, close proximity to bus station",
+  "dislikedText": "Bit weird that they asked us to strip the beds but it’s not that big of a deal.",
+  "reviewDate": "2023-06-28T13:24:12.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Couple",
+  "userName": "Emma"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "- sehr freundlicher Kontakt\n- super ausgestattet, u.a. mit Zutaten zum Kochen, Begrüßungspräsent auf dem Tisch,... Alles da!\n- günstig!\n- gute Lage für Wanderungen in der Sächsischen Schweiz\n\nDanke, jederzeit wieder!",
+  "dislikedText": null,
+  "reviewDate": "2023-06-21T19:01:01.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Couple",
+  "userName": "Bastian"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": "Alles Super.\nGemütliche Ferienwohnung mit allem was man braucht um sich selber zu versorgen. Kleine Einkaufsmöglichkeit nur ca. 100 Meter entfernt. \nHab mich sehr wohl gefühlt. Komme bestimmt mal wieder!",
+  "dislikedText": null,
+  "reviewDate": "2023-05-18T17:42:51.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Solo traveler",
+  "userName": "Mütze"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2023-05-07T05:48:27.000Z",
+  "numberOfNights": 1,
+  "travelerType": "Couple",
+  "userName": "Eliška"
+},
+{
+  "rating": 10,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2023-05-05T06:19:34.000Z",
+  "numberOfNights": 3,
+  "travelerType": "Couple",
+  "userName": "Petro"
+},
+{
+  "rating": 9,
+  "reviewTitle": null,
+  "likedText": null,
+  "dislikedText": null,
+  "reviewDate": "2023-05-03T20:22:12.000Z",
+  "numberOfNights": 2,
+  "travelerType": "Solo traveler",
+  "userName": "Lisa"
+}]

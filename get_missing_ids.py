@@ -8,9 +8,9 @@ import json
 import os
 import re
 
-JSON_FOLDER_PATH = r"C:\Users\admin\n8n-docker\files"
+JSON_FOLDER_PATH = r"C:\n8n_Docker\Files"
 BOOKING_JSON_FILE_NAME = "DatasetScrBooking.json"
-IDB_FILE = r"C:\Users\admin\Desktop\IDB.txt"
+IDB_FILE = r"C:\n8n_Docker\Files\IDB.txt"
 
 # Load IDB mappings
 url_to_code = {}
