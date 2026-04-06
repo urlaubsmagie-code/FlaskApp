@@ -1,0 +1,741 @@
+{% extends "chatbot/base.html" %}
+
+{% block title %}{{ _('Guest Profile') if _ else 'Gästeprofil' }} - {{ guest.name or 'Gast' }}{% endblock %}
+
+{% block content %}
+<div class="profile-container">
+    <!-- Header -->
+    <div class="page-header">
+        <a href="{{ url_for('chatbot.index') }}" class="back-btn">
+            <i class="fas fa-arrow-left"></i>
+        </a>
+        <h1><i class="fas fa-user"></i> <span data-i18n="guest.title">Gästeprofil</span></h1>
+    </div>
+
+    <div class="profile-grid">
+        <!-- Guest Info Card -->
+        <div class="profile-card">
+            <div class="card-header">
+                <h2 data-i18n="guest.info">Kontaktinformationen</h2>
+                <div class="card-header-actions">
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="openMergeGuestModal()">
+                        <i class="fas fa-compress-arrows-alt"></i> <span data-i18n="guest.merge.title">Zusammenführen</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="openEditGuestModal()">
+                        <i class="fas fa-edit"></i> <span data-i18n="common.edit">Bearbeiten</span>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="profile-avatar">
+                    <i class="fas fa-user-circle"></i>
+                </div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label" data-i18n="guest.info.name">Name</span>
+                        <span class="info-value">{{ guest.name or 'Nicht angegeben' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label" data-i18n="guest.info.email">E-Mail</span>
+                        <span class="info-value">{{ guest.email or 'Nicht angegeben' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label" data-i18n="guest.info.phone">Telefon</span>
+                        <span class="info-value">{{ guest.phone or 'Nicht angegeben' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label" data-i18n="guest.stats.stays">Aufenthalte</span>
+                        <span class="info-value">{{ guest.total_stays or 0 }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label" data-i18n="guest.language">Bevorzugte Sprache</span>
+                        <span class="info-value">{{ profile.language or 'Nicht erkannt' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label" data-i18n="guest.stats.first">Erster Kontakt</span>
+                        <span class="info-value">{{ guest.first_contact.strftime('%d.%m.%Y') if guest.first_contact else 'K.A.' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label" data-i18n="guest.stats.last">Letzter Kontakt</span>
+                        <span class="info-value">{{ guest.last_contact.strftime('%d.%m.%Y') if guest.last_contact else 'K.A.' }}</span>
+                    </div>
+                </div>
+
+                <!-- Platform IDs -->
+                <div class="platform-ids">
+                    {% if guest.whatsapp_id %}
+                    <span class="platform-tag whatsapp"><i class="fab fa-whatsapp"></i> WhatsApp</span>
+                    {% endif %}
+                    {% if guest.airbnb_id %}
+                    <span class="platform-tag airbnb"><i class="fab fa-airbnb"></i> Airbnb</span>
+                    {% endif %}
+                    {% if guest.booking_id %}
+                    <span class="platform-tag booking"><i class="fas fa-calendar-check"></i> Booking</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Card - THE BREAKTHROUGH FEATURE! -->
+        <div class="profile-card memory-card">
+            <div class="card-header">
+                <h2><i class="fas fa-brain"></i> <span data-i18n="guest.memories">Erinnerungen</span></h2>
+                <span class="memory-badge" data-i18n="guest.memories.aiExtracted">UMI-extrahiert</span>
+            </div>
+            <div class="card-body">
+                <!-- Family -->
+                <div class="memory-section">
+                    <h3><i class="fas fa-users"></i> <span data-i18n="guest.memories.family">Familie</span></h3>
+                    <div class="memory-items" id="familyItems">
+                        {% if profile.family %}
+                            {% for item in profile.family %}
+                            <div class="memory-item" data-id="{{ item.id }}">
+                                <span class="memory-key">{{ item.key|title }}</span>
+                                <span class="memory-value" data-detail-id="{{ item.id }}" data-editable="true">{{ item.value }}</span>
+                                <span class="memory-confidence" title="Confidence: {{ (item.confidence * 100)|round }}%">
+                                    {{ (item.confidence * 100)|round }}%
+                                </span>
+                                <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="no-data" data-i18n="guest.memories.noFamily">Keine Familienmitglieder erfasst</p>
+                        {% endif %}
+                        <div class="memory-add-form" data-detail-type="family">
+                            <input type="text" class="memory-key-input" placeholder="Type (e.g., son)">
+                            <input type="text" class="memory-value-input" placeholder="Name/Value">
+                            <button type="button" class="btn btn-sm btn-primary add-memory-btn" onclick="addMemory(this)">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pets -->
+                <div class="memory-section">
+                    <h3><i class="fas fa-paw"></i> <span data-i18n="guest.memories.pets">Haustiere</span></h3>
+                    <div class="memory-items" id="petsItems">
+                        {% if profile.pets %}
+                            {% for item in profile.pets %}
+                            <div class="memory-item" data-id="{{ item.id }}">
+                                <span class="memory-key">{{ item.key|title }}</span>
+                                <span class="memory-value" data-detail-id="{{ item.id }}" data-editable="true">{{ item.value }}</span>
+                                <span class="memory-confidence" title="Confidence: {{ (item.confidence * 100)|round }}%">
+                                    {{ (item.confidence * 100)|round }}%
+                                </span>
+                                <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="no-data" data-i18n="guest.memories.noPets">Keine Haustiere erfasst</p>
+                        {% endif %}
+                        <div class="memory-add-form" data-detail-type="pet">
+                            <input type="text" class="memory-key-input" placeholder="Type (e.g., dog)">
+                            <input type="text" class="memory-value-input" placeholder="Name/Value">
+                            <button type="button" class="btn btn-sm btn-primary add-memory-btn" onclick="addMemory(this)">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preferences -->
+                <div class="memory-section">
+                    <h3><i class="fas fa-heart"></i> <span data-i18n="guest.memories.preferences">Vorlieben</span></h3>
+                    <div class="memory-items" id="preferencesItems">
+                        {% if profile.preferences %}
+                            {% for item in profile.preferences %}
+                            <div class="memory-item" data-id="{{ item.id }}">
+                                <span class="memory-key">{{ item.key|title }}</span>
+                                <span class="memory-value" data-detail-id="{{ item.id }}" data-editable="true">{{ item.value }}</span>
+                                <span class="memory-confidence" title="Confidence: {{ (item.confidence * 100)|round }}%">
+                                    {{ (item.confidence * 100)|round }}%
+                                </span>
+                                <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="no-data" data-i18n="guest.memories.noPreferences">Keine Vorlieben erfasst</p>
+                        {% endif %}
+                        <div class="memory-add-form" data-detail-type="preference">
+                            <input type="text" class="memory-key-input" placeholder="Type (e.g., room)">
+                            <input type="text" class="memory-value-input" placeholder="Value">
+                            <button type="button" class="btn btn-sm btn-primary add-memory-btn" onclick="addMemory(this)">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Allergies (IMPORTANT!) -->
+                <div class="memory-section allergies">
+                    <h3><i class="fas fa-exclamation-triangle"></i> <span data-i18n="guest.memories.allergies">Allergien</span></h3>
+                    <div class="memory-items" id="allergiesItems">
+                        {% if profile.allergies %}
+                            {% for item in profile.allergies %}
+                            <div class="memory-item allergy-item" data-id="{{ item.id }}">
+                                <span class="memory-key">{{ item.key|title }}</span>
+                                <span class="memory-value" data-detail-id="{{ item.id }}" data-editable="true">{{ item.value }}</span>
+                                <span class="memory-confidence" title="Confidence: {{ (item.confidence * 100)|round }}%">
+                                    {{ (item.confidence * 100)|round }}%
+                                </span>
+                                <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="no-data" data-i18n="guest.memories.noAllergies">Keine Allergien erfasst</p>
+                        {% endif %}
+                        <div class="memory-add-form" data-detail-type="allergy">
+                            <input type="text" class="memory-key-input" placeholder="Type (e.g., food)">
+                            <input type="text" class="memory-value-input" placeholder="Allergy details">
+                            <button type="button" class="btn btn-sm btn-primary add-memory-btn" onclick="addMemory(this)">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Booking Details -->
+                <div class="memory-section">
+                    <h3><i class="fas fa-calendar-alt"></i> <span data-i18n="guest.memories.booking">Buchungsdetails</span></h3>
+                    <div class="memory-items" id="bookingItems">
+                        {% if profile.booking %}
+                            {% for item in profile.booking %}
+                            <div class="memory-item" data-id="{{ item.id }}">
+                                <span class="memory-key">{{ item.key|replace('_', ' ')|title }}</span>
+                                <span class="memory-value" data-detail-id="{{ item.id }}" data-editable="true">{{ item.value }}</span>
+                                <span class="memory-confidence" title="Confidence: {{ (item.confidence * 100)|round }}%">
+                                    {{ (item.confidence * 100)|round }}%
+                                </span>
+                                <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="no-data" data-i18n="guest.memories.noBooking">Keine Buchungsdetails erfasst</p>
+                        {% endif %}
+                        <div class="memory-add-form" data-detail-type="booking">
+                            <input type="text" class="memory-key-input" placeholder="Type (e.g., num_guests)">
+                            <input type="text" class="memory-value-input" placeholder="Value">
+                            <button type="button" class="btn btn-sm btn-primary add-memory-btn" onclick="addMemory(this)">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interests -->
+                <div class="memory-section">
+                    <h3><i class="fas fa-star"></i> <span data-i18n="guest.memories.interests">Interessen</span></h3>
+                    <div class="memory-items" id="interestsItems">
+                        {% if profile.interests %}
+                            {% for item in profile.interests %}
+                            <div class="memory-item" data-id="{{ item.id }}">
+                                <span class="memory-value" data-detail-id="{{ item.id }}" data-editable="true">{{ item.value }}</span>
+                                <span class="memory-confidence" title="Confidence: {{ (item.confidence * 100)|round }}%">
+                                    {{ (item.confidence * 100)|round }}%
+                                </span>
+                                <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="no-data" data-i18n="guest.memories.noInterests">Keine Interessen erfasst</p>
+                        {% endif %}
+                        <div class="memory-add-form" data-detail-type="interest" data-no-key="true">
+                            <input type="text" class="memory-value-input" placeholder="Add interest...">
+                            <button type="button" class="btn btn-sm btn-primary add-memory-btn" onclick="addMemory(this)">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Special Requests -->
+                <div class="memory-section">
+                    <h3><i class="fas fa-clipboard-list"></i> <span data-i18n="guest.memories.requests">Sonderwünsche</span></h3>
+                    <div class="memory-items" id="requestsItems">
+                        {% if profile.special_requests %}
+                            {% for item in profile.special_requests %}
+                            <div class="memory-item" data-id="{{ item.id }}">
+                                <span class="memory-value" data-detail-id="{{ item.id }}" data-editable="true">{{ item.value }}</span>
+                                <span class="memory-confidence" title="Confidence: {{ (item.confidence * 100)|round }}%">
+                                    {{ (item.confidence * 100)|round }}%
+                                </span>
+                                <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="no-data" data-i18n="guest.memories.noRequests">Keine Sonderwünsche erfasst</p>
+                        {% endif %}
+                        <div class="memory-add-form" data-detail-type="special_request" data-no-key="true">
+                            <input type="text" class="memory-value-input" placeholder="Add special request...">
+                            <button type="button" class="btn btn-sm btn-primary add-memory-btn" onclick="addMemory(this)">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Conversations Card -->
+        <div class="profile-card">
+            <div class="card-header">
+                <h2><i class="fas fa-comments"></i> <span data-i18n="guest.conversations">Konversationen</span></h2>
+            </div>
+            <div class="card-body">
+                {% if conversations %}
+                <div class="conversations-list">
+                    {% for conv in conversations %}
+                    <a href="{{ url_for('chatbot.conversation_view', conversation_id=conv.id) }}" class="conversation-link">
+                        <div class="conv-platform">
+                            {% if conv.platform == 'email' %}
+                                <i class="fas fa-envelope"></i>
+                            {% elif conv.platform == 'whatsapp' %}
+                                <i class="fab fa-whatsapp"></i>
+                            {% elif conv.platform == 'airbnb' %}
+                                <i class="fab fa-airbnb"></i>
+                            {% else %}
+                                <i class="fas fa-comment"></i>
+                            {% endif %}
+                        </div>
+                        <div class="conv-info">
+                            <span class="conv-subject">{{ conv.subject or 'No subject' }}</span>
+                            <span class="conv-date">{{ conv.updated_at.strftime('%d.%m.%Y') if conv.updated_at else '' }}</span>
+                        </div>
+                        <div class="conv-messages">
+                            <span>{{ conv.message_count }} messages</span>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="no-data" data-i18n="guest.conversations.empty">Noch keine Konversationen</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Notes Card -->
+        <div class="profile-card">
+            <div class="card-header">
+                <h2><i class="fas fa-sticky-note"></i> <span data-i18n="guest.notes">Private Notizen</span></h2>
+            </div>
+            <div class="card-body">
+                <textarea id="guestNotes" class="notes-textarea" data-i18n-placeholder="guest.notes.placeholder" placeholder="Private Notizen über diesen Gast hinzufügen...">{{ guest.notes or '' }}</textarea>
+                <button class="btn btn-primary" onclick="saveNotes()">
+                    <i class="fas fa-save"></i> <span data-i18n="guest.notes.save">Notizen speichern</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Guest Modal -->
+    <dialog id="editGuestModal" class="edit-modal" aria-labelledby="editGuestTitle">
+        <form id="editGuestForm">
+            <div class="modal-header">
+                <h2 id="editGuestTitle" data-i18n="guest.edit.title">Gastinformationen bearbeiten</h2>
+                <button type="button" class="btn-close" onclick="closeEditGuestModal()" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="editGuestName" data-i18n="guest.info.name">Name</label>
+                    <input type="text" id="editGuestName" name="name" value="{{ guest.name or '' }}">
+                </div>
+                <div class="form-group">
+                    <label for="editGuestEmail" data-i18n="guest.info.email">E-Mail</label>
+                    <input type="email" id="editGuestEmail" name="email" value="{{ guest.email or '' }}">
+                </div>
+                <div class="form-group">
+                    <label for="editGuestPhone" data-i18n="guest.info.phone">Telefon</label>
+                    <input type="tel" id="editGuestPhone" name="phone" value="{{ guest.phone or '' }}">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeEditGuestModal()" data-i18n="common.cancel">Abbrechen</button>
+                <button type="submit" class="btn btn-primary" data-i18n="guest.info.save">Änderungen speichern</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- Merge Guest Modal -->
+    <dialog id="mergeGuestModal" class="edit-modal merge-modal" aria-labelledby="mergeGuestTitle">
+        <div class="modal-header">
+            <h2 id="mergeGuestTitle" data-i18n="guest.merge.title">Gäste zusammenführen</h2>
+            <button type="button" class="btn-close" onclick="closeMergeGuestModal()" aria-label="Close">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p class="merge-description" data-i18n="guest.merge.description">Wählen Sie einen Gast, der in dieses Profil zusammengeführt werden soll. Alle Konversationen und Erinnerungen werden übertragen.</p>
+
+            <!-- Step 1: Select Guest -->
+            <div id="mergeStep1">
+                <div class="form-group">
+                    <label for="mergeTargetSelect" data-i18n="guest.merge.selectGuest">Gast auswählen</label>
+                    <select id="mergeTargetSelect" class="guest-dropdown" style="width:100%;">
+                        <option value="">-- Select --</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeMergeGuestModal()" data-i18n="common.cancel">Abbrechen</button>
+                    <button type="button" class="btn btn-primary" onclick="previewMerge()" data-i18n="guest.merge.preview">Vorschau</button>
+                </div>
+            </div>
+
+            <!-- Step 2: Preview -->
+            <div id="mergeStep2" style="display:none;">
+                <div class="merge-preview-grid" id="mergePreviewGrid">
+                    <div class="merge-preview-item">
+                        <span class="merge-preview-value" id="mergePreviewConversations">0</span>
+                        <span class="merge-preview-label" data-i18n="guest.merge.conversations">Konversationen</span>
+                    </div>
+                    <div class="merge-preview-item">
+                        <span class="merge-preview-value" id="mergePreviewDetails">0</span>
+                        <span class="merge-preview-label" data-i18n="guest.merge.details">Erinnerungen</span>
+                    </div>
+                    <div class="merge-preview-item">
+                        <span class="merge-preview-value" id="mergePreviewPlatforms">0</span>
+                        <span class="merge-preview-label" data-i18n="guest.merge.platforms">Plattformen</span>
+                    </div>
+                </div>
+                <div class="merge-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span data-i18n="guest.merge.warning">Der ausgewählte Gast wird nach dem Zusammenführen gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.</span>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="showMergeStep1()" data-i18n="common.cancel">Zurück</button>
+                    <button type="button" class="btn btn-primary" style="background:var(--danger-color);" onclick="executeMerge()" data-i18n="guest.merge.confirm">Zusammenführen bestätigen</button>
+                </div>
+            </div>
+        </div>
+    </dialog>
+</div>
+
+<script>
+    const guestId = {{ guest.id }};
+
+    async function saveNotes() {
+        const notes = document.getElementById('guestNotes').value;
+        try {
+            await apiRequest(`/chatbot/api/guests/${guestId}`, 'PATCH', { notes: notes });
+            showNotification('Notes saved', 'success');
+        } catch (error) {
+            showNotification('Failed to save notes', 'error');
+        }
+    }
+
+    // Guest edit modal
+    const editGuestModal = document.getElementById('editGuestModal');
+
+    function openEditGuestModal() {
+        editGuestModal.showModal();
+    }
+
+    function closeEditGuestModal() {
+        editGuestModal.close();
+    }
+
+    // Close on backdrop click
+    editGuestModal.addEventListener('click', (e) => {
+        if (e.target === editGuestModal) closeEditGuestModal();
+    });
+
+    // Handle form submission with specific error handling for 409 conflict
+    document.getElementById('editGuestForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = {
+            name: document.getElementById('editGuestName').value.trim() || null,
+            email: document.getElementById('editGuestEmail').value.trim() || null,
+            phone: document.getElementById('editGuestPhone').value.trim() || null
+        };
+
+        try {
+            await apiRequest(`/chatbot/api/guests/${guestId}`, 'PATCH', data);
+            showNotification('Guest updated successfully', 'success');
+            location.reload();
+        } catch (error) {
+            // Parse and display specific error message for 409 conflict
+            if (error.message && error.message.includes('already in use')) {
+                showNotification('Email already in use by another guest', 'error');
+            } else if (error.message) {
+                showNotification(error.message, 'error');
+            } else {
+                showNotification('Failed to update guest', 'error');
+            }
+        }
+    });
+
+    // Delete memory item - uses existing deleteGuestDetail from app.js
+    async function deleteMemory(btn) {
+        const item = btn.closest('.memory-item');
+        const detailId = item.dataset.id;
+
+        if (!confirm('Delete this memory item?')) return;
+
+        const success = await deleteGuestDetail(guestId, detailId);
+        if (success) {
+            item.remove();
+            // Check if section is now empty
+            const section = item.closest('.memory-items');
+            if (section && !section.querySelector('.memory-item')) {
+                // Add "no data" message
+                const noData = document.createElement('p');
+                noData.className = 'no-data';
+                noData.textContent = 'No items recorded';
+                section.insertBefore(noData, section.querySelector('.memory-add-form'));
+            }
+        }
+    }
+
+    // Add memory item - uses existing addGuestDetail from app.js
+    async function addMemory(btn) {
+        const form = btn.closest('.memory-add-form');
+        const detailType = form.dataset.detailType;
+        const noKey = form.dataset.noKey === 'true';
+
+        let detailKey, detailValue;
+
+        if (noKey) {
+            detailValue = form.querySelector('.memory-value-input').value.trim();
+            detailKey = detailType; // Use type as key for interests/requests
+        } else {
+            detailKey = form.querySelector('.memory-key-input').value.trim();
+            detailValue = form.querySelector('.memory-value-input').value.trim();
+        }
+
+        if (!detailValue || (!noKey && !detailKey)) {
+            showNotification('Please fill in all fields', 'error');
+            return;
+        }
+
+        const result = await addGuestDetail(guestId, detailType, detailKey, detailValue);
+        if (result) {
+            // Remove "no data" message if present
+            const section = form.closest('.memory-items');
+            const noData = section.querySelector('.no-data');
+            if (noData) noData.remove();
+
+            // Create new item element
+            const newItem = document.createElement('div');
+            newItem.className = 'memory-item';
+            newItem.dataset.id = result.id;
+
+            if (noKey) {
+                newItem.innerHTML = `
+                    <span class="memory-value" data-detail-id="${result.id}" data-editable="true">${escapeHtml(detailValue)}</span>
+                    <span class="memory-confidence">100%</span>
+                    <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                        <i class="fas fa-times"></i>
+                    </button>
+                `;
+            } else {
+                newItem.innerHTML = `
+                    <span class="memory-key">${escapeHtml(detailKey)}</span>
+                    <span class="memory-value" data-detail-id="${result.id}" data-editable="true">${escapeHtml(detailValue)}</span>
+                    <span class="memory-confidence">100%</span>
+                    <button type="button" class="btn-delete-memory" onclick="deleteMemory(this)" title="Delete">
+                        <i class="fas fa-times"></i>
+                    </button>
+                `;
+            }
+
+            // Insert before add form
+            section.insertBefore(newItem, form);
+
+            // Clear inputs
+            form.querySelectorAll('input').forEach(input => input.value = '');
+
+            // Initialize inline editing on new element
+            initInlineEditing(newItem.querySelector('.memory-value'));
+        }
+    }
+
+    // Escape HTML for XSS prevention
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Inline editing
+    function initInlineEditing(el) {
+        if (!el) return;
+        el.addEventListener('click', startInlineEditing);
+    }
+
+    function startInlineEditing(e) {
+        const el = e.target;
+        if (el.contentEditable === 'true' || el.contentEditable === 'plaintext-only') return;
+
+        el.dataset.originalValue = el.textContent;
+        el.contentEditable = 'plaintext-only';
+        el.focus();
+
+        // Select all text
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+
+        el.addEventListener('blur', finishInlineEditing, { once: true });
+        el.addEventListener('keydown', handleInlineKeydown);
+    }
+
+    function handleInlineKeydown(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            e.target.blur();
+        } else if (e.key === 'Escape') {
+            e.target.textContent = e.target.dataset.originalValue;
+            e.target.blur();
+        }
+    }
+
+    async function finishInlineEditing(e) {
+        const el = e.target;
+        el.contentEditable = 'false';
+        el.removeEventListener('keydown', handleInlineKeydown);
+
+        const newValue = el.textContent.trim();
+        const originalValue = el.dataset.originalValue;
+
+        if (newValue === originalValue || !newValue) {
+            el.textContent = originalValue;
+            return;
+        }
+
+        const detailId = el.dataset.detailId;
+
+        try {
+            await apiRequest(`/chatbot/api/guests/${guestId}/details/${detailId}`, 'PATCH', {
+                detail_value: newValue
+            });
+            showNotification('Updated', 'success');
+        } catch (error) {
+            el.textContent = originalValue;
+            showNotification('Failed to update', 'error');
+        }
+    }
+
+    // Initialize inline editing on all editable elements
+    document.querySelectorAll('.memory-value[data-editable="true"]').forEach(initInlineEditing);
+
+    // =========================================================================
+    // Guest Merge
+    // =========================================================================
+    const mergeGuestModal = document.getElementById('mergeGuestModal');
+    let mergeTargetId = null;
+
+    function openMergeGuestModal() {
+        populateMergeGuestDropdown();
+        showMergeStep1();
+        mergeGuestModal.showModal();
+    }
+
+    function closeMergeGuestModal() {
+        mergeGuestModal.close();
+        mergeTargetId = null;
+    }
+
+    mergeGuestModal.addEventListener('click', (e) => {
+        if (e.target === mergeGuestModal) closeMergeGuestModal();
+    });
+
+    function showMergeStep1() {
+        document.getElementById('mergeStep1').style.display = '';
+        document.getElementById('mergeStep2').style.display = 'none';
+    }
+
+    async function populateMergeGuestDropdown() {
+        const select = document.getElementById('mergeTargetSelect');
+        select.innerHTML = '<option value="">-- Select --</option>';
+        try {
+            const response = await fetch('/chatbot/api/guests');
+            if (!response.ok) return;
+            const data = await response.json();
+            data.guests
+                .filter(g => g.id !== guestId)
+                .sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || ''))
+                .forEach(g => {
+                    const opt = document.createElement('option');
+                    opt.value = g.id;
+                    opt.textContent = g.name || g.email || 'Guest #' + g.id;
+                    select.appendChild(opt);
+                });
+        } catch (err) {
+            console.error('Failed to load guests for merge:', err);
+        }
+    }
+
+    async function previewMerge() {
+        const targetId = parseInt(document.getElementById('mergeTargetSelect').value);
+        if (!targetId) {
+            showNotification(i18n.t('guest.merge.selectGuest'), 'error');
+            return;
+        }
+        mergeTargetId = targetId;
+
+        try {
+            const response = await fetch(`/chatbot/api/guests/${guestId}/merge-preview`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_guest_id: targetId })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                showNotification(data.error || 'Preview failed', 'error');
+                return;
+            }
+
+            document.getElementById('mergePreviewConversations').textContent = data.conversations;
+            document.getElementById('mergePreviewDetails').textContent = data.details;
+            document.getElementById('mergePreviewPlatforms').textContent = data.platform_ids.length;
+
+            document.getElementById('mergeStep1').style.display = 'none';
+            document.getElementById('mergeStep2').style.display = '';
+        } catch (err) {
+            console.error('Merge preview failed:', err);
+            showNotification('Preview failed', 'error');
+        }
+    }
+
+    async function executeMerge() {
+        if (!mergeTargetId) return;
+
+        try {
+            const response = await fetch(`/chatbot/api/guests/${guestId}/merge`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_guest_id: mergeTargetId })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                showNotification(data.error || 'Merge failed', 'error');
+                return;
+            }
+
+            showNotification(i18n.t('guest.merge.success'), 'success');
+            closeMergeGuestModal();
+            setTimeout(() => location.reload(), 1000);
+        } catch (err) {
+            console.error('Merge failed:', err);
+            showNotification('Merge failed', 'error');
+        }
+    }
+</script>
+{% endblock %}

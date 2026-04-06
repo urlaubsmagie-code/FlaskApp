@@ -1,0 +1,2103 @@
+{% extends "chatbot/base.html" %}
+
+{% block title %}{{ _('Settings') if _ else 'Einstellungen' }}{% endblock %}
+
+{% block content %}
+<div class="settings-container">
+    <!-- Header -->
+    <div class="page-header">
+        <h1><i class="fas fa-cog"></i> <span data-i18n="settings.title">Einstellungen</span></h1>
+    </div>
+
+    <div class="settings-grid">
+        <!-- AI Settings -->
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i class="fas fa-robot"></i> <span data-i18n="settings.ai.title">UMI-Konfiguration</span></h2>
+            </div>
+            <div class="card-body">
+                <form id="aiSettingsForm">
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="masterAiEnabled" data-i18n="settings.ai.masterSwitch">UMI-Hauptschalter</label>
+                            <p class="setting-description" data-i18n="settings.ai.masterSwitch.desc">Wenn AUS, werden keine automatischen Antworten gesendet — gilt für alle Konversationen</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="masterAiEnabled" name="master_ai_enabled"
+                                onchange="saveToggleSetting('master_ai_enabled', this.checked)"
+                                {% if settings|selectattr('key', 'equalto', 'master_ai_enabled')|map(attribute='value')|first != 'false' %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="autoRespondNew" data-i18n="settings.ai.autoRespondNew">Auto-Antwort für neue Konversationen</label>
+                            <p class="setting-description" data-i18n="settings.ai.autoRespondNew.desc">Neue Konversationen starten mit aktivierter automatischer Antwort</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="autoRespondNew" name="auto_respond_new_conversations"
+                                onchange="saveToggleSetting('auto_respond_new_conversations', this.checked)"
+                                {% if settings|selectattr('key', 'equalto', 'auto_respond_new_conversations')|map(attribute='value')|first != 'false' %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="approvalQueueEnabled" data-i18n="settings.ai.approvalQueue">UMI-Freigabe</label>
+                            <p class="setting-description" data-i18n="settings.ai.approvalQueue.desc">UMI-Antworten müssen vor dem Versand genehmigt werden</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="approvalQueueEnabled" name="approval_queue_enabled"
+                                onchange="saveToggleSetting('approval_queue_enabled', this.checked)"
+                                {% if settings|selectattr('key', 'equalto', 'approval_queue_enabled')|map(attribute='value')|first != 'false' %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="autoApproveNew" data-i18n="settings.ai.autoApproveNew">Auto-Freigabe für neue Konversationen</label>
+                            <p class="setting-description" data-i18n="settings.ai.autoApproveNew.desc">Neue Konversationen starten mit aktivierter Auto-Freigabe (UMI sendet sofort)</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="autoApproveNew" name="auto_approve_new_conversations"
+                                onchange="saveToggleSetting('auto_approve_new_conversations', this.checked)"
+                                {% if settings|selectattr('key', 'equalto', 'auto_approve_new_conversations')|map(attribute='value')|first == 'true' %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label data-i18n="settings.ai.bulkAutoApprove">Auto-Freigabe für alle Chats</label>
+                            <p class="setting-description" data-i18n="settings.ai.bulkAutoApprove.desc">Auto-Freigabe für alle aktiven Konversationen ein- oder ausschalten</p>
+                        </div>
+                        <div class="button-group">
+                            <button class="btn btn-sm btn-success" onclick="bulkAutoApprove(true)" data-i18n="settings.ai.bulkAutoApprove.enable">Für alle aktivieren</button>
+                            <button class="btn btn-sm btn-danger" onclick="bulkAutoApprove(false)" data-i18n="settings.ai.bulkAutoApprove.disable">Für alle deaktivieren</button>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="memoryExtraction" data-i18n="settings.ai.memoryExtraction">Erinnerungsextraktion</label>
+                            <p class="setting-description" data-i18n="settings.ai.memoryExtraction.desc">Gästeinformationen aus Nachrichten extrahieren und speichern</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="memoryExtraction" name="memory_extraction_enabled"
+                                {% if settings|selectattr('key', 'equalto', 'memory_extraction_enabled')|map(attribute='value')|first == 'true' %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="responseTone" data-i18n="settings.ai.tone">Antwortton</label>
+                            <p class="setting-description" data-i18n="settings.ai.tone.desc">Ton für UMI-generierte Antworten auswählen</p>
+                        </div>
+                        <select id="responseTone" name="ai_response_tone" class="setting-select">
+                            {% set current_tone = settings|selectattr('key', 'equalto', 'ai_response_tone')|map(attribute='value')|first or 'friendly_professional' %}
+                            <option value="friendly_professional" {% if current_tone == 'friendly_professional' %}selected{% endif %} data-i18n="settings.ai.tone.friendly">Freundlich & Professionell</option>
+                            <option value="formal" {% if current_tone == 'formal' %}selected{% endif %} data-i18n="settings.ai.tone.formal">Formell</option>
+                            <option value="casual" {% if current_tone == 'casual' %}selected{% endif %} data-i18n="settings.ai.tone.casual">Locker</option>
+                            <option value="concise" {% if current_tone == 'concise' %}selected{% endif %} data-i18n="settings.ai.tone.concise">Prägnant</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="maxHistory" data-i18n="settings.ai.history">Konversationsverlauf</label>
+                            <p class="setting-description" data-i18n="settings.ai.history.desc">Anzahl der vorherigen Nachrichten für UMI-Kontext</p>
+                        </div>
+                        <input type="number" id="maxHistory" name="max_conversation_history"
+                            value="{{ settings|selectattr('key', 'equalto', 'max_conversation_history')|map(attribute='value')|first or '10' }}"
+                            min="1" max="50" class="setting-input">
+                    </div>
+
+                    <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                        <div class="setting-info" style="margin-bottom: 10px;">
+                            <label for="hostInstructions" data-i18n="settings.ai.hostInstructions">Host-Anweisungen</label>
+                            <p class="setting-description" data-i18n="settings.ai.hostInstructions.desc">Eigene Anweisungen, die UMI bei jeder Antwort berücksichtigen soll</p>
+                        </div>
+                        <textarea id="hostInstructions" name="host_instructions" class="setting-textarea" rows="5"
+                            data-i18n-placeholder="settings.ai.hostInstructions.placeholder"
+                            placeholder="z.B. WiFi-Passwort: SunnyBeach2024&#10;Erwähne unseren 10% Rabatt bei 7+ Nächten&#10;Check-in ab 15 Uhr an der Rezeption">{{ settings|selectattr('key', 'equalto', 'host_instructions')|map(attribute='value')|first or '' }}</textarea>
+                        <p class="setting-description" style="margin-top: 8px;">
+                            <span data-i18n="settings.ai.knowledgeLink">Für strukturierte Fakten (WLAN, Check-in, Umgebung) nutze die</span>
+                            <a href="{{ url_for('chatbot.knowledge_base') }}" style="color: var(--primary-color);">
+                                <span data-i18n="settings.ai.knowledgeLinkText">Wissensdatenbank →</span>
+                            </a>
+                        </p>
+                    </div>
+
+                    {% if current_user.is_admin %}
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="aiTemperature" data-i18n="settings.ai.temperature">Temperatur</label>
+                            <p class="setting-description" data-i18n="settings.ai.temperature.desc">Kreativität der UMI-Antworten (0.0 = vorhersagbar, 1.0 = kreativ)</p>
+                        </div>
+                        <div class="range-with-value">
+                            <input type="range" id="aiTemperature" name="ai_temperature"
+                                min="0" max="1" step="0.1"
+                                value="{{ settings|selectattr('key', 'equalto', 'ai_temperature')|map(attribute='value')|first or '0.5' }}"
+                                oninput="document.getElementById('tempValue').textContent = this.value">
+                            <span class="range-value" id="tempValue">{{ settings|selectattr('key', 'equalto', 'ai_temperature')|map(attribute='value')|first or '0.5' }}</span>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="aiMaxTokens" data-i18n="settings.ai.maxTokens">Max. Tokens</label>
+                            <p class="setting-description" data-i18n="settings.ai.maxTokens.desc">Maximale Länge der UMI-Antworten (128-4096)</p>
+                        </div>
+                        <input type="number" id="aiMaxTokens" name="ai_max_tokens"
+                            value="{{ settings|selectattr('key', 'equalto', 'ai_max_tokens')|map(attribute='value')|first or '1024' }}"
+                            min="128" max="4096" step="128" class="setting-input">
+                    </div>
+                    {% endif %}
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> <span data-i18n="settings.ai.save">Einstellungen speichern</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- AI Model Selection (admin only) -->
+        {% if current_user.is_admin %}
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i class="fas fa-brain"></i> <span data-i18n="settings.model.title">UMI-Modell</span></h2>
+            </div>
+            <div class="card-body">
+                <!-- Connection Status -->
+                <div class="status-display" id="ollamaStatus">
+                    <div class="status-indicator checking">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span data-i18n="settings.server.checking">Verbindung wird geprüft...</span>
+                    </div>
+                </div>
+
+                <!-- Current Model -->
+                <div class="model-current" id="currentModelInfo">
+                    <div class="info-row">
+                        <span class="info-label" data-i18n="settings.model.active">Aktives Modell</span>
+                        <span class="info-value model-name-badge" id="currentModelName">-</span>
+                    </div>
+                </div>
+
+                <!-- Model Selector -->
+                <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 10px;">
+                    <div class="setting-info">
+                        <label for="modelSelect" data-i18n="settings.model.change">Modell wechseln</label>
+                        <p class="setting-description" data-i18n="settings.model.change.desc">Wählen Sie ein installiertes Modell aus. Größere Modelle sind intelligenter, brauchen aber mehr Speicher.</p>
+                    </div>
+                    <select id="modelSelect" class="setting-select" style="width: 100%;">
+                        <option value="" data-i18n="settings.model.loading">Modelle werden geladen...</option>
+                    </select>
+                </div>
+
+                <!-- Resource Info for Selected Model -->
+                <div class="model-resource-info" id="modelResourceInfo" style="display: none;">
+                    <div class="resource-grid">
+                        <div class="resource-item">
+                            <i class="fas fa-microchip"></i>
+                            <span class="resource-label">VRAM</span>
+                            <span class="resource-value" id="modelVram">-</span>
+                        </div>
+                        <div class="resource-item">
+                            <i class="fas fa-memory"></i>
+                            <span class="resource-label">RAM</span>
+                            <span class="resource-value" id="modelRam">-</span>
+                        </div>
+                        <div class="resource-item">
+                            <i class="fas fa-star"></i>
+                            <span class="resource-label" data-i18n="settings.model.quality">Qualität</span>
+                            <span class="resource-value" id="modelQuality">-</span>
+                        </div>
+                        <div class="resource-item">
+                            <i class="fas fa-tachometer-alt"></i>
+                            <span class="resource-label" data-i18n="settings.model.speed">Geschwindigkeit</span>
+                            <span class="resource-value" id="modelSpeed">-</span>
+                        </div>
+                    </div>
+                    <div class="resource-warning" id="modelWarning" style="display: none;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span id="modelWarningText"></span>
+                    </div>
+                </div>
+
+                <div class="model-actions">
+                    <button class="btn btn-primary" id="applyModelBtn" onclick="applyModel()" disabled>
+                        <i class="fas fa-check"></i> <span data-i18n="settings.model.apply">Modell anwenden</span>
+                    </button>
+                    <button class="btn btn-secondary" onclick="testAI()">
+                        <i class="fas fa-vial"></i> <span data-i18n="settings.server.test">UMI-Verbindung testen</span>
+                    </button>
+                </div>
+
+                <!-- Suggested Models -->
+                <div class="model-suggestions" id="modelSuggestions" style="display: none;">
+                    <h3 data-i18n="settings.model.suggested">Empfohlene Modelle</h3>
+                    <p class="help-text" data-i18n="settings.model.suggested.desc">Diese Modelle sind noch nicht installiert. Führen Sie den Befehl in Ihrem Terminal aus, um sie herunterzuladen.</p>
+                    <div id="suggestedModelsList"></div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Properties -->
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i class="fas fa-home"></i> <span data-i18n="settings.properties.title">Unterkünfte</span></h2>
+            </div>
+            <div class="card-body">
+                <div class="properties-list" id="propertiesList">
+                    <!-- Populated by JavaScript -->
+                </div>
+                <p class="no-data" id="propertiesEmpty" style="display:none;" data-i18n="settings.properties.empty">Noch keine Unterkünfte konfiguriert</p>
+                <p class="help-text" data-i18n="settings.properties.help">Unterkünfte helfen UMI, relevantere Antworten zu geben.</p>
+                <button class="btn btn-secondary" onclick="openPropertyModal()">
+                    <i class="fas fa-plus"></i> <span data-i18n="settings.properties.add">Unterkunft hinzufügen</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Quick Reply Templates -->
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i class="fas fa-reply"></i> <span data-i18n="settings.templates.title">Schnellantwort-Vorlagen</span></h2>
+            </div>
+            <div class="card-body">
+                <div class="templates-list" id="templatesList">
+                    <!-- Populated by JavaScript -->
+                </div>
+                <p class="no-data" id="templatesEmpty" style="display:none;" data-i18n="settings.templates.empty">Noch keine Vorlagen erstellt</p>
+                <p class="help-text" data-i18n="settings.templates.help">Vorlagen sparen Zeit bei häufig gesendeten Nachrichten. Variablen: {guest_name}, {property_name}, {check_in_time}</p>
+                <button class="btn btn-secondary" onclick="openTemplateModal()">
+                    <i class="fas fa-plus"></i> <span data-i18n="settings.templates.add">Vorlage hinzufügen</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- User Management (admin only) -->
+        {% if current_user.is_admin %}
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i class="fas fa-users-cog"></i> <span data-i18n="settings.users.title">Benutzerverwaltung</span></h2>
+            </div>
+            <div class="card-body">
+                <div class="users-list" id="usersList">
+                    <!-- Populated by JavaScript -->
+                </div>
+                <p class="help-text" data-i18n="settings.users.help">Admins können Einstellungen, Statistiken und Debug-Seiten sehen und Benutzer verwalten.</p>
+                <button class="btn btn-secondary" onclick="openUserModal()">
+                    <i class="fas fa-user-plus"></i> <span data-i18n="settings.users.add">Benutzer hinzufügen</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Platform Integrations (admin only) -->
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i class="fas fa-plug"></i> <span data-i18n="settings.integrations.title">Plattform-Integrationen</span></h2>
+            </div>
+            <div class="card-body">
+                <!-- Gmail Integration -->
+                <div class="integration-item" id="gmailIntegration">
+                    <div class="integration-icon email">
+                        <i class="fas fa-envelope"></i>
+                    </div>
+                    <div class="integration-info">
+                        <span class="integration-name" data-i18n="settings.integrations.gmail">Gmail</span>
+                        <span class="integration-status" id="gmailStatus" data-i18n="common.loading">Laden...</span>
+                        <span class="integration-email" id="gmailEmail"></span>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" id="gmailButton" onclick="handleGmailAction()">
+                        <span data-i18n="settings.integrations.connect">Verbinden</span>
+                    </button>
+                </div>
+
+                <!-- Gmail Actions (shown when connected) -->
+                <div class="gmail-actions" id="gmailActions" style="display: none;">
+                    <div class="action-buttons">
+                        <button class="btn btn-primary btn-sm" onclick="fetchEmails()">
+                            <i class="fas fa-download"></i> <span data-i18n="settings.integrations.fetchEmails">E-Mails abrufen</span>
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="processEmails()">
+                            <i class="fas fa-cogs"></i> <span data-i18n="settings.integrations.processUnread">Ungelesene verarbeiten</span>
+                        </button>
+                    </div>
+                    <p class="help-text" data-i18n="settings.integrations.gmailHelp">Abrufen importiert E-Mails in den Posteingang. Verarbeiten führt UMI auf ungelesene E-Mails aus.</p>
+                </div>
+
+                <!-- Smoobu -->
+                <div class="integration-item" id="smoobuIntegration">
+                    <div class="integration-icon smoobu">
+                        <i class="fas fa-building"></i>
+                    </div>
+                    <div class="integration-info">
+                        <span class="integration-name" data-i18n="settings.integrations.smoobu">Smoobu</span>
+                        <span class="integration-status" id="smoobuStatus" data-i18n="settings.integrations.notConfigured">Nicht konfiguriert</span>
+                    </div>
+                    <div id="smoobuConnectForm" style="display:flex; gap:8px; align-items:center;">
+                        <input type="password" id="smoobuApiKey" placeholder="API Key" class="setting-select" style="min-width:200px;">
+                        <button class="btn btn-primary btn-sm" onclick="connectSmoobu()" data-i18n="settings.integrations.connect">Verbinden</button>
+                    </div>
+                </div>
+
+                <!-- Smoobu Actions (shown when connected) -->
+                <div class="smoobu-actions" id="smoobuConnectedActions" style="display: none;">
+                    <div class="action-buttons">
+                        <button class="btn btn-secondary btn-sm" onclick="syncSmoobuMessages()">
+                            <i class="fas fa-sync-alt"></i> <span data-i18n="settings.integrations.smoobu.syncMessages">Nachrichten synchronisieren</span>
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="syncSmoobuProperties()">
+                            <i class="fas fa-home"></i> <span data-i18n="settings.integrations.smoobu.syncProperties">Unterkünfte synchronisieren</span>
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="fullSmoobuSync()">
+                            <i class="fas fa-sync"></i> <span data-i18n="settings.integrations.smoobu.fullSync">Vollständige Synchronisierung</span>
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="disconnectSmoobu()">
+                            <i class="fas fa-unlink"></i> <span data-i18n="settings.integrations.disconnect">Trennen</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Email Filtering -->
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i class="fas fa-filter"></i> <span data-i18n="settings.filter.title">E-Mail-Filterung</span></h2>
+            </div>
+            <div class="card-body">
+                <p class="help-text" style="margin-bottom: 15px;" data-i18n="settings.filter.desc">
+                    Nur E-Mails, die diesen Filtern entsprechen, werden verarbeitet. Dies verhindert, dass persönliche E-Mails von UMI bearbeitet werden.
+                </p>
+
+                <form id="emailFilterForm">
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="filterMode" data-i18n="settings.filter.mode">Filtermodus</label>
+                            <p class="setting-description" data-i18n="settings.filter.mode.desc">Wie Domain- und Schlüsselwortfilter angewendet werden</p>
+                        </div>
+                        <select id="filterMode" name="filter_mode" class="setting-select">
+                            <option value="either" selected data-i18n="settings.filter.mode.either">Entweder (Domain ODER Schlüsselwort)</option>
+                            <option value="domain" data-i18n="settings.filter.mode.domain">Nur Domain</option>
+                            <option value="keyword" data-i18n="settings.filter.mode.keyword">Nur Schlüsselwort</option>
+                            <option value="both" data-i18n="settings.filter.mode.both">Beides (Domain UND Schlüsselwort)</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                        <div class="setting-info" style="margin-bottom: 10px;">
+                            <label for="allowedDomains" data-i18n="settings.filter.domains">Erlaubte Domains</label>
+                            <p class="setting-description" data-i18n="settings.filter.domains.desc">Nur E-Mails VON diesen Domains verarbeiten (eine pro Zeile)</p>
+                        </div>
+                        <textarea id="allowedDomains" name="allowed_domains" class="setting-textarea" rows="6" placeholder="airbnb.com
+booking.com
+guest.booking.com">airbnb.com
+airbnb.de
+airbnb.es
+airbnb.fr
+airbnb.it
+booking.com
+guest.booking.com</textarea>
+                    </div>
+
+                    <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                        <div class="setting-info" style="margin-bottom: 10px;">
+                            <label for="subjectKeywords" data-i18n="settings.filter.keywords">Betreff-Schlüsselwörter</label>
+                            <p class="setting-description" data-i18n="settings.filter.keywords.desc">Nur E-Mails mit diesen Wörtern im Betreff verarbeiten (eines pro Zeile)</p>
+                        </div>
+                        <textarea id="subjectKeywords" name="subject_keywords" class="setting-textarea" rows="8" placeholder="booking
+reservation
+inquiry">booking
+reservation
+buchung
+reservierung
+inquiry
+anfrage
+check-in
+check-out
+guest
+gast
+confirmation</textarea>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> <span data-i18n="settings.filter.save">Filter speichern</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    // ============================================
+    // Instant-save for global AI toggles
+    // ============================================
+
+    function saveToggleSetting(key, checked) {
+        const data = {};
+        data[key] = checked ? 'true' : 'false';
+
+        fetch('/chatbot/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                showNotification(checked ? 'Enabled' : 'Disabled', 'success');
+            } else {
+                showNotification('Failed to save setting', 'error');
+            }
+        })
+        .catch(err => {
+            showNotification('Error: ' + err.message, 'error');
+        });
+    }
+
+    // ============================================
+    // Bulk Auto-Approve
+    // ============================================
+
+    async function bulkAutoApprove(enabled) {
+        try {
+            const response = await fetch('/chatbot/api/settings/bulk-auto-approve', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({enabled: enabled})
+            });
+            const data = await response.json();
+            if (data.success) {
+                showNotification(
+                    `Auto-Freigabe für ${data.updated_count} Konversationen ${enabled ? 'aktiviert' : 'deaktiviert'}`,
+                    'success'
+                );
+            }
+        } catch (error) {
+            showNotification('Fehler beim Aktualisieren', 'error');
+        }
+    }
+
+    {% if current_user.is_admin %}
+    // ============================================
+    // AI Model Management (admin only)
+    // ============================================
+
+    let installedModels = [];
+    let currentModel = '';
+
+    document.addEventListener('DOMContentLoaded', function() {
+        checkOllamaStatus();
+        loadModels();
+    });
+
+    function checkOllamaStatus() {
+        fetch('/chatbot/health')
+            .then(response => response.json())
+            .then(data => {
+                const statusEl = document.getElementById('ollamaStatus');
+                if (data.ai_service) {
+                    statusEl.innerHTML = `
+                        <div class="status-indicator online">
+                            <i class="fas fa-check-circle"></i>
+                            <span data-i18n="settings.server.connected">Verbunden und läuft</span>
+                        </div>
+                    `;
+                } else {
+                    statusEl.innerHTML = `
+                        <div class="status-indicator offline">
+                            <i class="fas fa-times-circle"></i>
+                            <span data-i18n="settings.server.disconnected">Nicht verbunden</span>
+                        </div>
+                    `;
+                }
+            })
+            .catch(() => {
+                document.getElementById('ollamaStatus').innerHTML = `
+                    <div class="status-indicator offline">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <span>Error checking status</span>
+                    </div>
+                `;
+            });
+    }
+
+    function loadModels() {
+        fetch('/chatbot/api/ollama/models')
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    document.getElementById('modelSelect').innerHTML = '<option value="">Ollama not connected</option>';
+                    return;
+                }
+
+                installedModels = data.installed || [];
+                currentModel = data.current_model || '';
+
+                // Update current model display
+                document.getElementById('currentModelName').textContent = currentModel;
+
+                // Populate model selector
+                const select = document.getElementById('modelSelect');
+                select.innerHTML = '';
+
+                if (installedModels.length === 0) {
+                    select.innerHTML = '<option value="">No models installed</option>';
+                    return;
+                }
+
+                installedModels.forEach(m => {
+                    const option = document.createElement('option');
+                    option.value = m.name;
+                    option.textContent = `${m.name} (${m.size_gb} GB)`;
+                    if (m.is_active) option.selected = true;
+                    option.dataset.vram = m.vram || '?';
+                    option.dataset.ram = m.ram || '?';
+                    option.dataset.quality = m.quality || '?';
+                    option.dataset.speed = m.speed || '?';
+                    option.dataset.sizeGb = m.size_gb || 0;
+                    select.appendChild(option);
+                });
+
+                // Show resource info for current selection
+                updateModelInfo();
+
+                // Show suggested models
+                if (data.suggested && data.suggested.length > 0) {
+                    showSuggestedModels(data.suggested);
+                }
+            })
+            .catch(err => {
+                console.error('Failed to load models:', err);
+                document.getElementById('modelSelect').innerHTML = '<option value="">Failed to load models</option>';
+            });
+    }
+
+    document.getElementById('modelSelect').addEventListener('change', updateModelInfo);
+
+    function updateModelInfo() {
+        const select = document.getElementById('modelSelect');
+        const selected = select.options[select.selectedIndex];
+        const infoPanel = document.getElementById('modelResourceInfo');
+        const applyBtn = document.getElementById('applyModelBtn');
+
+        if (!selected || !selected.value) {
+            infoPanel.style.display = 'none';
+            applyBtn.disabled = true;
+            return;
+        }
+
+        // Show resource info
+        document.getElementById('modelVram').textContent = selected.dataset.vram || '?';
+        document.getElementById('modelRam').textContent = selected.dataset.ram || '?';
+        document.getElementById('modelQuality').textContent = selected.dataset.quality || '?';
+        document.getElementById('modelSpeed').textContent = selected.dataset.speed || '?';
+        infoPanel.style.display = 'block';
+
+        // Check if model is different from current
+        const isDifferent = selected.value !== currentModel;
+        applyBtn.disabled = !isDifferent;
+
+        // Show warnings for large models
+        const sizeGb = parseFloat(selected.dataset.sizeGb) || 0;
+        const warningEl = document.getElementById('modelWarning');
+        const warningText = document.getElementById('modelWarningText');
+
+        if (sizeGb > 7) {
+            warningEl.style.display = 'flex';
+            warningText.textContent = `This model needs ${selected.dataset.vram} VRAM. If your GPU has less, it will use CPU (slower).`;
+        } else if (sizeGb > 4) {
+            warningEl.style.display = 'flex';
+            warningText.setAttribute('data-i18n', '');
+            warningText.textContent = `This model uses ${selected.dataset.vram} VRAM. Should fit in most 8GB GPUs.`;
+            warningEl.className = 'resource-warning info';
+        } else {
+            warningEl.style.display = 'none';
+        }
+    }
+
+    function applyModel() {
+        const select = document.getElementById('modelSelect');
+        const modelName = select.value;
+
+        if (!modelName) return;
+
+        const btn = document.getElementById('applyModelBtn');
+        btn.disabled = true;
+        select.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading model...';
+
+        fetch('/chatbot/api/settings/model', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: modelName }),
+            signal: AbortSignal.timeout(90000)  // 90s timeout for large models
+        })
+        .then(response => response.json())
+        .then(data => {
+            select.disabled = false;
+            if (data.success) {
+                currentModel = modelName;
+                document.getElementById('currentModelName').textContent = modelName;
+                showNotification(`Model changed to ${modelName}`, 'success');
+                btn.innerHTML = '<i class="fas fa-check"></i> <span data-i18n="settings.model.apply">Modell anwenden</span>';
+                btn.disabled = true;
+            } else {
+                showNotification('Error: ' + (data.error || 'Failed to change model'), 'error');
+                btn.innerHTML = '<i class="fas fa-check"></i> <span data-i18n="settings.model.apply">Modell anwenden</span>';
+                btn.disabled = false;
+            }
+        })
+        .catch(err => {
+            select.disabled = false;
+            const msg = err.name === 'TimeoutError'
+                ? 'Model loading timed out. It may be too large for your system.'
+                : err.message;
+            showNotification('Error: ' + msg, 'error');
+            btn.innerHTML = '<i class="fas fa-check"></i> <span data-i18n="settings.model.apply">Modell anwenden</span>';
+            btn.disabled = false;
+        });
+    }
+
+    function showSuggestedModels(suggested) {
+        const container = document.getElementById('modelSuggestions');
+        const list = document.getElementById('suggestedModelsList');
+
+        if (!suggested || suggested.length === 0) {
+            container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = 'block';
+        list.innerHTML = suggested.map(m => `
+            <div class="suggested-model-item">
+                <div class="suggested-model-info">
+                    <span class="suggested-model-name">${escapeHtml(m.name)}</span>
+                    <span class="suggested-model-desc">${escapeHtml(m.description)}</span>
+                    <div class="suggested-model-specs">
+                        <span><i class="fas fa-microchip"></i> ${m.vram}</span>
+                        <span><i class="fas fa-memory"></i> ${m.ram}</span>
+                        <span><i class="fas fa-star"></i> ${m.quality}</span>
+                        <span><i class="fas fa-tachometer-alt"></i> ${m.speed}</span>
+                    </div>
+                </div>
+                <code class="pull-command">ollama pull ${escapeHtml(m.name)}</code>
+            </div>
+        `).join('');
+    }
+
+    function testAI() {
+        const testMessage = "Hello, I'm interested in booking your property for next weekend. I'll be traveling with my wife and our dog Max.";
+
+        fetch('/chatbot/api/test-ai', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: testMessage })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showNotification('AI Test Failed: ' + data.error, 'error');
+            } else {
+                showNotification('AI Test Successful! Check console for details.', 'success');
+                console.log('Extracted Info:', data.extracted_info);
+            }
+        })
+        .catch(err => {
+            showNotification('AI Test Failed: ' + err.message, 'error');
+        });
+    }
+
+    // Settings form submission
+    document.getElementById('aiSettingsForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const settings = {
+            memory_extraction_enabled: document.getElementById('memoryExtraction').checked ? 'true' : 'false',
+            ai_response_tone: document.getElementById('responseTone').value,
+            max_conversation_history: document.getElementById('maxHistory').value,
+            host_instructions: document.getElementById('hostInstructions').value,
+            ai_temperature: document.getElementById('aiTemperature').value,
+            ai_max_tokens: document.getElementById('aiMaxTokens').value
+        };
+
+        fetch('/chatbot/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification('Settings saved successfully!', 'success');
+            } else {
+                showNotification('Failed to save settings', 'error');
+            }
+        })
+        .catch(err => {
+            showNotification('Error saving settings: ' + err.message, 'error');
+        });
+    });
+
+    {% endif %}
+
+    // ============================================
+    // Property Management
+    // ============================================
+
+    let editingPropertyId = null;
+
+    function loadProperties() {
+        fetch('/chatbot/api/properties')
+            .then(response => response.json())
+            .then(data => {
+                const list = document.getElementById('propertiesList');
+                const empty = document.getElementById('propertiesEmpty');
+
+                if (!data.properties || data.properties.length === 0) {
+                    list.innerHTML = '';
+                    empty.style.display = 'block';
+                    return;
+                }
+
+                empty.style.display = 'none';
+                list.innerHTML = data.properties.map(prop => `
+                    <div class="property-item" data-property-id="${prop.id}">
+                        <div class="property-info">
+                            <span class="property-name">${escapeHtml(prop.name)}</span>
+                            <span class="property-address">${escapeHtml(prop.address || 'Keine Adresse')}</span>
+                        </div>
+                        <div class="property-meta">
+                            <span><i class="fas fa-bed"></i> ${prop.bedrooms}</span>
+                            <span><i class="fas fa-users"></i> ${prop.max_guests}</span>
+                            ${prop.pet_friendly ? '<span><i class="fas fa-paw"></i></span>' : ''}
+                        </div>
+                        <div class="property-actions">
+                            <button class="btn btn-icon btn-sm" onclick="editProperty(${prop.id})" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-icon btn-sm" onclick="deleteProperty(${prop.id})" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            })
+            .catch(err => console.error('Failed to load properties:', err));
+    }
+
+    function openPropertyModal(propertyData) {
+        editingPropertyId = propertyData ? propertyData.id : null;
+        const modal = document.getElementById('propertyModal');
+        const form = document.getElementById('propertyForm');
+        const title = modal.querySelector('.modal-header h2');
+
+        title.textContent = editingPropertyId ? 'Edit Property' : 'Add Property';
+        form.reset();
+
+        if (propertyData) {
+            document.getElementById('propName').value = propertyData.name || '';
+            document.getElementById('propAddress').value = propertyData.address || '';
+            document.getElementById('propDescription').value = propertyData.description || '';
+            document.getElementById('propAmenities').value = (propertyData.amenities || []).join(', ');
+            document.getElementById('propPetFriendly').checked = propertyData.pet_friendly || false;
+            document.getElementById('propMaxGuests').value = propertyData.max_guests || 4;
+            document.getElementById('propBedrooms').value = propertyData.bedrooms || 1;
+            document.getElementById('propBathrooms').value = propertyData.bathrooms || 1;
+            document.getElementById('propPrice').value = propertyData.price_per_night || '';
+            document.getElementById('propCheckIn').value = propertyData.check_in_time || '3:00 PM';
+            document.getElementById('propCheckOut').value = propertyData.check_out_time || '11:00 AM';
+            document.getElementById('propRules').value = propertyData.house_rules || '';
+        }
+
+        modal.showModal();
+    }
+
+    function editProperty(propertyId) {
+        fetch(`/chatbot/api/properties`)
+            .then(r => r.json())
+            .then(data => {
+                const prop = data.properties.find(p => p.id === propertyId);
+                if (prop) openPropertyModal(prop);
+            });
+    }
+
+    function deleteProperty(propertyId) {
+        if (!confirm('Are you sure you want to delete this property?')) return;
+
+        fetch(`/chatbot/api/properties/${propertyId}`, { method: 'DELETE' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification('Property deleted', 'success');
+                    loadProperties();
+                }
+            })
+            .catch(err => showNotification('Error: ' + err.message, 'error'));
+    }
+
+    function saveProperty() {
+        const amenitiesStr = document.getElementById('propAmenities').value;
+        const amenities = amenitiesStr.split(',').map(a => a.trim()).filter(a => a.length > 0);
+
+        const data = {
+            name: document.getElementById('propName').value.trim(),
+            address: document.getElementById('propAddress').value.trim(),
+            description: document.getElementById('propDescription').value.trim(),
+            amenities: amenities,
+            pet_friendly: document.getElementById('propPetFriendly').checked,
+            max_guests: parseInt(document.getElementById('propMaxGuests').value) || 4,
+            bedrooms: parseInt(document.getElementById('propBedrooms').value) || 1,
+            bathrooms: parseFloat(document.getElementById('propBathrooms').value) || 1,
+            price_per_night: parseFloat(document.getElementById('propPrice').value) || null,
+            check_in_time: document.getElementById('propCheckIn').value.trim() || '3:00 PM',
+            check_out_time: document.getElementById('propCheckOut').value.trim() || '11:00 AM',
+            house_rules: document.getElementById('propRules').value.trim()
+        };
+
+        if (!data.name) {
+            showNotification('Property name is required', 'error');
+            return;
+        }
+
+        const url = editingPropertyId
+            ? `/chatbot/api/properties/${editingPropertyId}`
+            : '/chatbot/api/properties';
+        const method = editingPropertyId ? 'PUT' : 'POST';
+
+        fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(r => r.json())
+        .then(result => {
+            if (result.error) {
+                showNotification('Error: ' + result.error, 'error');
+            } else {
+                showNotification(editingPropertyId ? 'Property updated' : 'Property added', 'success');
+                document.getElementById('propertyModal').close();
+                loadProperties();
+            }
+        })
+        .catch(err => showNotification('Error: ' + err.message, 'error'));
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // ============================================
+    // Reply Templates Management
+    // ============================================
+
+    let editingTemplateId = null;
+
+    function loadTemplates() {
+        fetch('/chatbot/api/reply-templates')
+            .then(response => response.json())
+            .then(data => {
+                const list = document.getElementById('templatesList');
+                const empty = document.getElementById('templatesEmpty');
+
+                if (!data.templates || data.templates.length === 0) {
+                    list.innerHTML = '';
+                    empty.style.display = 'block';
+                    return;
+                }
+
+                empty.style.display = 'none';
+                list.innerHTML = data.templates.map(tpl => `
+                    <div class="template-item" data-template-id="${tpl.id}">
+                        <div class="template-info">
+                            <span class="template-name">${escapeHtml(tpl.name)}</span>
+                            <span class="template-category">${escapeHtml(tpl.category)}</span>
+                            <span class="template-preview">${escapeHtml(tpl.content.substring(0, 80))}${tpl.content.length > 80 ? '...' : ''}</span>
+                        </div>
+                        <div class="template-actions">
+                            <button class="btn btn-icon btn-sm" onclick="editTemplate(${tpl.id})" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-icon btn-sm" onclick="deleteTemplate(${tpl.id})" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            })
+            .catch(err => console.error('Failed to load templates:', err));
+    }
+
+    function openTemplateModal(templateData) {
+        editingTemplateId = templateData ? templateData.id : null;
+        const modal = document.getElementById('templateModal');
+        const form = document.getElementById('templateForm');
+        const title = modal.querySelector('.modal-header h2');
+
+        title.textContent = editingTemplateId ? 'Edit Template' : 'Add Template';
+        form.reset();
+
+        if (templateData) {
+            document.getElementById('tplName').value = templateData.name || '';
+            document.getElementById('tplCategory').value = templateData.category || 'general';
+            document.getElementById('tplContent').value = templateData.content || '';
+        }
+
+        modal.showModal();
+    }
+
+    function editTemplate(templateId) {
+        fetch('/chatbot/api/reply-templates')
+            .then(r => r.json())
+            .then(data => {
+                const tpl = data.templates.find(t => t.id === templateId);
+                if (tpl) openTemplateModal(tpl);
+            });
+    }
+
+    function deleteTemplate(templateId) {
+        if (!confirm('Are you sure you want to delete this template?')) return;
+
+        fetch(`/chatbot/api/reply-templates/${templateId}`, { method: 'DELETE' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification('Template deleted', 'success');
+                    loadTemplates();
+                }
+            })
+            .catch(err => showNotification('Error: ' + err.message, 'error'));
+    }
+
+    function saveTemplate() {
+        const data = {
+            name: document.getElementById('tplName').value.trim(),
+            category: document.getElementById('tplCategory').value.trim() || 'general',
+            content: document.getElementById('tplContent').value.trim()
+        };
+
+        if (!data.name || !data.content) {
+            showNotification('Name and content are required', 'error');
+            return;
+        }
+
+        const url = editingTemplateId
+            ? `/chatbot/api/reply-templates/${editingTemplateId}`
+            : '/chatbot/api/reply-templates';
+        const method = editingTemplateId ? 'PUT' : 'POST';
+
+        fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(r => r.json())
+        .then(result => {
+            if (result.error) {
+                showNotification('Error: ' + result.error, 'error');
+            } else {
+                showNotification(editingTemplateId ? 'Template updated' : 'Template added', 'success');
+                document.getElementById('templateModal').close();
+                loadTemplates();
+            }
+        })
+        .catch(err => showNotification('Error: ' + err.message, 'error'));
+    }
+
+    {% if current_user.is_admin %}
+    // ============================================
+    // Gmail Integration Functions (admin only)
+    // ============================================
+
+    let gmailConnected = false;
+
+    // Check Gmail status on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        checkGmailStatus();
+
+        // Check if we just connected (redirect from OAuth)
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('gmail') === 'connected') {
+            showNotification('Gmail connected successfully!', 'success');
+            // Remove the query parameter
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    });
+
+    function checkGmailStatus() {
+        fetch('/chatbot/gmail/status')
+            .then(response => response.json())
+            .then(data => {
+                const statusEl = document.getElementById('gmailStatus');
+                const buttonEl = document.getElementById('gmailButton');
+                const emailEl = document.getElementById('gmailEmail');
+                const actionsEl = document.getElementById('gmailActions');
+
+                if (data.authenticated) {
+                    gmailConnected = true;
+                    statusEl.textContent = 'Connected';
+                    statusEl.className = 'integration-status connected';
+                    emailEl.textContent = data.email || '';
+                    emailEl.style.display = 'block';
+                    buttonEl.textContent = 'Disconnect';
+                    buttonEl.className = 'btn btn-danger btn-sm';
+                    actionsEl.style.display = 'block';
+                } else if (data.needs_reauth) {
+                    gmailConnected = false;
+                    statusEl.textContent = 'Session expired';
+                    statusEl.className = 'integration-status not-configured';
+                    emailEl.style.display = 'none';
+                    buttonEl.textContent = 'Reconnect';
+                    buttonEl.className = 'btn btn-warning btn-sm';
+                    actionsEl.style.display = 'none';
+                } else if (data.configured) {
+                    gmailConnected = false;
+                    statusEl.textContent = 'Not connected';
+                    statusEl.className = 'integration-status not-configured';
+                    emailEl.style.display = 'none';
+                    buttonEl.textContent = 'Connect';
+                    buttonEl.className = 'btn btn-primary btn-sm';
+                    actionsEl.style.display = 'none';
+                } else {
+                    gmailConnected = false;
+                    statusEl.textContent = 'Not configured';
+                    statusEl.className = 'integration-status not-configured';
+                    emailEl.style.display = 'none';
+                    buttonEl.textContent = 'Setup';
+                    buttonEl.className = 'btn btn-secondary btn-sm';
+                    actionsEl.style.display = 'none';
+                }
+            })
+            .catch(err => {
+                console.error('Error checking Gmail status:', err);
+                document.getElementById('gmailStatus').textContent = 'Error';
+            });
+    }
+
+    function handleGmailAction() {
+        if (gmailConnected) {
+            disconnectGmail();
+        } else {
+            connectGmail();
+        }
+    }
+
+    function connectGmail() {
+        // Redirect to OAuth flow
+        window.location.href = '/chatbot/gmail/authorize/redirect';
+    }
+
+    function disconnectGmail() {
+        if (!confirm('Are you sure you want to disconnect Gmail?')) {
+            return;
+        }
+
+        fetch('/chatbot/gmail/disconnect', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification('Gmail disconnected', 'info');
+                    checkGmailStatus();
+                } else {
+                    showNotification('Failed to disconnect Gmail', 'error');
+                }
+            })
+            .catch(err => {
+                showNotification('Error: ' + err.message, 'error');
+            });
+    }
+
+    function fetchEmails() {
+        showNotification('Fetching emails...', 'info');
+
+        fetch('/chatbot/api/gmail/emails/unread?max_results=10')
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showNotification('Error: ' + data.error, 'error');
+                } else {
+                    showNotification(`Found ${data.count} unread emails`, 'success');
+                    if (data.count > 0) {
+                        console.log('Emails:', data.emails);
+                    }
+                }
+            })
+            .catch(err => {
+                showNotification('Error fetching emails: ' + err.message, 'error');
+            });
+    }
+
+    function processEmails() {
+        if (!confirm('Process unread emails and generate AI responses?')) {
+            return;
+        }
+
+        showNotification('Processing emails with AI...', 'info');
+
+        fetch('/chatbot/api/gmail/process?auto_respond=true', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showNotification('Error: ' + data.error, 'error');
+                } else {
+                    showNotification(`Processed ${data.processed} emails`, 'success');
+                    console.log('Process results:', data.results);
+                    // Redirect to inbox to see new conversations
+                    if (data.processed > 0) {
+                        setTimeout(() => {
+                            window.location.href = '/chatbot/';
+                        }, 1500);
+                    }
+                }
+            })
+            .catch(err => {
+                showNotification('Error processing emails: ' + err.message, 'error');
+            });
+    }
+
+    function showNotification(message, type) {
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.className = `notification-toast ${type}`;
+        toast.innerHTML = `
+            <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+            <span>${message}</span>
+        `;
+
+        document.body.appendChild(toast);
+        setTimeout(() => toast.classList.add('show'), 10);
+
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    // ============================================
+    // User Management
+    // ============================================
+
+    function loadUsers() {
+        fetch('/chatbot/api/users')
+            .then(r => r.json())
+            .then(data => {
+                const list = document.getElementById('usersList');
+                if (!data.users || data.users.length === 0) {
+                    list.innerHTML = '<p class="no-data">No users</p>';
+                    return;
+                }
+                const currentUserId = {{ current_user.id }};
+                list.innerHTML = data.users.map(u => `
+                    <div class="user-item">
+                        <div class="user-item-avatar">${escapeHtml((u.display_name || '?')[0].toUpperCase())}</div>
+                        <div class="user-item-info">
+                            <span class="user-item-name">
+                                ${escapeHtml(u.display_name)}
+                                ${u.is_admin ? '<span class="badge badge-admin">Admin</span>' : ''}
+                            </span>
+                            <span class="user-item-username">@${escapeHtml(u.username)}</span>
+                        </div>
+                        <div class="user-item-actions">
+                            ${u.id !== currentUserId ? `
+                                <button class="btn btn-icon btn-sm" onclick="toggleAdmin(${u.id}, '${escapeHtml(u.display_name)}', ${u.is_admin})" title="${u.is_admin ? 'Remove admin' : 'Make admin'}">
+                                    <i class="fas fa-${u.is_admin ? 'user-minus' : 'user-shield'}"></i>
+                                </button>
+                            ` : ''}
+                            <button class="btn btn-icon btn-sm" onclick="resetPassword(${u.id}, '${escapeHtml(u.display_name)}')" title="Reset password">
+                                <i class="fas fa-key"></i>
+                            </button>
+                            ${u.id !== currentUserId ? `
+                                <button class="btn btn-icon btn-sm" onclick="deleteUser(${u.id}, '${escapeHtml(u.display_name)}')" title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `).join('');
+            })
+            .catch(err => console.error('Failed to load users:', err));
+    }
+
+    function openUserModal() {
+        const modal = document.getElementById('userModal');
+        document.getElementById('userForm').reset();
+        modal.showModal();
+    }
+
+    function saveUser() {
+        const data = {
+            username: document.getElementById('newUsername').value.trim(),
+            display_name: document.getElementById('newDisplayName').value.trim(),
+            password: document.getElementById('newPassword').value
+        };
+
+        if (!data.username || !data.display_name || !data.password) {
+            showNotification('All fields are required', 'error');
+            return;
+        }
+
+        fetch('/chatbot/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(r => r.json())
+        .then(result => {
+            if (result.error) {
+                showNotification('Error: ' + result.error, 'error');
+            } else {
+                showNotification('User created', 'success');
+                document.getElementById('userModal').close();
+                loadUsers();
+            }
+        })
+        .catch(err => showNotification('Error: ' + err.message, 'error'));
+    }
+
+    function deleteUser(userId, displayName) {
+        if (!confirm(`Delete user "${displayName}"?`)) return;
+
+        fetch(`/chatbot/api/users/${userId}`, { method: 'DELETE' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    showNotification('Error: ' + data.error, 'error');
+                } else {
+                    showNotification('User deleted', 'success');
+                    loadUsers();
+                }
+            })
+            .catch(err => showNotification('Error: ' + err.message, 'error'));
+    }
+
+    function toggleAdmin(userId, displayName, currentlyAdmin) {
+        const action = currentlyAdmin ? 'Admin-Rechte entfernen von' : 'Admin-Rechte geben an';
+        if (!confirm(`${action} "${displayName}"?`)) return;
+
+        fetch(`/chatbot/api/users/${userId}/admin`, { method: 'PUT' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    showNotification('Error: ' + data.error, 'error');
+                } else {
+                    showNotification(data.is_admin ? `${displayName} ist jetzt Admin` : `Admin-Rechte von ${displayName} entfernt`, 'success');
+                    loadUsers();
+                }
+            })
+            .catch(err => showNotification('Error: ' + err.message, 'error'));
+    }
+
+    function resetPassword(userId, displayName) {
+        const newPassword = prompt(`New password for "${displayName}" (min 4 characters):`);
+        if (!newPassword) return;
+        if (newPassword.length < 4) {
+            showNotification('Password must be at least 4 characters', 'error');
+            return;
+        }
+
+        fetch(`/chatbot/api/users/${userId}/password`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: newPassword })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                showNotification('Error: ' + data.error, 'error');
+            } else {
+                showNotification('Password reset', 'success');
+            }
+        })
+        .catch(err => showNotification('Error: ' + err.message, 'error'));
+    }
+
+    // Email Filter Settings
+    document.getElementById('emailFilterForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const formData = {
+            filter_mode: document.getElementById('filterMode').value,
+            allowed_domains: document.getElementById('allowedDomains').value
+                .split('\n')
+                .map(d => d.trim())
+                .filter(d => d.length > 0),
+            subject_keywords: document.getElementById('subjectKeywords').value
+                .split('\n')
+                .map(k => k.trim())
+                .filter(k => k.length > 0)
+        };
+
+        fetch('/chatbot/api/settings/email-filter', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification('Email filters saved successfully', 'success');
+            } else {
+                showNotification('Failed to save filters: ' + (data.error || 'Unknown error'), 'error');
+            }
+        })
+        .catch(err => {
+            showNotification('Error saving filters: ' + err.message, 'error');
+        });
+    });
+
+    // Load email filter settings on page load
+    function loadEmailFilterSettings() {
+        fetch('/chatbot/api/settings/email-filter')
+            .then(response => response.json())
+            .then(data => {
+                if (data.filter_mode) {
+                    document.getElementById('filterMode').value = data.filter_mode;
+                }
+                if (data.allowed_domains && data.allowed_domains.length > 0) {
+                    document.getElementById('allowedDomains').value = data.allowed_domains.join('\n');
+                }
+                if (data.subject_keywords && data.subject_keywords.length > 0) {
+                    document.getElementById('subjectKeywords').value = data.subject_keywords.join('\n');
+                }
+            })
+            .catch(err => {
+                console.log('Using default email filter settings');
+            });
+    }
+
+    // =========================================================================
+    // Smoobu Integration
+    // =========================================================================
+
+    function checkSmoobuStatus() {
+        fetch('/chatbot/smoobu/status')
+            .then(r => r.json())
+            .then(data => {
+                const statusEl = document.getElementById('smoobuStatus');
+                const connectForm = document.getElementById('smoobuConnectForm');
+                const connectedActions = document.getElementById('smoobuConnectedActions');
+
+                if (data.authenticated) {
+                    statusEl.textContent = (i18n.t('settings.integrations.connected') || 'Connected') + (data.api_key_masked ? ` (${data.api_key_masked})` : '');
+                    statusEl.className = 'integration-status connected';
+                    connectForm.style.display = 'none';
+                    connectedActions.style.display = 'block';
+                } else {
+                    statusEl.textContent = i18n.t('settings.integrations.notConfigured') || 'Not configured';
+                    statusEl.className = 'integration-status';
+                    connectForm.style.display = 'flex';
+                    connectedActions.style.display = 'none';
+                }
+            })
+            .catch(err => console.error('Smoobu status check failed:', err));
+    }
+
+    function connectSmoobu() {
+        const apiKey = document.getElementById('smoobuApiKey').value.trim();
+        if (!apiKey) {
+            showNotification(i18n.t('settings.integrations.smoobu.apiKey') + ' required', 'error');
+            return;
+        }
+
+        fetch('/chatbot/smoobu/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: apiKey })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showNotification(i18n.t('settings.integrations.smoobu.connected') || 'Connected to Smoobu', 'success');
+                document.getElementById('smoobuApiKey').value = '';
+                checkSmoobuStatus();
+            } else {
+                showNotification(data.error || 'Connection failed', 'error');
+            }
+        })
+        .catch(err => {
+            console.error('Smoobu connect failed:', err);
+            showNotification('Connection failed', 'error');
+        });
+    }
+
+    function disconnectSmoobu() {
+        if (!confirm(i18n.t('common.confirm') + '?')) return;
+
+        fetch('/chatbot/smoobu/disconnect', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification('Smoobu disconnected', 'success');
+                    checkSmoobuStatus();
+                }
+            })
+            .catch(err => console.error('Smoobu disconnect failed:', err));
+    }
+
+    function syncSmoobuMessages() {
+        const btn = event.target.closest('button');
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + (i18n.t('settings.integrations.smoobu.syncing') || 'Syncing...');
+
+        fetch('/chatbot/api/smoobu/sync', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const msg = (i18n.t('settings.integrations.smoobu.synced') || '{count} new message(s) synced')
+                        .replace('{count}', data.imported || 0);
+                    showNotification(msg, 'success');
+                } else {
+                    showNotification(data.errors?.[0] || 'Sync failed', 'error');
+                }
+            })
+            .catch(err => {
+                console.error('Smoobu sync failed:', err);
+                showNotification('Sync failed', 'error');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            });
+    }
+
+    function syncSmoobuProperties() {
+        const btn = event.target.closest('button');
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + (i18n.t('settings.integrations.smoobu.syncing') || 'Syncing...');
+
+        fetch('/chatbot/api/smoobu/sync-properties', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const msg = (i18n.t('settings.integrations.smoobu.propertiesSynced') || '{count} property(ies) synced')
+                        .replace('{count}', (data.imported || 0) + (data.updated || 0));
+                    showNotification(msg, 'success');
+                    // Reload properties list if it exists on the page
+                    if (typeof loadProperties === 'function') loadProperties();
+                } else {
+                    showNotification(data.errors?.[0] || 'Sync failed', 'error');
+                }
+            })
+            .catch(err => {
+                console.error('Smoobu property sync failed:', err);
+                showNotification('Sync failed', 'error');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            });
+    }
+
+    async function fullSmoobuSync() {
+        const btn = event.currentTarget;
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + (i18n.t('settings.integrations.smoobu.fullSyncing') || 'Vollständige Sync...');
+
+        try {
+            // Step 1: Sync properties
+            await fetch('/chatbot/api/smoobu/sync-properties', { method: 'POST' });
+
+            // Step 2: Sync messages
+            const syncRes = await fetch('/chatbot/api/smoobu/sync', { method: 'POST' });
+            const syncData = await syncRes.json();
+
+            // Step 3: Fix timestamps & reorder
+            const fixRes = await fetch('/chatbot/api/smoobu/fix-timestamps', { method: 'POST' });
+            const fixData = await fixRes.json();
+
+            const msgs = syncData.imported || 0;
+            const fixed = fixData.fixed || 0;
+            showNotification(
+                (i18n.t('settings.integrations.smoobu.fullSyncDone') || 'Vollständige Sync abgeschlossen: {msgs} neue Nachrichten, {fixed} Zeitstempel korrigiert')
+                    .replace('{msgs}', msgs).replace('{fixed}', fixed),
+                'success', 5000
+            );
+        } catch (err) {
+            console.error('Full Smoobu sync failed:', err);
+            showNotification('Full sync failed', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    }
+
+    // Check Smoobu status on page load
+    checkSmoobuStatus();
+    {% endif %}
+
+    // Load settings on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadProperties();
+        loadTemplates();
+        {% if current_user.is_admin %}
+        loadEmailFilterSettings();
+        loadUsers();
+        {% endif %}
+    });
+</script>
+
+<style>
+    .integration-status.connected {
+        color: #22c55e;
+    }
+    .integration-email {
+        display: block;
+        font-size: 0.75rem;
+        color: #64748b;
+    }
+    .btn-danger {
+        background: #ef4444;
+        color: white;
+        border: none;
+    }
+    .btn-danger:hover {
+        background: #dc2626;
+    }
+    .gmail-actions,
+    .smoobu-actions {
+        padding: 16px;
+        background: #f8fafc;
+        border-radius: 8px;
+        margin: 12px 0;
+    }
+    :root[data-theme="dark"] .gmail-actions,
+    :root[data-theme="dark"] .smoobu-actions {
+        background: var(--bg-primary);
+    }
+    .action-buttons {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+    .setting-textarea {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        font-family: monospace;
+        font-size: 0.875rem;
+        resize: vertical;
+        background: #f8fafc;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .setting-textarea:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        background: white;
+    }
+    .setting-textarea::placeholder {
+        color: #94a3b8;
+    }
+    /* Range slider with value display */
+    .range-with-value {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 180px;
+    }
+    .range-with-value input[type="range"] {
+        flex: 1;
+        height: 6px;
+        -webkit-appearance: none;
+        appearance: none;
+        background: #e2e8f0;
+        border-radius: 3px;
+        outline: none;
+    }
+    .range-with-value input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #3b82f6;
+        cursor: pointer;
+    }
+    .range-value {
+        font-weight: 600;
+        font-size: 0.9375rem;
+        min-width: 28px;
+        text-align: center;
+    }
+
+    /* Model Selection Styles */
+    .model-current {
+        margin: 12px 0;
+    }
+    .model-name-badge {
+        background: #3b82f6;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+    .model-resource-info {
+        background: var(--bg-primary, #f8fafc);
+        border-radius: 10px;
+        padding: 16px;
+        margin: 12px 0;
+    }
+    .resource-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+    .resource-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.875rem;
+    }
+    .resource-item i {
+        color: #64748b;
+        width: 16px;
+        text-align: center;
+    }
+    .resource-label {
+        color: #64748b;
+    }
+    .resource-value {
+        font-weight: 600;
+        color: #1e293b;
+        margin-left: auto;
+    }
+    .resource-warning {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
+        padding: 10px 14px;
+        background: #fef3c7;
+        color: #92400e;
+        border-radius: 8px;
+        font-size: 0.8125rem;
+    }
+    .resource-warning.info {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+    .resource-warning i {
+        flex-shrink: 0;
+    }
+    .model-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 16px;
+    }
+    .model-suggestions {
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid #e2e8f0;
+    }
+    .model-suggestions h3 {
+        font-size: 0.9375rem;
+        font-weight: 600;
+        margin: 0 0 4px 0;
+    }
+    .suggested-model-item {
+        background: var(--bg-primary, #f8fafc);
+        border-radius: 10px;
+        padding: 14px;
+        margin-top: 10px;
+    }
+    .suggested-model-name {
+        font-weight: 600;
+        display: block;
+        font-size: 0.9375rem;
+    }
+    .suggested-model-desc {
+        display: block;
+        font-size: 0.8125rem;
+        color: #64748b;
+        margin: 4px 0 8px 0;
+    }
+    .suggested-model-specs {
+        display: flex;
+        gap: 14px;
+        font-size: 0.8125rem;
+        color: #475569;
+        margin-bottom: 8px;
+    }
+    .suggested-model-specs i {
+        color: #94a3b8;
+        margin-right: 2px;
+    }
+    .pull-command {
+        display: block;
+        background: #1e293b;
+        color: #e2e8f0;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 0.8125rem;
+        font-family: 'Cascadia Code', 'Fira Code', monospace;
+        user-select: all;
+        cursor: pointer;
+    }
+
+    /* Dark mode overrides for model section */
+    :root[data-theme="dark"] .resource-value {
+        color: var(--text-primary, #f1f5f9);
+    }
+    :root[data-theme="dark"] .resource-warning {
+        background: #422006;
+        color: #fbbf24;
+    }
+    :root[data-theme="dark"] .resource-warning.info {
+        background: #1e3a5f;
+        color: #93c5fd;
+    }
+    :root[data-theme="dark"] .pull-command {
+        background: #0f172a;
+    }
+
+    .notification-toast {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        background: #1e293b;
+        color: white;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transform: translateX(120%);
+        transition: transform 0.3s ease;
+        z-index: 9999;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    .notification-toast.show {
+        transform: translateX(0);
+    }
+    .notification-toast.success { background: #166534; }
+    .notification-toast.error { background: #991b1b; }
+    .notification-toast.info { background: #1e40af; }
+
+    /* Property & Template Items */
+    .property-item, .template-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px;
+        background: var(--bg-primary, #f8fafc);
+        border-radius: 8px;
+        margin-bottom: 8px;
+    }
+    .property-info, .template-info { flex: 1; min-width: 0; }
+    .property-name, .template-name { font-weight: 500; display: block; }
+    .property-address, .template-category {
+        font-size: 0.8125rem;
+        color: #64748b;
+        display: block;
+    }
+    .template-preview {
+        font-size: 0.8125rem;
+        color: #94a3b8;
+        display: block;
+        margin-top: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .property-meta { display: flex; gap: 12px; font-size: 0.8125rem; color: #64748b; margin: 0 12px; }
+    .property-actions, .template-actions { display: flex; gap: 4px; }
+    .btn-icon {
+        background: none;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 6px 8px;
+        cursor: pointer;
+        color: #64748b;
+        transition: all 0.2s;
+    }
+    .btn-icon:hover { background: #f1f5f9; color: #1e293b; }
+
+    /* Settings Modals */
+    dialog.settings-modal {
+        border: none;
+        border-radius: 12px;
+        padding: 0;
+        max-width: 520px;
+        width: 90%;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    }
+    dialog.settings-modal::backdrop { background: rgba(0, 0, 0, 0.5); }
+    dialog.settings-modal .modal-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    dialog.settings-modal .modal-header h2 {
+        margin: 0;
+        font-size: 1.125rem;
+        font-weight: 600;
+    }
+    dialog.settings-modal .modal-body { padding: 20px; }
+    dialog.settings-modal .form-group {
+        margin-bottom: 16px;
+    }
+    dialog.settings-modal .form-group label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 500;
+        font-size: 0.875rem;
+        color: #374151;
+    }
+    dialog.settings-modal .form-group input,
+    dialog.settings-modal .form-group select,
+    dialog.settings-modal .form-group textarea {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-size: 0.9375rem;
+        font-family: inherit;
+        transition: border-color 0.2s;
+    }
+    dialog.settings-modal .form-group input:focus,
+    dialog.settings-modal .form-group select:focus,
+    dialog.settings-modal .form-group textarea:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+    dialog.settings-modal .form-group textarea {
+        resize: vertical;
+        min-height: 80px;
+    }
+    dialog.settings-modal .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+    /* User Management Items */
+    .user-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        background: var(--bg-primary, #f8fafc);
+        border-radius: 8px;
+        margin-bottom: 8px;
+    }
+    .user-item-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: #2563eb;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+    .user-item-info { flex: 1; min-width: 0; }
+    .user-item-name { font-weight: 500; display: block; font-size: 0.875rem; }
+    .user-item-username { font-size: 0.75rem; color: #64748b; }
+    .user-item-actions { display: flex; gap: 4px; }
+    .badge-admin {
+        display: inline-block;
+        background: var(--primary-color, #3b82f6);
+        color: #fff;
+        font-size: 0.65rem;
+        font-weight: 600;
+        padding: 1px 6px;
+        border-radius: 9999px;
+        margin-left: 6px;
+        vertical-align: middle;
+    }
+
+    dialog.settings-modal .form-row .form-group { margin-bottom: 0; }
+    dialog.settings-modal .form-check {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+    dialog.settings-modal .form-check input[type="checkbox"] {
+        width: auto;
+    }
+    dialog.settings-modal .modal-footer {
+        padding: 16px 20px;
+        border-top: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+</style>
+
+<!-- Property Modal -->
+<dialog class="settings-modal" id="propertyModal">
+    <div class="modal-header">
+        <h2>Add Property</h2>
+        <button class="btn-close" onclick="document.getElementById('propertyModal').close()">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    <form id="propertyForm" onsubmit="event.preventDefault(); saveProperty();">
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="propName" data-i18n="settings.properties.name">Name *</label>
+                <input type="text" id="propName" required placeholder="z.B. Ferienwohnung Sonnenschein">
+            </div>
+            <div class="form-group">
+                <label for="propAddress" data-i18n="settings.properties.address">Adresse</label>
+                <input type="text" id="propAddress" placeholder="Straße, Stadt">
+            </div>
+            <div class="form-group">
+                <label for="propDescription">Beschreibung</label>
+                <textarea id="propDescription" rows="3" placeholder="Beschreibung der Unterkunft..."></textarea>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="propBedrooms"><i class="fas fa-bed"></i> Schlafzimmer</label>
+                    <input type="number" id="propBedrooms" value="1" min="0" max="20">
+                </div>
+                <div class="form-group">
+                    <label for="propBathrooms"><i class="fas fa-bath"></i> Badezimmer</label>
+                    <input type="number" id="propBathrooms" value="1" min="0" max="10" step="0.5">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="propMaxGuests"><i class="fas fa-users"></i> Max. Gäste</label>
+                    <input type="number" id="propMaxGuests" value="4" min="1" max="50">
+                </div>
+                <div class="form-group">
+                    <label for="propPrice"><i class="fas fa-euro-sign"></i> Preis/Nacht</label>
+                    <input type="number" id="propPrice" step="0.01" placeholder="z.B. 89.00">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="propCheckIn">Check-in</label>
+                    <input type="text" id="propCheckIn" value="3:00 PM" placeholder="3:00 PM">
+                </div>
+                <div class="form-group">
+                    <label for="propCheckOut">Check-out</label>
+                    <input type="text" id="propCheckOut" value="11:00 AM" placeholder="11:00 AM">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="propAmenities">Ausstattung (kommagetrennt)</label>
+                <input type="text" id="propAmenities" placeholder="WiFi, Pool, Parking, Gym">
+            </div>
+            <div class="form-check">
+                <input type="checkbox" id="propPetFriendly">
+                <label for="propPetFriendly"><i class="fas fa-paw"></i> Haustierfreundlich</label>
+            </div>
+            <div class="form-group">
+                <label for="propRules">Hausregeln</label>
+                <textarea id="propRules" rows="3" placeholder="Wichtige Regeln für Gäste..."></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('propertyModal').close()">
+                <span data-i18n="common.cancel">Abbrechen</span>
+            </button>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save"></i> <span data-i18n="common.save">Speichern</span>
+            </button>
+        </div>
+    </form>
+</dialog>
+
+<!-- Template Modal -->
+<dialog class="settings-modal" id="templateModal">
+    <div class="modal-header">
+        <h2>Add Template</h2>
+        <button class="btn-close" onclick="document.getElementById('templateModal').close()">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    <form id="templateForm" onsubmit="event.preventDefault(); saveTemplate();">
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="tplName" data-i18n="settings.templates.name">Name *</label>
+                <input type="text" id="tplName" required placeholder="z.B. WiFi-Info, Check-in Anleitung">
+            </div>
+            <div class="form-group">
+                <label for="tplCategory" data-i18n="settings.templates.category">Kategorie</label>
+                <select id="tplCategory">
+                    <option value="general">Allgemein</option>
+                    <option value="check_in">Check-in</option>
+                    <option value="check_out">Check-out</option>
+                    <option value="house_rules">Hausregeln</option>
+                    <option value="directions">Wegbeschreibung</option>
+                    <option value="wifi">WiFi</option>
+                    <option value="amenities">Ausstattung</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="tplContent" data-i18n="settings.templates.content">Inhalt *</label>
+                <textarea id="tplContent" rows="6" required placeholder="Hallo {guest_name}, ...&#10;&#10;Variablen: {guest_name}, {property_name}, {check_in_time}"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('templateModal').close()">
+                <span data-i18n="common.cancel">Abbrechen</span>
+            </button>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save"></i> <span data-i18n="common.save">Speichern</span>
+            </button>
+        </div>
+    </form>
+</dialog>
+
+<!-- User Modal -->
+<dialog class="settings-modal" id="userModal">
+    <div class="modal-header">
+        <h2 data-i18n="settings.users.add">Benutzer hinzufügen</h2>
+        <button class="btn-close" onclick="document.getElementById('userModal').close()">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    <form id="userForm" onsubmit="event.preventDefault(); saveUser();">
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="newUsername" data-i18n="auth.username">Benutzername</label>
+                <input type="text" id="newUsername" required placeholder="z.B. maria">
+            </div>
+            <div class="form-group">
+                <label for="newDisplayName" data-i18n="auth.displayName">Anzeigename</label>
+                <input type="text" id="newDisplayName" required placeholder="z.B. Maria Schmidt">
+            </div>
+            <div class="form-group">
+                <label for="newPassword" data-i18n="auth.password">Passwort</label>
+                <input type="password" id="newPassword" required minlength="4" placeholder="Min. 4 Zeichen">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('userModal').close()">
+                <span data-i18n="common.cancel">Abbrechen</span>
+            </button>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-user-plus"></i> <span data-i18n="settings.users.add">Hinzufügen</span>
+            </button>
+        </div>
+    </form>
+</dialog>
+
+{% endblock %}

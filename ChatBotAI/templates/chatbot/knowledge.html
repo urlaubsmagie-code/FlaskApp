@@ -1,0 +1,130 @@
+{% extends "chatbot/base.html" %}
+
+{% block title %}{{ _('Knowledge Base') if _ else 'Wissensdatenbank' }}{% endblock %}
+
+{% block content %}
+<div class="settings-container">
+    <div class="page-header">
+        <h1><i class="fas fa-book"></i> <span data-i18n="knowledge.title">Wissensdatenbank</span></h1>
+        <button class="btn btn-primary" onclick="knowledgeApp.openAddModal()">
+            <i class="fas fa-plus"></i> <span data-i18n="knowledge.add">Eintrag hinzufügen</span>
+        </button>
+    </div>
+
+    <!-- Tab Bar -->
+    <div class="knowledge-tabs">
+        <button class="knowledge-tab active" data-tab="knowledge" onclick="knowledgeApp.switchTab('knowledge')">
+            <i class="fas fa-book"></i> <span data-i18n="knowledge.tab.knowledge">Wissen</span>
+        </button>
+        <button class="knowledge-tab" data-tab="escalation" onclick="knowledgeApp.switchTab('escalation')">
+            <i class="fas fa-exclamation-triangle"></i> <span data-i18n="knowledge.tab.escalation">Eskalation</span>
+        </button>
+        <button class="knowledge-tab" data-tab="corrections" onclick="knowledgeApp.switchTab('corrections')">
+            <i class="fas fa-spell-check"></i> <span data-i18n="knowledge.tab.corrections">Korrekturen</span>
+        </button>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="settings-card" style="margin-bottom: 20px;">
+        <div class="card-body" style="padding: 15px;">
+            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                <label data-i18n="knowledge.filter.property" style="font-weight: 500;">Unterkunft:</label>
+                <select id="propertyFilter" class="setting-input" style="max-width: 300px;" onchange="knowledgeApp.loadEntries()">
+                    <option value="" data-i18n="knowledge.filter.all">Alle</option>
+                    <option value="global" data-i18n="knowledge.filter.global">Global</option>
+                    {% for prop in properties %}
+                    <option value="{{ prop.id }}">{{ prop.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Entries Container -->
+    <div id="entriesContainer">
+        <div class="settings-card">
+            <div class="card-body" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                <i class="fas fa-spinner fa-spin" style="font-size: 24px;"></i>
+                <p data-i18n="knowledge.loading">Lade Einträge...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Modal -->
+<dialog id="knowledgeModal" class="edit-modal" style="max-width: 500px;" aria-labelledby="modalTitle">
+    <div class="modal-header">
+        <h2 id="modalTitle" data-i18n="knowledge.add">Eintrag hinzufügen</h2>
+        <button class="btn-close" onclick="knowledgeApp.closeModal()" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+        <form id="knowledgeForm" onsubmit="return knowledgeApp.saveEntry(event)">
+            <input type="hidden" id="entryId" value="">
+
+            <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                <label data-i18n="knowledge.scope">Geltungsbereich</label>
+                <div style="display: flex; gap: 15px; margin-top: 5px;">
+                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                        <input type="radio" name="scope" value="global" checked onchange="knowledgeApp.toggleScope()">
+                        <span data-i18n="knowledge.scope.global">Global</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                        <input type="radio" name="scope" value="property" onchange="knowledgeApp.toggleScope()">
+                        <span data-i18n="knowledge.scope.property">Pro Unterkunft</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="setting-item" id="propertySelectRow" style="flex-direction: column; align-items: flex-start; display: none;">
+                <label for="entryPropertyId" data-i18n="knowledge.property">Unterkunft</label>
+                <select id="entryPropertyId" class="setting-input" style="width: 100%;">
+                    {% for prop in properties %}
+                    <option value="{{ prop.id }}">{{ prop.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                <label for="entryCategory" data-i18n="knowledge.category">Kategorie</label>
+                <select id="entryCategory" class="setting-input" style="width: 100%;">
+                    <option value="general" data-i18n="knowledge.cat.general">Allgemeine Infos</option>
+                    <option value="checkin_checkout" data-i18n="knowledge.cat.checkin">Check-in / Check-out</option>
+                    <option value="nearby" data-i18n="knowledge.cat.nearby">In der Nähe</option>
+                    <option value="house_rules" data-i18n="knowledge.cat.rules">Hausregeln</option>
+                    <option value="emergency" data-i18n="knowledge.cat.emergency">Notfallkontakte</option>
+                    <option value="faq" data-i18n="knowledge.cat.faq">Häufige Fragen</option>
+                    <option value="esc_maintenance" data-i18n="knowledge.cat.esc_maintenance">Wartung / Reparatur</option>
+                    <option value="esc_cleanliness" data-i18n="knowledge.cat.esc_cleanliness">Sauberkeit</option>
+                    <option value="esc_noise" data-i18n="knowledge.cat.esc_noise">Lärm / Nachbarn</option>
+                    <option value="esc_payment" data-i18n="knowledge.cat.esc_payment">Zahlung / Erstattung</option>
+                    <option value="esc_access" data-i18n="knowledge.cat.esc_access">Schlüssel / Zugang</option>
+                    <option value="esc_emergency" data-i18n="knowledge.cat.esc_emergency">Notfall</option>
+                    <option value="esc_other" data-i18n="knowledge.cat.esc_other">Sonstiges</option>
+                    <option value="correction" data-i18n="knowledge.cat.correction">Korrektur</option>
+                </select>
+            </div>
+
+            <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                <label for="entryLabel" data-i18n="knowledge.label">Bezeichnung</label>
+                <input type="text" id="entryLabel" class="setting-input" style="width: 100%;"
+                    data-i18n-placeholder="knowledge.label.placeholder" placeholder="z.B. WLAN-Passwort" required maxlength="200">
+            </div>
+
+            <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                <label for="entryValue" data-i18n="knowledge.value">Information</label>
+                <textarea id="entryValue" class="setting-textarea" rows="4" style="width: 100%;"
+                    data-i18n-placeholder="knowledge.value.placeholder" placeholder="z.B. SunnyBeach2024" required maxlength="2000"></textarea>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="knowledgeApp.closeModal()" data-i18n="knowledge.cancel">Abbrechen</button>
+                <button type="submit" class="btn btn-primary" data-i18n="knowledge.save">Speichern</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('chatbot.static', filename='js/knowledge.js') }}?v=4"></script>
+{% endblock %}

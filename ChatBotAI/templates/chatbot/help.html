@@ -1,0 +1,437 @@
+{% extends "chatbot/base.html" %}
+
+{% block title %}Hilfe{% endblock %}
+
+{% block extra_css %}
+<style>
+    .help-container { padding: 24px; max-width: 900px; overflow-y: auto; height: 100%; }
+    .help-container h1 { font-size: 1.5em; margin: 0 0 20px; display: flex; align-items: center; gap: 10px; }
+
+    .help-section { margin-bottom: 28px; }
+    .help-section h2 { font-size: 1.15em; margin: 0 0 12px; color: var(--primary-color, #2563eb); display: flex; align-items: center; gap: 8px; }
+    .help-section h3 { font-size: 1em; margin: 16px 0 8px; }
+    .help-section p { font-size: 0.9em; line-height: 1.6; color: var(--text-color, #333); margin: 0 0 10px; }
+    .help-section ul { font-size: 0.9em; line-height: 1.6; margin: 0 0 10px; padding-left: 20px; }
+    .help-section li { margin-bottom: 6px; }
+
+    .help-card { background: var(--card-bg, #fff); border: 1px solid var(--border-color, #ddd); border-radius: 10px; padding: 24px 28px; margin-bottom: 16px; }
+    .help-card h3 { margin-top: 0; }
+
+    .help-tip { background: var(--hover-bg, #f0f4ff); border-left: 4px solid var(--primary-color, #2563eb); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 0.88em; }
+    .help-tip strong { color: var(--primary-color, #2563eb); }
+
+    .help-shortcut { display: inline-block; background: var(--border-color, #e5e7eb); padding: 2px 8px; border-radius: 4px; font-family: monospace; font-size: 0.85em; }
+
+    .ai-warning-banner { display: flex; align-items: center; gap: 14px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 14px 18px; margin-bottom: 24px; cursor: pointer; transition: background 0.2s; }
+    .ai-warning-banner:hover { background: #fee2e2; }
+    .ai-warning-banner i { font-size: 1.6em; color: #dc2626; flex-shrink: 0; }
+    .ai-warning-banner span { font-size: 0.92em; font-weight: 600; color: #991b1b; }
+    .ai-warning-banner .chevron { margin-left: auto; color: #dc2626; transition: transform 0.2s; }
+    .ai-warning-banner.open .chevron { transform: rotate(180deg); }
+    .ai-warning-detail { display: none; background: #fef2f2; border: 1px solid #fecaca; border-top: none; border-radius: 0 0 10px 10px; padding: 16px 20px; margin-top: -12px; margin-bottom: 24px; font-size: 0.9em; line-height: 1.7; color: #7f1d1d; }
+    .ai-warning-detail.show { display: block; }
+    :root[data-theme="dark"] .ai-warning-banner { background: #3b1111; border-color: #7f1d1d; }
+    :root[data-theme="dark"] .ai-warning-banner:hover { background: #4a1515; }
+    :root[data-theme="dark"] .ai-warning-banner span { color: #fca5a5; }
+    :root[data-theme="dark"] .ai-warning-banner i, :root[data-theme="dark"] .ai-warning-banner .chevron { color: #f87171; }
+    :root[data-theme="dark"] .ai-warning-detail { background: #3b1111; border-color: #7f1d1d; color: #fecaca; }
+
+    .help-icon-label { display: inline-flex; align-items: center; gap: 6px; }
+    .help-icon-label i { width: 20px; text-align: center; }
+
+    @media (max-width: 768px) {
+        .help-container { padding: 16px; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="help-container">
+    <h1><i class="fas fa-question-circle"></i> Hilfe</h1>
+
+    <div class="ai-warning-banner" onclick="toggleAiWarning()">
+        <i class="fas fa-robot"></i>
+        <span>Wichtiger Hinweis zu UMI</span>
+        <i class="fas fa-chevron-down chevron"></i>
+    </div>
+    <div class="ai-warning-detail" id="aiWarningDetail">
+        UMI ist ein hilfreiches Werkzeug, aber sie kann Fehler machen. Automatische Antworten sollten nicht zu lange ohne Aufsicht laufen — bitte überprüfe regelmäßig die Konversationen und die Freigabe-Warteschlange.<br><br>
+        Wir arbeiten kontinuierlich daran, UMI zu verbessern und genauere Antworten zu liefern. Sollte dir ein Fehler auffallen, bearbeite die Antwort einfach vor dem Senden — das System lernt daraus.<br><br>
+        Vielen Dank für euer Verständnis und eure Unterstützung!
+    </div>
+
+    <div class="knowledge-tabs">
+        <button class="knowledge-tab active" onclick="switchHelpTab('posteingang', this)">
+            <i class="fas fa-inbox"></i> Posteingang
+        </button>
+        <button class="knowledge-tab" onclick="switchHelpTab('chat', this)">
+            <i class="fas fa-comments"></i> Chat
+        </button>
+        <button class="knowledge-tab" onclick="switchHelpTab('ki', this)">
+            <i class="fas fa-robot"></i> UMI
+        </button>
+        <button class="knowledge-tab" onclick="switchHelpTab('gaeste', this)">
+            <i class="fas fa-users"></i> Gäste
+        </button>
+        <button class="knowledge-tab" onclick="switchHelpTab('weiteres', this)">
+            <i class="fas fa-ellipsis-h"></i> Weiteres
+        </button>
+    </div>
+
+    <!-- ==================== POSTEINGANG ==================== -->
+    <div id="tab-posteingang" class="tab-content">
+        <div class="help-section">
+            <h2><i class="fas fa-inbox"></i> Der Posteingang</h2>
+            <p>Der Posteingang ist die Startseite und zeigt alle Konversationen mit Gästen auf einen Blick. Jede Karte zeigt den Gästenamen, die Unterkunft, die letzte Nachricht und den Status.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-eye"></i> Was du auf jeder Karte siehst</h3>
+            <ul>
+                <li><strong>Gästename</strong> — oben links auf der Karte</li>
+                <li><strong>Unterkunft</strong> — direkt unter dem Namen</li>
+                <li><strong>Aufenthaltsdaten</strong> — Check-in und Check-out mit Anzahl der Nächte (z.B. 05.04 – 10.04 (5n))</li>
+                <li><strong>Letzte Nachricht</strong> — eine Vorschau der letzten Nachricht. Der Absender wird angezeigt:
+                    <ul>
+                        <li><strong>Name:</strong> — Nachricht wurde von einem Teammitglied gesendet (z.B. "Max:")</li>
+                        <li><strong>UMI:</strong> — Nachricht wurde von UMI generiert und gesendet</li>
+                        <li>Kein Prefix — die Nachricht ist vom Gast</li>
+                    </ul>
+                </li>
+                <li><strong>Zeitstempel</strong> — wann die letzte Aktivität war (relativ: "vor 5 Min.", "vor 2 Std.")</li>
+                <li><strong>Plattform</strong> — zeigt die tatsächliche Buchungsplattform an:
+                    <ul>
+                        <li><span style="color:#e91e63;font-weight:600;">Airbnb</span> — in Rosa</li>
+                        <li><span style="color:#003580;font-weight:600;">Booking.com</span> — in Blau</li>
+                        <li>Andere Plattformen werden ebenfalls angezeigt</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-circle" style="color:#2563eb;font-size:0.7em;"></i> Ungelesen-Markierung</h3>
+            <p>Konversationen mit ungelesenen Gastnachrichten werden <strong>fett hervorgehoben</strong> und mit einem blauen Punkt markiert. Die rote Zahl im Menü zeigt die Gesamtanzahl ungelesener Konversationen.</p>
+            <div class="help-tip">
+                <strong>Tipp:</strong> Klicke auf "Alle gelesen" oben rechts, um alle Konversationen als gelesen zu markieren.
+            </div>
+            <div class="help-tip">
+                <strong>Gut zu wissen:</strong> Wenn jemand aus dem Team direkt über Airbnb oder Booking.com antwortet (nicht über diese App), wird die Konversation automatisch als gelesen markiert, sobald die Synchronisierung die Antwort erkennt. So entstehen keine falschen "Ungelesen"-Markierungen.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-filter"></i> Filter und Suche</h3>
+            <p>Du kannst den Posteingang filtern nach:</p>
+            <ul>
+                <li><strong>Status</strong> — Aktiv, Geschlossen, Alle</li>
+                <li><strong>Plattform</strong> — Airbnb, Booking.com, E-Mail</li>
+                <li><strong>Ungelesen</strong> — nur Konversationen mit ungelesenen Nachrichten</li>
+                <li><strong>Eskaliert</strong> — Konversationen, die besondere Aufmerksamkeit brauchen</li>
+                <li><strong>Freigabe</strong> — Konversationen mit UMI-Antworten, die auf Freigabe warten</li>
+            </ul>
+            <p>Die <strong>Volltextsuche</strong> durchsucht alle Nachrichten in allen Konversationen. Ergebnisse werden nach Relevanz sortiert und zeigen einen Textausschnitt mit dem Suchbegriff.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-exclamation-triangle" style="color:#f59e0b;"></i> Status-Symbole</h3>
+            <ul>
+                <li><span class="help-icon-label"><i class="fas fa-robot" style="color:#7B2332;"></i> <strong>Blaues Roboter-Symbol</strong></span> — UMI ist aktiv, antwortet aber nicht automatisch</li>
+                <li><span class="help-icon-label"><i class="fas fa-robot" style="color:#22c55e;"></i> <strong>Grünes Roboter-Symbol</strong></span> — UMI antwortet automatisch auf Gastnachrichten</li>
+                <li><span class="help-icon-label"><i class="fas fa-exclamation-triangle" style="color:#f59e0b;"></i> <strong>Eskaliert</strong></span> — ein Thema wurde erkannt, das menschliche Aufmerksamkeit benötigt</li>
+                <li><span class="help-icon-label"><i class="fas fa-clock" style="color:#8b5cf6;"></i> <strong>UMI-Freigabe</strong></span> — UMI hat eine Antwort erstellt, die auf deine Freigabe wartet</li>
+            </ul>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-times-circle"></i> Konversation beenden</h3>
+            <p>Du kannst eine aktive Konversation über das <strong>X</strong>-Symbol auf der Karte beenden. Geschlossene Konversationen erscheinen weiterhin im Posteingang und können über den Filter angezeigt werden.</p>
+        </div>
+    </div>
+
+    <!-- ==================== CHAT ==================== -->
+    <div id="tab-chat" class="tab-content" style="display:none;">
+        <div class="help-section">
+            <h2><i class="fas fa-comments"></i> Chat & Nachrichten</h2>
+            <p>Im Chat-Bereich siehst du den gesamten Nachrichtenverlauf mit einem Gast und kannst Nachrichten senden.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-info-circle"></i> Konversations-Header</h3>
+            <p>Oben im Chat siehst du wichtige Informationen auf einen Blick:</p>
+            <ul>
+                <li><strong>Gästename</strong> — klicke darauf, um das Gästeprofil zu öffnen</li>
+                <li><strong>Unterkunft</strong> — Name der zugewiesenen Unterkunft</li>
+                <li><strong>Aufenthaltsdaten</strong> — Check-in und Check-out Datum mit Anzahl der Nächte</li>
+                <li><strong>Plattform</strong> — Airbnb oder Booking.com</li>
+            </ul>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-paper-plane"></i> Nachrichten senden</h3>
+            <p>Schreibe deine Nachricht in das Textfeld unten und klicke auf <strong>Senden</strong>. Die Nachricht wird direkt über Smoobu an den Gast auf der jeweiligen Plattform (Airbnb, Booking.com) gesendet.</p>
+            <div class="help-tip">
+                <strong>Tipp:</strong> Du kannst auch <strong>Enter</strong> drücken, um schnell zu senden. Für einen Zeilenumbruch nutze <strong>Shift+Enter</strong>.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-sync-alt"></i> Nachrichten synchronisieren</h3>
+            <p>Bei Smoobu-Konversationen findest du einen <strong>Synchronisierungs-Button</strong> (&#8635;) im Header. Damit kannst du die neuesten Nachrichten von der Plattform abrufen, falls etwas fehlt.</p>
+            <div class="help-tip">
+                <strong>Gut zu wissen:</strong> Die App synchronisiert Nachrichten automatisch im Hintergrund. Der manuelle Sync ist nützlich, wenn du sofort die neuesten Nachrichten sehen möchtest oder vermutest, dass eine Nachricht fehlt.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-robot"></i> UMI-Antwort generieren</h3>
+            <p>Klicke auf den <strong>"UMI-Vorschlag"</strong> Button, um eine Antwort von UMI erstellen zu lassen. UMI berücksichtigt dabei:</p>
+            <ul>
+                <li>Das gesamte Gästeprofil (Familie, Haustiere, Vorlieben, etc.)</li>
+                <li>Die Unterkunfts-Details</li>
+                <li>Den bisherigen Gesprächsverlauf</li>
+                <li>Die Wissensdatenbank</li>
+                <li>Gelernte Korrekturen aus früheren Bearbeitungen</li>
+                <li>Die Aufenthaltsdaten (Check-in / Check-out)</li>
+            </ul>
+            <p>Die generierte Antwort erscheint im Textfeld. Du kannst sie <strong>bearbeiten</strong>, bevor du sie sendest.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-lightbulb"></i> UMI-Vorschlag für eine bestimmte Nachricht</h3>
+            <p>Neben jeder Gastnachricht siehst du einen <strong>Glühbirnen-Button</strong>. Klicke darauf, um eine UMI-Antwort speziell für <strong>diese eine Nachricht</strong> zu generieren.</p>
+            <ul>
+                <li>UMI antwortet gezielt auf die ausgewählte Nachricht — nicht auf die gesamte Konversation</li>
+                <li>Der Entwurf erscheint im Textfeld unten — du kannst ihn bearbeiten oder löschen</li>
+                <li>Nützlich, wenn mehrere Gastnachrichten unbeantwortet sind und du einzeln antworten möchtest</li>
+            </ul>
+            <div class="help-tip">
+                <strong>Tipp:</strong> Der "UMI-Vorschlag" Button unten im Textfeld bezieht sich immer auf die neueste Gastnachricht. Die Glühbirne an einer älteren Nachricht ist präziser.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-edit"></i> UMI-Antwort bearbeiten (Korrekturen)</h3>
+            <p>Wenn du eine UMI-Antwort bearbeitest bevor du sie sendest, <strong>lernt das System daraus</strong>. Die Korrektur wird automatisch in der Wissensdatenbank gespeichert und UMI wird in Zukunft ähnliche Fehler vermeiden.</p>
+            <div class="help-tip">
+                <strong>Beispiel:</strong> UMI schreibt "Der Pool ist beheizt" — du änderst es zu "Der Pool ist nicht beheizt und im Winter geschlossen." Beim nächsten Mal weiß UMI Bescheid.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-check-circle" style="color:#22c55e;"></i> Freigabe-System</h3>
+            <p>Wenn UMI automatisch antwortet (Auto-Respond aktiv), werden Antworten <strong>nicht sofort gesendet</strong>, sondern warten auf deine Freigabe.</p>
+            <ul>
+                <li><strong>Freigeben</strong> — die Antwort wird an den Gast gesendet</li>
+                <li><strong>Bearbeiten</strong> — du kannst den Text anpassen und dann senden (die Korrektur wird automatisch gelernt)</li>
+                <li><strong>Ablehnen</strong> — die Antwort wird verworfen</li>
+            </ul>
+            <div class="help-tip">
+                <strong>Tipp:</strong> Du kannst die Freigabe-Pflicht für einzelne Konversationen deaktivieren ("Auto-Freigabe"), wenn du UMI bei einem bestimmten Gast vertraust.
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== KI ==================== -->
+    <div id="tab-ki" class="tab-content" style="display:none;">
+        <div class="help-card" style="text-align: center; padding: 28px; margin-bottom: 24px;">
+            <img src="{{ url_for('chatbot.static', filename='img/umi-logo.png') }}" alt="UMI" style="width: 64px; height: auto; margin-bottom: 12px;">
+            <h2 style="margin: 0 0 4px; font-size: 1.3em;">UMI-Bot</h2>
+            <p style="color: var(--text-light); font-size: 0.85em; margin: 0 0 16px;"><strong>U</strong>rlaubsmagie <strong>I</strong>ntelligent Bot</p>
+            <p style="font-size: 0.9em; line-height: 1.7; max-width: 600px; margin: 0 auto;">
+                UMI ist unsere freundliche KI-Assistentin, die euch bei der Gästekommunikation unterstützt.
+                Sie liest Nachrichten, versteht den Kontext und schlägt passende Antworten vor — immer freundlich, locker und respektvoll.
+                UMI lernt aus euren Korrekturen und wird mit der Zeit immer besser.
+                Sie ersetzt euch nicht, sondern hilft euch, schneller und einheitlicher zu antworten.
+            </p>
+        </div>
+
+        <div class="help-section">
+            <h2><i class="fas fa-robot"></i> UMI-System</h2>
+            <p>UMI kann Nachrichten für dich generieren und in manchen Fällen auch automatisch antworten. Hier erfährst du, wie du sie am besten nutzt.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-toggle-on"></i> UMI ein- und ausschalten</h3>
+            <p>Im Chat-Bereich findest du zwei Schalter:</p>
+            <ul>
+                <li><strong>UMI aktivieren</strong> — erlaubt es, den "UMI-Vorschlag" Button zu nutzen. UMI antwortet aber noch nicht automatisch.</li>
+                <li><strong>Auto-Respond</strong> — UMI antwortet <strong>automatisch</strong> auf neue Gastnachrichten. Die Antwort geht aber erst durch die Freigabe-Warteschlange.</li>
+            </ul>
+            <div class="help-tip">
+                <strong>Wichtig:</strong> Auto-Respond kann nur aktiviert werden, wenn UMI bereits eingeschaltet ist. In den Einstellungen gibt es einen globalen UMI-Schalter, der alle Konversationen auf einmal steuert.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-shield-alt"></i> Sicherheitsmaßnahmen</h3>
+            <p>UMI hat mehrere eingebaute Schutzfunktionen:</p>
+            <ul>
+                <li><strong>Freigabe-Warteschlange</strong> — automatische Antworten werden nie direkt gesendet, sondern warten auf Bestätigung</li>
+                <li><strong>Eskalation</strong> — bei heiklen Themen (Beschwerden, Schäden, rechtliche Fragen) wird die Konversation automatisch als "Braucht Aufmerksamkeit" markiert und Auto-Respond wird deaktiviert</li>
+                <li><strong>Eingeschränkte Themen</strong> — du kannst in der Wissensdatenbank (Tab "Eskalation") Themen definieren, bei denen UMI nicht selbst antwortet, sondern auf das Team verweist</li>
+                <li><strong>Qualitätskontrolle</strong> — UMI prüft ihre eigene Antwort auf Länge, Inhalt und Angemessenheit</li>
+                <li><strong>Automatisches Lernen</strong> — jede bearbeitete UMI-Antwort wird als Korrektur gespeichert und verbessert zukünftige Antworten</li>
+            </ul>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-brain"></i> Was UMI für ihre Antworten nutzt</h3>
+            <p>UMI berücksichtigt folgende Informationsquellen:</p>
+            <ul>
+                <li><strong>Gästeprofil</strong> — gespeicherte Infos über den Gast (Familie, Allergien, Vorlieben)</li>
+                <li><strong>Wissensdatenbank</strong> — Fakten und Informationen, die du hinterlegt hast (z.B. WLAN-Passwort, Hausregeln)</li>
+                <li><strong>Eskalationsregeln</strong> — Themen, bei denen UMI nicht antworten soll</li>
+                <li><strong>Korrekturen</strong> — gelernte Verbesserungen aus bearbeiteten UMI-Antworten</li>
+                <li><strong>Gesprächsverlauf</strong> — die letzten Nachrichten in der Konversation</li>
+                <li><strong>Konversationszusammenfassung</strong> — bei längeren Gesprächen erstellt UMI eine Zusammenfassung für besseren Kontext</li>
+                <li><strong>Unterkunfts-Details</strong> — Name, Adresse und Beschreibung der Unterkunft</li>
+                <li><strong>Aufenthaltsdaten</strong> — Check-in/Check-out für zeitbezogene Antworten</li>
+                <li><strong>Host-Anweisungen</strong> — allgemeine Anweisungen aus den Einstellungen</li>
+            </ul>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-bell-slash"></i> Benachrichtigungen und UMI</h3>
+            <p>Wenn Auto-Respond für eine Konversation aktiviert ist, werden <strong>keine Push-Benachrichtigungen</strong> für neue Gastnachrichten gesendet — UMI kümmert sich ja darum. Du wirst nur benachrichtigt, wenn:</p>
+            <ul>
+                <li>UMI ausgeschaltet ist</li>
+                <li>Eine Eskalation ausgelöst wird</li>
+                <li>Eine UMI-Antwort auf deine Freigabe wartet</li>
+            </ul>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-language"></i> Sprache der UMI-Antworten</h3>
+            <p>UMI antwortet automatisch in der Sprache des Gastes. Wenn der Gast auf Englisch schreibt, antwortet UMI auf Englisch. Bei deutschen Nachrichten antwortet sie auf Deutsch — dabei verwendet sie einen freundlichen, informellen Ton (Du-Form).</p>
+        </div>
+    </div>
+
+    <!-- ==================== GÄSTE ==================== -->
+    <div id="tab-gaeste" class="tab-content" style="display:none;">
+        <div class="help-section">
+            <h2><i class="fas fa-users"></i> Gästeprofile & Erinnerungen</h2>
+            <p>Das System merkt sich automatisch Details über jeden Gast. So kannst du (und UMI) persönlicher kommunizieren.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-user-circle"></i> Gästeprofil ansehen</h3>
+            <p>Klicke im Chat auf den <strong>Gästenamen</strong> oben, um das Profil zu öffnen. Dort siehst du:</p>
+            <ul>
+                <li><strong>Kontaktdaten</strong> — E-Mail, Telefon, Plattform-IDs</li>
+                <li><strong>Gespeicherte Details</strong> — alles, was das System über den Gast gelernt hat</li>
+                <li><strong>Alle Konversationen</strong> — auch frühere Aufenthalte</li>
+                <li><strong>Buchungskanal</strong> — über welche Plattform der Gast gebucht hat</li>
+            </ul>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-memory"></i> Automatische Erinnerungen</h3>
+            <p>Das System extrahiert automatisch wichtige Informationen aus <strong>allen Nachrichten</strong> — sowohl vom Gast als auch von dir. Zum Beispiel:</p>
+            <ul>
+                <li><span class="help-icon-label"><i class="fas fa-users"></i> <strong>Familie</strong></span> — "Wir kommen mit 2 Kindern" wird als Familieninfo gespeichert</li>
+                <li><span class="help-icon-label"><i class="fas fa-paw"></i> <strong>Haustiere</strong></span> — "Wir bringen unseren Hund Bello mit"</li>
+                <li><span class="help-icon-label"><i class="fas fa-heart"></i> <strong>Vorlieben</strong></span> — "Wir lieben Wandern"</li>
+                <li><span class="help-icon-label"><i class="fas fa-exclamation-circle"></i> <strong>Allergien</strong></span> — "Meine Frau ist allergisch gegen Nüsse"</li>
+                <li><span class="help-icon-label"><i class="fas fa-star"></i> <strong>Interessen</strong></span> — "Gibt es gute Restaurants in der Nähe?"</li>
+                <li><span class="help-icon-label"><i class="fas fa-concierge-bell"></i> <strong>Sonderwünsche</strong></span> — "Können wir einen Late-Check-out haben?"</li>
+            </ul>
+            <div class="help-tip">
+                <strong>Tipp:</strong> Du kannst Details auch manuell hinzufügen oder löschen im Gästeprofil.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-redo"></i> Wiederkehrende Gäste</h3>
+            <p>Wenn ein Gast erneut bucht, wird er automatisch erkannt (über E-Mail, Telefonnummer oder Plattform-ID). Alle gespeicherten Erinnerungen sind sofort wieder verfügbar — UMI kann den Gast dann persönlich begrüßen.</p>
+        </div>
+    </div>
+
+    <!-- ==================== WEITERES ==================== -->
+    <div id="tab-weiteres" class="tab-content" style="display:none;">
+        <div class="help-section">
+            <h2><i class="fas fa-ellipsis-h"></i> Weitere Funktionen</h2>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-book"></i> Wissensdatenbank</h3>
+            <p>In der Wissensdatenbank kannst du Informationen hinterlegen, die UMI bei der Antwortgenerierung nutzt. Sie ist in <strong>drei Tabs</strong> unterteilt:</p>
+            <ul>
+                <li><strong>Wissen</strong> — Fakten und Informationen über deine Unterkünfte, aufgeteilt in Kategorien:
+                    <ul>
+                        <li>Allgemeine Infos, Check-in/Check-out, In der Nähe, Hausregeln, Notfallkontakte, Häufige Fragen</li>
+                    </ul>
+                </li>
+                <li><strong>Eskalation</strong> — Themen, bei denen UMI <strong>nicht selbst antworten</strong> soll, sondern auf das Team verweist. Du wählst eine Kategorie und gibst den Themennamen an:
+                    <ul>
+                        <li>Wartung/Reparatur, Sauberkeit, Lärm/Nachbarn, Zahlung/Erstattung, Schlüssel/Zugang, Notfall, Sonstiges</li>
+                    </ul>
+                </li>
+                <li><strong>Korrekturen</strong> — automatisch gespeicherte Verbesserungen, wenn du UMI-Antworten vor dem Senden bearbeitest. Diese werden automatisch erstellt und müssen nicht manuell gepflegt werden.</li>
+            </ul>
+            <p>Einträge können <strong>global</strong> (für alle Unterkünfte) oder für eine <strong>bestimmte Unterkunft</strong> gelten.</p>
+            <div class="help-tip">
+                <strong>Tipp:</strong> Je mehr relevante Informationen du in der Wissensdatenbank hinterlegst, desto genauer werden die UMI-Antworten. Wichtige Infos wie WLAN-Passwörter, Checkout-Zeiten und Hausregeln sollten immer hinterlegt werden.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-chart-bar"></i> Statistiken</h3>
+            <p>Die Statistik-Seite zeigt dir einen Überblick über die Nutzung der App:</p>
+            <ul>
+                <li>Anzahl der Konversationen und Nachrichten</li>
+                <li>UMI-generierte vs. manuell gesendete Nachrichten</li>
+                <li>Aktivität pro Zeitraum</li>
+            </ul>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-bell"></i> Benachrichtigungen</h3>
+            <p>Es gibt zwei Arten von Benachrichtigungen:</p>
+            <ul>
+                <li><strong>In-App</strong> — der rote Badge im Menü und grüne Hinweise innerhalb der App (immer aktiv)</li>
+                <li><strong>Push-Benachrichtigungen</strong> — Browser-Benachrichtigungen, auch wenn die App nicht offen ist. Aktiviere sie über das <i class="fas fa-bell"></i> Glocken-Symbol in der Leiste oben.</li>
+            </ul>
+            <div class="help-tip">
+                <strong>Hinweis:</strong> Push-Benachrichtigungen werden <strong>nicht</strong> gesendet, wenn UMI automatisch antwortet (Auto-Respond aktiv). So wirst du nicht unnötig gestört.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-users-cog"></i> Benutzerkonten</h3>
+            <p>Das System unterstützt mehrere Benutzer. Jeder Benutzer hat ein eigenes Konto mit Login. Admin-Benutzer haben Zugriff auf zusätzliche Funktionen wie Einstellungen, Benutzerverwaltung und Debug-Seite.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-moon"></i> Dark Mode</h3>
+            <p>Du kannst zwischen hellem und dunklem Design wechseln. Klicke auf das <i class="fas fa-moon"></i> Mond-Symbol oben in der Leiste.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-language"></i> Sprache</h3>
+            <p>Die Oberfläche kann zwischen Deutsch und Englisch umgeschaltet werden. Klicke auf das <i class="fas fa-globe"></i> Sprach-Symbol oben in der Leiste.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-volume-up"></i> Ton-Benachrichtigungen</h3>
+            <p>Bei neuen Nachrichten kann ein Benachrichtigungston abgespielt werden. Aktiviere oder deaktiviere ihn über das <i class="fas fa-volume-up"></i> Lautsprecher-Symbol in der Leiste.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleAiWarning() {
+    const banner = document.querySelector('.ai-warning-banner');
+    const detail = document.getElementById('aiWarningDetail');
+    banner.classList.toggle('open');
+    detail.classList.toggle('show');
+}
+
+function switchHelpTab(tab, btn) {
+    document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+    document.getElementById('tab-' + tab).style.display = '';
+    document.querySelectorAll('.knowledge-tab').forEach(el => el.classList.remove('active'));
+    btn.classList.add('active');
+}
+</script>
+{% endblock %}

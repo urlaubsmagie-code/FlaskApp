@@ -1,0 +1,302 @@
+{% extends "chatbot/base.html" %}
+
+{% block title %}Statistics{% endblock %}
+
+{% block content %}
+<div class="settings-container">
+    <!-- Page Header -->
+    <div class="page-header">
+        <h1>
+            <i class="fas fa-users"></i>
+            <span data-i18n="stats.title">Team-Leistung</span>
+        </h1>
+    </div>
+
+    <!-- Loading State -->
+    <div id="statsLoading" class="empty-state">
+        <i class="fas fa-spinner fa-spin"></i>
+        <h3 data-i18n="stats.loading">Statistiken werden geladen...</h3>
+    </div>
+
+    <!-- Error State -->
+    <div id="statsError" class="empty-state" style="display:none;">
+        <i class="fas fa-exclamation-triangle"></i>
+        <h3 data-i18n="stats.error">Fehler beim Laden der Statistiken</h3>
+    </div>
+
+    <!-- Stats Content (hidden until loaded) -->
+    <div id="statsContent" style="display:none;">
+
+        <!-- Team Overview Cards -->
+        <div class="stats-overview-grid">
+            <div class="stat-card">
+                <div class="stat-card-icon"><i class="fas fa-users"></i></div>
+                <div class="stat-card-value" id="statTeamSize">0</div>
+                <div class="stat-card-label" data-i18n="stats.overview.teamMembers">Teammitglieder</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-icon"><i class="fas fa-paper-plane"></i></div>
+                <div class="stat-card-value" id="statTotalSent">0</div>
+                <div class="stat-card-label" data-i18n="stats.overview.messagesSent">Gesendete Nachrichten</div>
+                <div class="stat-card-sub">
+                    <span id="statSentWeek">0</span> <span data-i18n="stats.overview.thisWeek">diese Woche</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-icon"><i class="fas fa-comments"></i></div>
+                <div class="stat-card-value" id="statConversations">0</div>
+                <div class="stat-card-label" data-i18n="stats.overview.conversations">Konversationen</div>
+                <div class="stat-card-sub">
+                    <span id="statConvWeek">0</span> <span data-i18n="stats.overview.thisWeek">diese Woche</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Team Comparison Table -->
+        <div class="stats-section">
+            <div class="settings-card">
+                <div class="card-header">
+                    <h2><i class="fas fa-chart-bar"></i> <span data-i18n="stats.team.title">Team&uuml;bersicht</span></h2>
+                </div>
+                <div class="card-body">
+                    <div class="team-table-wrapper">
+                        <table class="team-table team-compare-table">
+                            <thead>
+                                <tr>
+                                    <th data-i18n="stats.team.user">Benutzer</th>
+                                    <th class="text-center" data-i18n="stats.team.messagesWeek">Nachr. (7 Tage)</th>
+                                    <th class="text-center" data-i18n="stats.team.messagesMonth">Nachr. (30 Tage)</th>
+                                    <th class="text-center" data-i18n="stats.team.messagesTotal">Nachr. Gesamt</th>
+                                    <th class="text-center" data-i18n="stats.team.assigned">Konversationen</th>
+                                    <th class="text-center" data-i18n="stats.team.lastActive">Letzte Aktivit&auml;t</th>
+                                    <th class="text-center" data-i18n="stats.team.lastConnected">Zuletzt Online</th>
+                                    <th class="text-center" data-i18n="stats.team.onlineTime">Online-Zeit (7T)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="teamTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Messages per User (Visual Bar Chart) -->
+        <div class="stats-section">
+            <div class="settings-card">
+                <div class="card-header">
+                    <h2><i class="fas fa-trophy"></i> <span data-i18n="stats.team.comparison">Nachrichten pro Benutzer (7 Tage)</span></h2>
+                </div>
+                <div class="card-body" id="userBarsContainer"></div>
+            </div>
+        </div>
+
+        <!-- Per-User Daily Activity -->
+        <div class="stats-section">
+            <div class="settings-card">
+                <div class="card-header">
+                    <h2><i class="fas fa-calendar-alt"></i> <span data-i18n="stats.team.dailyTitle">Tagesaktivit&auml;t pro Benutzer</span></h2>
+                </div>
+                <div class="card-body" id="userDailyContainer"></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadStats();
+});
+
+var USER_COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+
+function loadStats() {
+    fetch('{{ url_for("chatbot.api_get_detailed_stats") }}')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('statsLoading').style.display = 'none';
+            document.getElementById('statsContent').style.display = 'block';
+            renderStats(data);
+        })
+        .catch(() => {
+            document.getElementById('statsLoading').style.display = 'none';
+            document.getElementById('statsError').style.display = 'block';
+        });
+}
+
+function renderStats(data) {
+    var ov = data.overview;
+    var team = data.team;
+
+    // Overview cards
+    document.getElementById('statTeamSize').textContent = team.length;
+    document.getElementById('statTotalSent').textContent = ov.total_owner_messages;
+    document.getElementById('statSentWeek').textContent = ov.owner_messages_this_week;
+    document.getElementById('statConversations').textContent = ov.total_conversations;
+    document.getElementById('statConvWeek').textContent = ov.conversations_this_week;
+
+    // Team comparison table
+    var tbody = document.getElementById('teamTableBody');
+    tbody.innerHTML = '';
+
+    var maxWeek = Math.max.apply(null, team.map(function(u) { return u.messages_week; }).concat([1]));
+
+    team.forEach(function(u, idx) {
+        var color = USER_COLORS[idx % USER_COLORS.length];
+        var weekPct = (u.messages_week / maxWeek * 100).toFixed(0);
+        var isInactive = u.messages_week === 0;
+
+        var tr = document.createElement('tr');
+        if (isInactive) tr.className = 'user-inactive-row';
+
+        // Last activity (last message sent)
+        var lastActiveStr = '-';
+        if (u.last_activity) {
+            lastActiveStr = formatRelativeTime(u.last_activity);
+        }
+
+        // Last connected (last seen on the platform)
+        var lastConnectedStr = '-';
+        if (u.last_seen) {
+            lastConnectedStr = formatRelativeTime(u.last_seen);
+        }
+
+        // Online time this week
+        var onlineTimeStr = formatOnlineTime(u.online_minutes_week);
+
+        tr.innerHTML =
+            '<td>' +
+                '<div class="team-user-cell">' +
+                    '<span class="team-avatar" style="background:' + color + ';">' + escapeHtml(u.display_name.charAt(0).toUpperCase()) + '</span>' +
+                    '<span class="team-user-name">' + escapeHtml(u.display_name) + '</span>' +
+                    (isInactive ? ' <span class="team-inactive-badge">' + t('stats.team.inactive') + '</span>' : '') +
+                '</div>' +
+            '</td>' +
+            '<td class="text-center">' +
+                '<div class="cell-with-bar">' +
+                    '<strong class="cell-value">' + u.messages_week + '</strong>' +
+                    '<div class="cell-bar-track"><div class="cell-bar-fill" style="width:' + weekPct + '%;background:' + color + ';"></div></div>' +
+                '</div>' +
+            '</td>' +
+            '<td class="text-center"><strong>' + u.messages_month + '</strong></td>' +
+            '<td class="text-center">' + u.messages_total + '</td>' +
+            '<td class="text-center">' + u.assigned_active + ' / ' + u.assigned_total + '</td>' +
+            '<td class="text-center"><span class="last-active-text">' + lastActiveStr + '</span></td>' +
+            '<td class="text-center"><span class="last-active-text">' + lastConnectedStr + '</span></td>' +
+            '<td class="text-center">' + onlineTimeStr + '</td>';
+
+        tbody.appendChild(tr);
+    });
+
+    // User bars (messages this week)
+    renderUserBars(team);
+
+    // Per-user daily activity
+    renderUserDaily(team);
+
+    // Re-apply i18n to any data-i18n elements now visible
+    if (window.i18n) i18n.updatePage();
+}
+
+function renderUserBars(team) {
+    var container = document.getElementById('userBarsContainer');
+    container.innerHTML = '';
+
+    if (team.length === 0) {
+        container.innerHTML = '<div class="no-data">' + t('common.noData') + '</div>';
+        return;
+    }
+
+    var maxVal = Math.max.apply(null, team.map(function(u) { return u.messages_week; }).concat([1]));
+
+    team.forEach(function(u, idx) {
+        var color = USER_COLORS[idx % USER_COLORS.length];
+        var pct = (u.messages_week / maxVal * 100).toFixed(1);
+
+        var row = document.createElement('div');
+        row.className = 'stat-bar-row';
+        row.innerHTML =
+            '<div class="stat-bar-label">' +
+                '<span class="team-avatar-sm" style="background:' + color + ';">' + escapeHtml(u.display_name.charAt(0).toUpperCase()) + '</span> ' +
+                escapeHtml(u.display_name) +
+            '</div>' +
+            '<div class="stat-bar-track">' +
+                '<div class="stat-bar-fill" style="width:' + pct + '%;background:' + color + ';"></div>' +
+            '</div>' +
+            '<div class="stat-bar-value">' + u.messages_week + '</div>';
+        container.appendChild(row);
+    });
+}
+
+function renderUserDaily(team) {
+    var container = document.getElementById('userDailyContainer');
+    container.innerHTML = '';
+
+    if (team.length === 0 || !team[0].daily) {
+        container.innerHTML = '<div class="no-data">' + t('common.noData') + '</div>';
+        return;
+    }
+
+    var days = team[0].daily;
+
+    // Build as a table for reliable layout
+    var html = '<table class="team-table user-daily-table"><thead><tr>';
+    html += '<th></th>';
+    days.forEach(function(d) {
+        html += '<th class="text-center">' + d.weekday + '</th>';
+    });
+    html += '</tr></thead><tbody>';
+
+    team.forEach(function(u, idx) {
+        var color = USER_COLORS[idx % USER_COLORS.length];
+        html += '<tr><td class="user-daily-name-cell">' +
+            '<span class="team-avatar-sm" style="background:' + color + ';">' + escapeHtml(u.display_name.charAt(0).toUpperCase()) + '</span> ' +
+            escapeHtml(u.display_name) +
+        '</td>';
+
+        u.daily.forEach(function(d) {
+            var cls = d.count === 0 ? ' class="text-center user-daily-zero"' : ' class="text-center user-daily-active"';
+            html += '<td' + cls + '>' + d.count + '</td>';
+        });
+        html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+function formatOnlineTime(minutes) {
+    if (!minutes || minutes < 1) return '-';
+    if (minutes < 60) {
+        return Math.round(minutes) + 'm';
+    }
+    var hours = Math.floor(minutes / 60);
+    var mins = Math.round(minutes % 60);
+    if (mins === 0) return hours + 'h';
+    return hours + 'h ' + mins + 'm';
+}
+
+function formatRelativeTime(isoStr) {
+    var date = new Date(isoStr + 'Z');
+    var now = new Date();
+    var diffMs = now - date;
+    var diffMin = Math.floor(diffMs / 60000);
+    var diffHours = Math.floor(diffMin / 60);
+    var diffDays = Math.floor(diffHours / 24);
+
+    if (diffMin < 1) return t('stats.team.justNow');
+    if (diffMin < 60) return diffMin + ' min';
+    if (diffHours < 24) return diffHours + 'h';
+    if (diffDays < 7) return diffDays + 'd';
+    return date.toLocaleDateString();
+}
+
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

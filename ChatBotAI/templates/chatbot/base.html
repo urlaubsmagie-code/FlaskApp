@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>{% block title %}UMI{% endblock %} - Message System</title>
+
+    <!-- Preconnect to CDN origins (saves DNS+TLS handshake ~100-200ms) -->
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('chatbot.static', filename='css/style.css') }}?v=46">
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img src="{{ url_for('chatbot.static', filename='img/umi-logo-white.png') }}" alt="UMI" class="sidebar-logo-img">
+                    <span>Urlaubsmagie Messenger</span>
+                </div>
+            </div>
+
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="{{ url_for('chatbot.index') }}" class="nav-link {% if request.endpoint == 'chatbot.index' %}active{% endif %}">
+                        <i class="fas fa-inbox"></i>
+                        <span data-i18n="nav.inbox">Posteingang</span>
+                        <span class="nav-badge" id="inboxBadge" style="display:none;">0</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('chatbot.statistics') }}" class="nav-link {% if request.endpoint == 'chatbot.statistics' %}active{% endif %}">
+                        <i class="fas fa-chart-bar"></i>
+                        <span data-i18n="nav.statistics">Team-Leistung</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('chatbot.settings') }}" class="nav-link {% if request.endpoint == 'chatbot.settings' %}active{% endif %}">
+                        <i class="fas fa-cog"></i>
+                        <span data-i18n="nav.settings">Einstellungen</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('chatbot.knowledge_base') }}" class="nav-link {% if request.endpoint == 'chatbot.knowledge_base' %}active{% endif %}">
+                        <i class="fas fa-book"></i>
+                        <span data-i18n="nav.knowledge">Wissensdatenbank</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('chatbot.help_page') }}" class="nav-link {% if request.endpoint == 'chatbot.help_page' %}active{% endif %}">
+                        <i class="fas fa-question-circle"></i>
+                        <span>Hilfe</span>
+                    </a>
+                </li>
+                {% if current_user.is_authenticated and current_user.is_admin %}
+                <li class="nav-item">
+                    <a href="{{ url_for('chatbot.debug_page') }}" class="nav-link {% if request.endpoint == 'chatbot.debug_page' %}active{% endif %}">
+                        <i class="fas fa-bug"></i>
+                        <span>Debug</span>
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+
+            <div class="online-users" id="sidebarOnlineUsers" {% if not online_users %}style="display:none"{% endif %}>
+                <div class="online-users-header">
+                    <i class="fas fa-circle" style="color:#22c55e;font-size:0.5em;"></i>
+                    <span data-i18n="nav.online">Online</span>
+                    <span class="online-count" id="sidebarOnlineCount">{{ online_users|length }}</span>
+                </div>
+                <div class="online-users-list" id="sidebarOnlineList">
+                    {% for user in online_users %}
+                    <div class="online-user">
+                        <span class="online-avatar">{{ user.display_name[0]|upper }}</span>
+                        <span class="online-name">{{ user.display_name }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <!-- User Menu -->
+                {% if current_user.is_authenticated %}
+                <div class="user-menu">
+                    <div class="user-info">
+                        <span class="user-avatar">{{ current_user.display_name[0]|upper }}</span>
+                        <span class="user-display-name">{{ current_user.display_name }}</span>
+                    </div>
+                    <form action="{{ url_for('chatbot.logout') }}" method="POST" style="margin:0;">
+                        <button type="submit" class="logout-btn" title="Logout">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </button>
+                    </form>
+                </div>
+                {% endif %}
+
+                <!-- Notification Controls -->
+                <div class="notification-controls">
+                    <button id="soundToggleBtn" class="sidebar-toggle-btn" onclick="toggleNotificationSound()">
+                        <i class="fas fa-volume-up" id="soundToggleIcon"></i>
+                        <span data-i18n="notify.sound">Sound</span>
+                    </button>
+                    <button id="browserNotifyToggleBtn" class="sidebar-toggle-btn" onclick="toggleBrowserNotifications()">
+                        <i class="fas fa-bell" id="browserNotifyToggleIcon"></i>
+                        <span data-i18n="notify.push">Push</span>
+                    </button>
+                </div>
+
+                <!-- Dark Mode Toggle -->
+                <div class="theme-toggle">
+                    <button id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()">
+                        <i class="fas fa-moon"></i>
+                        <span>Dark Mode</span>
+                    </button>
+                </div>
+
+                <!-- Language Selector -->
+                <div class="language-selector">
+                    <select id="languageSelector" onchange="i18n.setLanguage(this.value)">
+                        <option value="de">🇩🇪 Deutsch</option>
+                        <option value="en">🇬🇧 English</option>
+                    </select>
+                </div>
+
+                <div class="ai-status" id="aiStatus">
+                    <span class="status-dot"></span>
+                    <span class="status-text">AI Status: Checking...</span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Mobile Brand Banner (hidden on desktop via CSS) -->
+        <div class="mobile-brand-banner">
+            <span class="mobile-brand-text">Urlaubsmagie</span>
+            <img src="{{ url_for('chatbot.static', filename='img/umi-logo-white.png') }}" alt="UMI" class="mobile-logo-img">
+            <span class="mobile-brand-text">Messenger</span>
+        </div>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+
+        <!-- Bottom Navigation (mobile only, hidden by CSS on desktop) -->
+        <nav class="bottom-nav">
+            <a href="{{ url_for('chatbot.index') }}" class="bottom-nav-item {% if request.endpoint == 'chatbot.index' %}active{% endif %}" data-page="inbox">
+                <i class="fas fa-inbox"></i>
+                <span data-i18n="nav.inbox">Posteingang</span>
+            </a>
+            <a href="{{ url_for('chatbot.statistics') }}" class="bottom-nav-item {% if request.endpoint == 'chatbot.statistics' %}active{% endif %}" data-page="statistics">
+                <i class="fas fa-chart-bar"></i>
+                <span data-i18n="nav.statistics">Statistiken</span>
+            </a>
+            <a href="{{ url_for('chatbot.settings') }}" class="bottom-nav-item {% if request.endpoint == 'chatbot.settings' %}active{% endif %}" data-page="settings">
+                <i class="fas fa-cog"></i>
+                <span data-i18n="nav.settings">Einstellungen</span>
+            </a>
+            <a href="{{ url_for('chatbot.help_page') }}" class="bottom-nav-item {% if request.endpoint == 'chatbot.help_page' %}active{% endif %}" data-page="help">
+                <i class="fas fa-question-circle"></i>
+                <span>Hilfe</span>
+            </a>
+            <a href="#" class="bottom-nav-item" data-page="account" id="accountNavItem">
+                <i class="fas fa-user"></i>
+                <span data-i18n="nav.account">Konto</span>
+            </a>
+        </nav>
+
+        <!-- Account Panel (mobile only, toggled by JS) -->
+        <div class="account-panel" id="accountPanel">
+            {% if current_user.is_authenticated %}
+            <div class="account-panel-user">
+                <span class="user-avatar">{{ current_user.display_name[0]|upper }}</span>
+                <span class="account-panel-name">{{ current_user.display_name }}</span>
+            </div>
+            {% endif %}
+            <div class="account-panel-controls">
+                <button id="mobileThemeToggleBtn" class="account-panel-btn" onclick="toggleTheme()">
+                    <i class="fas fa-moon"></i>
+                    <span data-i18n="account.darkMode">Dunkelmodus</span>
+                </button>
+                <button id="mobileSoundToggleBtn" class="account-panel-btn" onclick="toggleNotificationSound()">
+                    <i class="fas fa-volume-up" id="mobileSoundToggleIcon"></i>
+                    <span data-i18n="account.sound">Sound</span>
+                </button>
+                <button id="mobilePushToggleBtn" class="account-panel-btn" onclick="toggleBrowserNotifications()">
+                    <i class="fas fa-bell" id="mobilePushToggleIcon"></i>
+                    <span data-i18n="account.push">Push</span>
+                </button>
+                <div class="account-panel-language">
+                    <select id="mobileLanguageSelector" onchange="i18n.setLanguage(this.value)">
+                        <option value="de">Deutsch</option>
+                        <option value="en">English</option>
+                    </select>
+                </div>
+            </div>
+            <div class="account-panel-online" id="mobileOnlineUsers" {% if not online_users %}style="display:none"{% endif %}>
+                <div class="account-panel-online-header">
+                    <i class="fas fa-circle" style="color:#22c55e;font-size:0.5em;"></i>
+                    <span data-i18n="nav.online">Online</span>
+                    <span class="online-count" id="mobileOnlineCount">{{ online_users|length }}</span>
+                </div>
+                <div class="account-panel-online-list" id="mobileOnlineList">
+                    {% for user in online_users %}
+                    <div class="online-user">
+                        <span class="online-avatar">{{ user.display_name[0]|upper }}</span>
+                        <span class="online-name">{{ user.display_name }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% if current_user.is_authenticated %}
+            <form action="{{ url_for('chatbot.logout') }}" method="POST" class="account-panel-logout">
+                <button type="submit" class="account-panel-btn account-panel-logout-btn">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span data-i18n="account.logout">Abmelden</span>
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Current user context -->
+    <script>
+        window.CHATBOT_USER = {
+            id: {{ current_user.id if current_user.is_authenticated else 'null' }},
+            displayName: {{ current_user.display_name|tojson if current_user.is_authenticated else 'null' }}
+        };
+    </script>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('chatbot.static', filename='js/i18n.js') }}?v=21"></script>
+    <script src="{{ url_for('chatbot.static', filename='js/app.js') }}?v=13"></script>
+    {% block extra_js %}{% endblock %}
+
+    <script>
+        // Check AI status on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            checkAIStatus();
+        });
+
+        function checkAIStatus() {
+            fetch('{{ url_for("chatbot.health_check") }}')
+                .then(response => response.json())
+                .then(data => {
+                    const statusEl = document.getElementById('aiStatus');
+                    if (data.ai_service) {
+                        statusEl.classList.add('online');
+                        statusEl.querySelector('.status-text').textContent = 'AI Online';
+                    } else {
+                        statusEl.classList.add('offline');
+                        statusEl.querySelector('.status-text').textContent = 'AI Offline';
+                    }
+                })
+                .catch(() => {
+                    const statusEl = document.getElementById('aiStatus');
+                    statusEl.classList.add('offline');
+                    statusEl.querySelector('.status-text').textContent = 'AI Offline';
+                });
+        }
+    </script>
+</body>
+</html>

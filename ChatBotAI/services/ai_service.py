@@ -1,0 +1,1541 @@
+"""
+AI Service for ChatBotAI
+Handles all interactions with Ollama for response generation and information extraction
+"""
+
+import json
+import logging
+import re
+import time
+import threading
+from datetime import datetime, timezone
+import requests
+from typing import Optional, Dict, List, Any
+
+logger = logging.getLogger(__name__)
+
+
+class AIService:
+    """Service for interacting with Ollama AI"""
+
+    # Pure acknowledgment phrases that don't need a response.
+    # NOT including gratitude (thanks, danke, etc.) — those deserve a reply.
+    ACKNOWLEDGMENT_PHRASES = frozenset({
+        # English
+        'ok', 'okay', 'k', 'alright', 'all right', 'got it', 'noted',
+        'understood', 'will do', 'sounds good', 'sounds great', 'cool',
+        'nice', 'yep', 'yup', 'right', 'good', 'great', 'perfect',
+        'fine', 'sure', 'absolutely',
+        # German
+        'gut', 'alles klar', 'in ordnung', 'verstanden', 'passt',
+        'genau', 'stimmt', 'geht klar', 'wird gemacht', 'klar',
+        'jo', 'jep', 'super', 'prima', 'top', 'perfekt', 'schön',
+        # Spanish
+        'vale', 'bien', 'de acuerdo', 'entendido', 'perfecto', 'claro',
+        # French
+        "d'accord", 'entendu', 'compris', 'parfait',
+        # Italian
+        'va bene', 'capito', 'inteso', 'perfetto', 'bene',
+    })
+
+    def __init__(self, ollama_url: str = 'http://localhost:11434', model: str = 'qwen2.5:14b', timeout: int = 120):
+        self.ollama_url = ollama_url
+        self.model = model
+        self.timeout = timeout
+        self.chat_endpoint = f"{ollama_url}/api/chat"
+        self.generate_endpoint = f"{ollama_url}/api/generate"
+        # Semaphore to serialize AI calls — prevents concurrent GPU crashes
+        self._semaphore = threading.Semaphore(1)
+
+    @staticmethod
+    def is_acknowledgment(message: str) -> bool:
+        """Check if a message is a pure acknowledgment that doesn't need a response.
+
+        Returns True for short, content-free closers like 'Ok', 'Gut', 'Alright'.
+        Returns False for gratitude ('Thanks'), questions, or messages with substance.
+        """
+        if not message:
+            return False
+
+        # Strip HTML and clean
+        cleaned = re.sub(r'<[^>]+>', '', message).strip()
+        # Remove trailing punctuation (. ! ,) but keep ? (indicates a question)
+        cleaned = re.sub(r'[.!,;:]+$', '', cleaned).strip()
+
+        # If it contains a question mark, it's not a pure acknowledgment
+        if '?' in cleaned:
+            return False
+
+        # Too long to be a pure acknowledgment (allow some emoji/punctuation padding)
+        if len(cleaned) > 40:
+            return False
+
+        # Normalize and check against known phrases
+        normalized = cleaned.lower().strip()
+        if normalized in AIService.ACKNOWLEDGMENT_PHRASES:
+            return True
+
+        # Check with common emoji stripped (guest might send "Ok 👍")
+        no_emoji = re.sub(r'[\U0001F600-\U0001F9FF\U0001F300-\U0001F5FF\U00002702-\U000027B0]+', '', normalized).strip()
+        if no_emoji and no_emoji in AIService.ACKNOWLEDGMENT_PHRASES:
+            return True
+
+        return False
+
+    def test_connection(self) -> bool:
+        """Test if Ollama server is reachable and model is available"""
+        try:
+            response = requests.get(f"{self.ollama_url}/api/tags", timeout=5)
+            if response.status_code == 200:
+                models = response.json().get('models', [])
+                model_names = [m.get('name', '') for m in models]
+                if any(self.model in name for name in model_names):
+                    logger.info(f"Ollama connection successful. Model {self.model} available.")
+                    return True
+                logger.warning(f"Model {self.model} not found. Available: {model_names}")
+                return False
+            return False
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Ollama connection failed: {e}")
+            return False
+
+    def get_installed_models(self) -> List[Dict[str, Any]]:
+        """Get list of models installed in Ollama"""
+        try:
+            response = requests.get(f"{self.ollama_url}/api/tags", timeout=5)
+            if response.status_code == 200:
+                models = response.json().get('models', [])
+                result = []
+                for m in models:
+                    name = m.get('name', '')
+                    size_bytes = m.get('size', 0)
+                    size_gb = round(size_bytes / (1024 ** 3), 1)
+                    result.append({
+                        'name': name,
+                        'size_gb': size_gb,
+                        'parameter_size': m.get('details', {}).get('parameter_size', ''),
+                        'family': m.get('details', {}).get('family', ''),
+                        'quantization': m.get('details', {}).get('quantization_level', ''),
+                        'is_active': self.model in name or name in self.model,
+                    })
+                return result
+            return []
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to get models: {e}")
+            return []
+
+    def change_model(self, model_name: str, preload: bool = False) -> Dict[str, Any]:
+        """Change the active model, optionally preloading it first.
+
+        Args:
+            model_name: Name of the model to switch to
+            preload: If True, send a warmup request to verify the model loads
+
+        Returns:
+            Dict with 'success' bool and optional 'error' message
+        """
+        old_model = self.model
+        self.model = model_name
+
+        if preload:
+            result = self._preload_model()
+            if not result['success']:
+                # Revert to old model
+                self.model = old_model
+                logger.warning(f"Model preload failed for {model_name}, reverting to {old_model}: {result['error']}")
+                return result
+
+        logger.info(f"AI model changed from {old_model} to {model_name}")
+        return {'success': True}
+
+    def _preload_model(self, timeout: int = 60) -> Dict[str, Any]:
+        """Send a minimal request to force Ollama to load the model into memory.
+
+        Returns:
+            Dict with 'success' bool and optional 'error' message
+        """
+        try:
+            logger.info(f"Preloading model {self.model}...")
+            response = requests.post(
+                self.chat_endpoint,
+                json={
+                    'model': self.model,
+                    'messages': [{'role': 'user', 'content': 'Hi'}],
+                    'stream': False,
+                    'options': {
+                        'num_predict': 1,  # Generate just 1 token to minimize work
+                    }
+                },
+                timeout=timeout
+            )
+
+            if response.status_code == 200:
+                logger.info(f"Model {self.model} preloaded successfully")
+                return {'success': True}
+            else:
+                error_text = response.text[:200]
+                logger.error(f"Model preload failed ({response.status_code}): {error_text}")
+                return {'success': False, 'error': f'Ollama returned {response.status_code}: {error_text}'}
+
+        except requests.exceptions.Timeout:
+            return {'success': False, 'error': f'Model took too long to load (>{timeout}s). It may be too large for your system.'}
+        except requests.exceptions.ConnectionError:
+            return {'success': False, 'error': 'Lost connection to Ollama. The model may have caused an out-of-memory crash.'}
+        except requests.exceptions.RequestException as e:
+            return {'success': False, 'error': f'Request failed: {e}'}
+
+    def generate_response(self, prompt: str, system: Optional[str] = None, timeout: Optional[int] = None) -> Optional[str]:
+        """
+        Generate a response from the AI model using the chat API.
+
+        Args:
+            prompt: The user message to send to the model
+            system: Optional system message for context
+            timeout: Optional timeout override
+
+        Returns:
+            Generated response text or None on failure
+        """
+        messages = []
+        if system:
+            messages.append({'role': 'system', 'content': system})
+        messages.append({'role': 'user', 'content': prompt})
+
+        return self._call_chat_api(messages, timeout)
+
+    def _call_chat_api(self, messages: List[Dict[str, str]], timeout: Optional[int] = None) -> Optional[str]:
+        """
+        Call the Ollama chat API with a full messages array.
+        Uses a semaphore to serialize calls (prevents GPU crashes with concurrent users).
+        Retries up to 2 times on transient failures with backoff.
+
+        Args:
+            messages: List of {role, content} message dicts
+            timeout: Optional timeout override
+
+        Returns:
+            Generated response text or None on failure
+        """
+        effective_timeout = timeout or self.timeout
+
+        # Read configurable temperature and max tokens from DB (with fallbacks)
+        temperature = 0.5
+        num_predict = 1024
+        try:
+            from ..models import AISettings
+            temp_str = AISettings.get('ai_temperature')
+            if temp_str is not None:
+                temperature = float(temp_str)
+            tokens_str = AISettings.get('ai_max_tokens')
+            if tokens_str is not None:
+                num_predict = int(tokens_str)
+        except Exception:
+            pass  # Use defaults if DB not available
+
+        # Acquire semaphore — only one AI call at a time
+        acquired = self._semaphore.acquire(timeout=effective_timeout + 10)
+        if not acquired:
+            logger.warning("Timed out waiting for AI semaphore — another request is in progress")
+            return None
+
+        max_retries = 2
+        retry_waits = [1, 3]
+
+        try:
+            for attempt in range(max_retries + 1):
+                try:
+                    logger.debug(f"Sending {len(messages)} messages to Ollama ({self.model})"
+                                 + (f" [retry {attempt}]" if attempt > 0 else ""))
+
+                    t0 = time.monotonic()
+
+                    response = requests.post(
+                        self.chat_endpoint,
+                        json={
+                            'model': self.model,
+                            'messages': messages,
+                            'stream': False,
+                            'options': {
+                                'temperature': temperature,
+                                'num_predict': num_predict,
+                            }
+                        },
+                        timeout=effective_timeout
+                    )
+
+                    elapsed = time.monotonic() - t0
+
+                    if response.status_code == 200:
+                        result = response.json()
+                        content = result.get('message', {}).get('content', '').strip()
+                        if not content:
+                            content = result.get('response', '').strip()
+
+                        # Log timing and token info
+                        eval_count = result.get('eval_count', '?')
+                        logger.info(f"[AI CALL] model={self.model} | {elapsed:.1f}s | {eval_count} tokens")
+
+                        # Track in debug dashboard
+                        self._track_api_call('chat', response.status_code, elapsed * 1000)
+                        return content
+                    else:
+                        logger.error(f"Ollama API error: {response.status_code} - {response.text}")
+                        self._track_api_call('chat', response.status_code, elapsed * 1000,
+                                             error=response.text[:200])
+                        return None  # Don't retry 4xx/5xx
+
+                except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                    elapsed = time.monotonic() - t0 if 't0' in dir() else 0
+                    if attempt < max_retries:
+                        wait = retry_waits[attempt]
+                        logger.warning(f"AI call failed ({type(e).__name__}) after {elapsed:.1f}s, "
+                                       f"retrying in {wait}s (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(wait)
+                    else:
+                        if isinstance(e, requests.exceptions.Timeout):
+                            logger.warning(f"Ollama request timed out after {effective_timeout}s (all retries exhausted)")
+                        else:
+                            logger.error("Could not connect to Ollama server (all retries exhausted)")
+                        self._track_api_call('chat', None, elapsed * 1000, error=str(e)[:200])
+                        return None
+
+                except requests.exceptions.RequestException as e:
+                    logger.error(f"Ollama request failed: {e}")
+                    self._track_api_call('chat', None, 0, error=str(e)[:200])
+                    return None  # Don't retry unknown errors
+
+        finally:
+            self._semaphore.release()
+
+        return None
+
+    @staticmethod
+    def _track_api_call(endpoint: str, status_code, duration_ms: float, error=None):
+        """Record an Ollama API call in the debug tracker."""
+        try:
+            from .debug_service import get_api_tracker
+            tracker = get_api_tracker()
+            if tracker:
+                tracker.record('ollama', 'POST', f'/api/{endpoint}',
+                               status_code=status_code,
+                               duration_ms=duration_ms,
+                               error=error)
+        except Exception:
+            pass  # Debug tracking should never break the main flow
+
+    def extract_guest_info(self, message_content: str) -> Dict[str, Any]:
+        """
+        Extract structured guest information from a message using AI.
+        Also detects the language of the message for multilingual support.
+
+        Args:
+            message_content: The message text to analyze
+
+        Returns:
+            Dictionary with extracted information including detected_language
+        """
+        system = ("You are a JSON extraction assistant. You analyze messages and extract "
+                  "structured guest information. Always respond with ONLY a valid JSON object, "
+                  "no other text or markdown.")
+
+        prompt = f"""Analyze this message and extract any guest information mentioned.
+Also detect the language the message is written in.
+
+Return ONLY a valid JSON object with these fields (use null for missing data):
+
+{{
+    "detected_language": string (e.g., "German", "English", "Spanish", "French", "Italian"),
+    "guest_name": string or null,
+    "family_members": [{{ "name": string, "relation": string }}] or [],
+    "pets": [{{ "name": string, "type": string }}] or [],
+    "preferences": [{{ "type": string, "value": string }}] or [],
+    "allergies": [{{ "type": string, "value": string }}] or [],
+    "check_in": string (date) or null,
+    "check_out": string (date) or null,
+    "num_guests": integer or null,
+    "special_requests": [string] or [],
+    "mentioned_interests": [string] or []
+}}
+
+Message to analyze:
+"{message_content}"
+
+Return ONLY the JSON object:"""
+
+        try:
+            response = self.generate_response(prompt, system=system, timeout=self.timeout)
+
+            if not response:
+                logger.warning("No response from AI for extraction")
+                return self._empty_extraction()
+
+            # Try to parse the JSON response
+            try:
+                # Strip think tags first (qwen3 chain-of-thought)
+                clean_response = self._strip_think_tags(response)
+                # Clean up response - sometimes AI adds markdown code blocks
+                clean_response = clean_response.strip()
+                if clean_response.startswith('```json'):
+                    clean_response = clean_response[7:]
+                if clean_response.startswith('```'):
+                    clean_response = clean_response[3:]
+                if clean_response.endswith('```'):
+                    clean_response = clean_response[:-3]
+                clean_response = clean_response.strip()
+
+                try:
+                    data = json.loads(clean_response)
+                except json.JSONDecodeError:
+                    # Fallback: search for JSON object in mixed text
+                    match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', clean_response, re.DOTALL)
+                    if match:
+                        data = json.loads(match.group())
+                        logger.debug("Extracted JSON via regex fallback")
+                    else:
+                        raise
+
+                data = self._validate_extraction(data)
+                logger.info(f"Extraction successful: {self._summarize_extraction(data)}")
+                return data
+
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse AI response as JSON: {e}")
+                logger.debug(f"Raw response: {response}")
+                return self._empty_extraction()
+
+        except Exception as e:
+            logger.error(f"Extraction failed: {e}")
+            return self._empty_extraction()
+
+    def generate_guest_response(
+            self,
+            guest_profile: Dict[str, Any],
+            conversation_history: List[Dict[str, str]],
+            latest_message: str,
+            property_info: Optional[Dict[str, Any]] = None,
+            tone: Optional[str] = None,
+            host_instructions: Optional[str] = None,
+            conversation_subject: Optional[str] = None,
+            max_history: int = 10,
+            reservation_info: Optional[Dict[str, Any]] = None,
+            knowledge_entries: Optional[List[Dict[str, Any]]] = None,
+            conversation_summary: Optional[str] = None,
+            corrections: Optional[List[Dict[str, Any]]] = None,
+            resolved_topics: Optional[List[str]] = None,
+            is_closing: bool = False,
+            target_message_override: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Generate a personalized AI response for a guest.
+        History is embedded in the system prompt as a read-only log.
+        The only user turn is the guest's latest message.
+
+        Args:
+            guest_profile: Complete guest profile including all stored memories
+            conversation_history: Recent messages in the conversation
+            latest_message: The most recent message from the guest
+            property_info: Optional property information for context
+            tone: Response tone (friendly_professional, formal, casual, concise)
+            host_instructions: Custom host instructions for AI context
+            conversation_subject: Email subject or conversation topic
+            max_history: Maximum number of history messages to include
+            reservation_info: Optional Smoobu reservation details
+            conversation_summary: Cached summary of older messages for context
+
+        Returns:
+            Generated response text or None on failure
+        """
+        messages = self._build_chat_messages(
+            guest_profile,
+            conversation_history,
+            latest_message,
+            property_info,
+            tone=tone,
+            host_instructions=host_instructions,
+            conversation_subject=conversation_subject,
+            max_history=max_history,
+            reservation_info=reservation_info,
+            knowledge_entries=knowledge_entries,
+            conversation_summary=conversation_summary,
+            corrections=corrections,
+            resolved_topics=resolved_topics,
+            is_closing=is_closing,
+            target_message_override=target_message_override
+        )
+
+        # Log what the AI actually receives for debugging
+        guest_name = guest_profile.get('name', '?') if guest_profile else '?'
+        profile_details = []
+        if guest_profile:
+            for key in ('family', 'pets', 'preferences', 'allergies', 'interests', 'special_requests', 'booking'):
+                items = guest_profile.get(key, [])
+                if items:
+                    profile_details.append(f"{key}({len(items)})")
+
+        # Determine what the AI is responding to
+        is_ack = self.is_acknowledgment(latest_message)
+        logger.info(
+            f"[AI CONTEXT] guest='{guest_name}' | "
+            f"responding_to='{latest_message[:80]}' | "
+            f"message_type={'acknowledgment' if is_ack else 'needs_response'} | "
+            f"history={len(conversation_history)} msgs → {len(messages)} chat turns | "
+            f"profile=[{', '.join(profile_details) or 'empty'}] | "
+            f"property={'yes' if property_info else 'no'} | "
+            f"reservation={'yes' if reservation_info else 'no'} | "
+            f"tone={tone or 'default'}"
+        )
+        # Full prompt at DEBUG level — visible when FLASK_ENV=development
+        for i, msg in enumerate(messages):
+            role = msg['role']
+            content = msg['content'][:200].replace('\n', '\\n')
+            logger.debug(f"  [AI msg {i}] {role}: {content}")
+
+        response = self._call_chat_api(messages, timeout=self.timeout)
+
+        if not response:
+            logger.warning(f"[AI FAILED] guest='{guest_name}' | No response from Ollama")
+            return None
+
+        response = self._clean_ai_response(response)
+        if not response:
+            logger.warning(f"[AI FAILED] guest='{guest_name}' | Response rejected by quality guards")
+            return None
+
+        logger.info(f"[AI RESPONSE] guest='{guest_name}' | length={len(response)} chars | preview='{response[:80]}'")
+        return response
+
+    def generate_conversation_summary(
+            self,
+            messages: List[Dict[str, str]],
+            existing_summary: Optional[str] = None
+    ) -> Optional[str]:
+        """Generate or update a conversation summary for AI context.
+
+        Args:
+            messages: Message dicts to summarize (each has 'sender_type', 'content', 'sent_at')
+            existing_summary: If provided, update this summary with the new messages
+
+        Returns:
+            Summary text (bullet points) or None on failure
+        """
+        if not messages:
+            return existing_summary
+
+        # Format messages for the prompt
+        sender_labels = {'guest': 'Guest', 'owner': 'Host', 'ai': 'Host'}
+        formatted = []
+        for msg in messages:
+            label = sender_labels.get(msg.get('sender_type', 'guest'), 'Guest')
+            content = self._strip_html(msg.get('content', ''))
+            content = self._strip_email_quotes(content)
+            if content.strip():
+                formatted.append(f"{label}: {content.strip()}")
+
+        if not formatted:
+            return existing_summary
+
+        formatted_messages = "\n".join(formatted)
+
+        system = "You are a summarization assistant. Be concise and factual."
+
+        if existing_summary:
+            prompt = (
+                "Here is an existing summary of an ongoing conversation "
+                "between a vacation rental host and a guest:\n\n"
+                f"{existing_summary}\n\n"
+                "New messages since the last summary:\n"
+                f"{formatted_messages}\n\n"
+                "Update the summary to include the new information.\n"
+                "Keep the same bullet-point format. Keep it under 300 words.\n"
+                "Write in the same language as the conversation.\n"
+                "Remove items that are no longer pending. "
+                "Add new decisions, promises, or open items."
+            )
+        else:
+            prompt = (
+                "Summarize this conversation between a vacation rental host and a guest.\n"
+                "Write concise bullet points covering:\n"
+                "- Key decisions made\n"
+                "- Promises or commitments by either party\n"
+                "- Questions that were answered (and the answers)\n"
+                "- Pending or open items\n\n"
+                "Keep it under 300 words. Write in the same language as the conversation.\n"
+                "Do NOT include greetings, pleasantries, or filler.\n\n"
+                f"Conversation:\n{formatted_messages}"
+            )
+
+        try:
+            response = self.generate_response(prompt, system=system)
+            if response:
+                response = self._strip_think_tags(response).strip()
+                if len(response) < 10:
+                    logger.warning(f"[SUMMARY] Generated summary too short ({len(response)} chars), discarding")
+                    return existing_summary
+                logger.info(f"[SUMMARY] Generated summary: {len(response)} chars")
+                return response
+            logger.warning("[SUMMARY] No response from Ollama for summary generation")
+            return existing_summary
+        except Exception as e:
+            logger.warning(f"[SUMMARY] Summary generation failed: {e}")
+            return existing_summary
+
+    def extract_correction_topic(self, original: str, corrected: str) -> Optional[str]:
+        """Extract a 1-3 word topic label from a correction pair.
+
+        Args:
+            original: The original AI-generated text
+            corrected: The host's corrected version
+
+        Returns:
+            Topic string (1-3 words) or None on failure
+        """
+        try:
+            prompt = (
+                "Given this original AI response and the host's corrected version, "
+                "what is the topic of this correction in 1-3 words? "
+                "Respond with ONLY the topic words, nothing else.\n\n"
+                f"Original: {original[:500]}\n"
+                f"Corrected: {corrected[:500]}"
+            )
+
+            response = requests.post(
+                self.generate_endpoint,
+                json={
+                    'model': self.model,
+                    'prompt': prompt,
+                    'stream': False,
+                    'options': {
+                        'temperature': 0.1,
+                        'num_predict': 20
+                    }
+                },
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                topic = result.get('response', '').strip()
+                # Clean up: remove quotes, periods, limit length
+                topic = topic.strip('"\'.')
+                if topic and len(topic) <= 50:
+                    return topic
+            return None
+        except Exception as e:
+            logger.warning(f"Correction topic extraction failed: {e}")
+            return None
+
+    # Tone mapping for AI prompt instructions
+    TONE_INSTRUCTIONS = {
+        'friendly_professional': "Be warm, helpful, and professional.",
+        'formal': "Be polite, formal, and professional. Use formal language (Sie in German).",
+        'casual': "Be relaxed and conversational, like chatting with a friend. Use informal language (du in German, tú in Spanish).",
+        'concise': "Be brief and to the point. Short sentences, no filler.",
+    }
+
+    def _build_compact_prompt(
+            self,
+            guest_profile: Dict[str, Any],
+            conversation_history: List[Dict[str, str]],
+            clean_latest: str,
+            unanswered_count: int,
+            tone: Optional[str] = None,
+            host_instructions: Optional[str] = None,
+            reservation_info: Optional[Dict[str, Any]] = None,
+            knowledge_entries: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
+        """Build a compact system prompt (~400-600 tokens) for KI-Vorschlag / KI-Antwort.
+
+        Keeps only what the 8B model needs to answer the latest guest message:
+        role, rules, guest name, reservation one-liner, host instructions,
+        top KB entries, short conversation log, and the task instruction.
+
+        Excludes: full guest profile, property details, conversation summary,
+        resolved topics, corrections, escalation entries.
+        """
+        now = datetime.utcnow()
+        tone_instruction = self.TONE_INSTRUCTIONS.get(tone, self.TONE_INSTRUCTIONS['friendly_professional'])
+
+        # 1. Role + rules + tone (compact)
+        parts = [
+            "You are UMI, the friendly AI assistant for Urlaubsmagie vacation rentals. You are warm, helpful, and casual — always treating guests like welcome visitors.",
+            tone_instruction,
+            f"Date: {now.strftime('%d %b %Y')}.",
+            "Rules: Reply in the guest's language. Never invent details — say you'll check. Don't re-ask answered questions.",
+        ]
+
+        # 2. Guest name + language
+        guest_name = guest_profile.get('name', 'the guest') if guest_profile else 'the guest'
+        guest_language = guest_profile.get('language') if guest_profile else None
+        if guest_language:
+            parts.append(f"Guest: {guest_name} (speaks {guest_language})")
+        else:
+            parts.append(f"Guest: {guest_name}")
+
+        # 3. Reservation one-liner
+        if reservation_info:
+            res_compact = self._format_reservation_compact(reservation_info)
+            if res_compact:
+                parts.append(res_compact)
+
+        # 4. Host instructions
+        if host_instructions and host_instructions.strip():
+            parts.append(f"Host instructions: {host_instructions.strip()}")
+
+        # 5. KB entries (top 3 only, no escalation)
+        if knowledge_entries:
+            regular = [e for e in knowledge_entries if not (e.get('category') or '').startswith('esc')][:3]
+            if regular:
+                kb_lines = []
+                for e in regular:
+                    label = e.get('label', '')
+                    value = e.get('value', '')
+                    val = value[:80] + ("..." if len(value) > 80 else "")
+                    kb_lines.append(f"- {label}: {val}")
+                parts.append("Info:\n" + "\n".join(kb_lines))
+
+        # 6. Recent host replies only (exclude guest messages to prevent model fixating on old questions)
+        host_only_history = [m for m in conversation_history if m.get('sender_type') in ('owner', 'ai')]
+        if host_only_history:
+            conversation_log = self._format_conversation_log(host_only_history, max_history=2)
+            if conversation_log:
+                parts.append(f"Your recent replies:\n{conversation_log}")
+
+        # 7. YOUR TASK (at the end for model attention)
+        parts.append("")
+        if unanswered_count >= 2:
+            # Multi-message: texts are in the user turn as numbered list [1], [2], ...
+            parts.append(
+                f"TASK: The guest sent {unanswered_count} unanswered messages below. "
+                "Address ALL of them in one reply."
+            )
+        else:
+            task_text = clean_latest[:300] + ("..." if len(clean_latest) > 300 else "")
+            parts.append(
+                f'TASK: The guest\'s new message is: "{task_text}"\n'
+                "Reply to THIS message only."
+            )
+
+        return "\n".join(parts)
+
+    def _build_chat_messages(
+            self,
+            guest_profile: Dict[str, Any],
+            conversation_history: List[Dict[str, str]],
+            latest_message: str,
+            property_info: Optional[Dict[str, Any]],
+            tone: Optional[str] = None,
+            host_instructions: Optional[str] = None,
+            conversation_subject: Optional[str] = None,
+            max_history: int = 10,
+            reservation_info: Optional[Dict[str, Any]] = None,
+            knowledge_entries: Optional[List[Dict[str, Any]]] = None,
+            conversation_summary: Optional[str] = None,
+            corrections: Optional[List[Dict[str, Any]]] = None,
+            resolved_topics: Optional[List[str]] = None,
+            is_closing: bool = False,
+            target_message_override: Optional[str] = None
+    ) -> List[Dict[str, str]]:
+        """Build chat messages for the Ollama chat API.
+
+        Architecture: conversation history goes into the system prompt as a
+        read-only log.  The ONLY user turn is the guest's latest message.
+        This prevents small models from responding to old messages.
+
+        Returns:
+            List of exactly 2 dicts: [system, user]
+        """
+        messages = []
+
+        # Shortcut: for closing/gratitude messages, use a minimal prompt
+        if is_closing:
+            guest_name = guest_profile.get('name', 'the guest') if guest_profile else 'the guest'
+            closing_system = (
+                f"You are UMI, the friendly AI assistant for Urlaubsmagie. The guest ({guest_name}) is thanking you "
+                "for your help. Reply briefly and warmly in the SAME LANGUAGE as the guest's message. "
+                "Keep it to 1-2 sentences. Do NOT bring up any other topics."
+            )
+            messages.append({'role': 'system', 'content': closing_system})
+            clean_latest = self._strip_html(latest_message)
+            clean_latest = self._strip_email_quotes(clean_latest)
+            messages.append({'role': 'user', 'content': clean_latest or latest_message.strip()})
+            return messages
+
+        # Clean latest message
+        clean_latest = self._strip_html(latest_message)
+        clean_latest = self._strip_email_quotes(clean_latest)
+        if not clean_latest.strip():
+            clean_latest = latest_message.strip()
+
+        # Count consecutive trailing guest messages for multi-message handling
+        unanswered_count = min(
+            self._count_trailing_guest_messages(conversation_history),
+            max_history
+        )
+
+        # --- Prompt mode selection ---
+        # Per-message suggest (lightbulb): uses the full prompt with target_message_override
+        # KI-Vorschlag / KI-Antwort: uses the compact prompt for 8B model focus
+        if not target_message_override:
+            system_content = self._build_compact_prompt(
+                guest_profile=guest_profile,
+                conversation_history=conversation_history,
+                clean_latest=clean_latest,
+                unanswered_count=unanswered_count,
+                tone=tone,
+                host_instructions=host_instructions,
+                reservation_info=reservation_info,
+                knowledge_entries=knowledge_entries,
+            )
+            messages.append({'role': 'system', 'content': system_content})
+
+            # User turn: latest guest message(s)
+            if unanswered_count >= 2:
+                trailing_messages = []
+                for msg in reversed(conversation_history):
+                    if msg.get('sender_type') == 'guest':
+                        content = self._strip_html(msg.get('content', ''))
+                        content = self._strip_email_quotes(content)
+                        if content.strip():
+                            trailing_messages.append(content.strip())
+                    else:
+                        break
+                trailing_messages.reverse()
+
+                if len(trailing_messages) >= 2:
+                    numbered = [f"[{i+1}] {text}" for i, text in enumerate(trailing_messages)]
+                    messages.append({'role': 'user', 'content': "\n".join(numbered)})
+                else:
+                    messages.append({'role': 'user', 'content': trailing_messages[0] if trailing_messages else clean_latest})
+            else:
+                messages.append({'role': 'user', 'content': clean_latest})
+
+            return messages
+
+        # --- Per-message suggest: full prompt path (unchanged) ---
+        # Get guest's preferred language if stored
+        guest_language = guest_profile.get('language', None) if guest_profile else None
+
+        # Resolve tone instruction
+        tone_instruction = self.TONE_INSTRUCTIONS.get(tone, self.TONE_INSTRUCTIONS['friendly_professional'])
+
+        # --- Build system prompt ---
+        now = datetime.utcnow()
+        system_parts = [
+            "You are UMI, the friendly AI assistant for Urlaubsmagie vacation rentals. You are warm, helpful, and casual — always treating guests like welcome visitors.",
+            f"{tone_instruction}",
+            f"Current date/time: {now.strftime('%A, %d %B %Y, %H:%M')} UTC.",
+            "",
+            "Rules:",
+            "- Reply ONLY in the SAME LANGUAGE as the guest's message below.",
+            "- Write ONLY the reply text. No subject lines, no 'Subject:', no signatures.",
+            "- NEVER re-ask questions the guest already answered.",
+            "- NEVER repeat information you already provided.",
+            "- If you don't know specific details (WiFi password, door code, prices), say you'll check — NEVER invent details.",
+            "- The CONVERSATION LOG below is for context only — do NOT re-answer old topics.",
+        ]
+
+        if guest_language:
+            system_parts.append(f"- The guest's preferred language is: {guest_language}.")
+
+        # Context sections (conditional) — task instruction comes LAST for model attention
+        if guest_profile:
+            profile_text = self._format_guest_profile(guest_profile)
+            if profile_text:
+                system_parts.append(f"\n=== GUEST PROFILE ===\n{profile_text}\n=== Do NOT ask for info already listed above. ===")
+
+        if property_info:
+            property_text = self._format_property_info(property_info)
+            if property_text:
+                system_parts.append(f"\nProperty details:\n{property_text}")
+
+        if conversation_subject:
+            system_parts.append(f"\nConversation topic: {conversation_subject}")
+
+        if reservation_info:
+            res_text = self._format_reservation_info(reservation_info)
+            if res_text:
+                system_parts.append(f"\n=== RESERVATION ===\n{res_text}\n===")
+
+        if knowledge_entries:
+            regular_entries = [e for e in knowledge_entries if not (e.get('category') or '').startswith('esc')]
+            escalation_entries = [e for e in knowledge_entries if (e.get('category') or '').startswith('esc')]
+
+            if regular_entries:
+                kb_text = self._format_knowledge_entries(regular_entries)
+                if kb_text:
+                    system_parts.append(
+                        f"\n=== HOST KNOWLEDGE BASE (use ONLY facts relevant to the guest's current question) ===\n"
+                        f"{kb_text}\n==="
+                    )
+
+            if escalation_entries:
+                restricted_text = self._format_restricted_topics(escalation_entries)
+                if restricted_text:
+                    system_parts.append(f"\n=== RESTRICTED TOPICS ===\n{restricted_text}\n===")
+
+        if host_instructions and host_instructions.strip():
+            system_parts.append(f"\n=== HOST INSTRUCTIONS ===\n{host_instructions.strip()}\n===")
+
+        if resolved_topics:
+            topics_text = "\n".join(f"- {topic}" for topic in resolved_topics[:8])
+            system_parts.append(
+                f"\n=== ALREADY RESOLVED (do NOT address these topics again) ===\n"
+                f"{topics_text}\n==="
+            )
+
+        if conversation_summary:
+            system_parts.append(
+                f"\n=== CONVERSATION SUMMARY (older messages, for background only) ===\n"
+                f"{conversation_summary}\n==="
+            )
+
+        if corrections:
+            corrections_text = self._format_corrections(corrections)
+            if corrections_text:
+                system_parts.append(f"\n=== PAST CORRECTIONS (you made these mistakes before — don't repeat them) ===\n{corrections_text}\n===")
+
+        # Conversation log — history as read-only text in the system prompt
+        conversation_log = self._format_conversation_log(conversation_history, max_history)
+        if conversation_log:
+            system_parts.append(
+                f"\n=== CONVERSATION LOG (read-only context — do NOT respond to these messages) ===\n"
+                f"{conversation_log}\n==="
+            )
+
+        # Task instruction at the END — models pay most attention to beginning + end
+        system_parts.append("")
+        if target_message_override:
+            clean_target = self._strip_html(target_message_override)
+            clean_target = self._strip_email_quotes(clean_target)
+            if not clean_target.strip():
+                clean_target = target_message_override.strip()
+            system_parts.extend([
+                "=== YOUR TASK ===",
+                "The guest sent the following message. Write a reply specifically to THIS message:",
+                f'"{clean_target[:300]}"',
+                "Focus ONLY on answering this message. Ignore everything else in the conversation.",
+                "===",
+            ])
+        elif unanswered_count >= 2:
+            system_parts.extend([
+                "=== YOUR TASK ===",
+                f"The guest has sent {unanswered_count} unanswered messages below.",
+                "Address ALL of them in a single reply.",
+                "===",
+            ])
+        else:
+            system_parts.extend([
+                "=== YOUR TASK ===",
+                f'The guest\'s NEW message is: "{clean_latest[:300]}"',
+                "Write a reply that answers THIS message. Ignore everything else.",
+                "===",
+            ])
+
+        messages.append({'role': 'system', 'content': "\n".join(system_parts)})
+
+        # --- Single user turn: only the latest guest message ---
+        if target_message_override:
+            # Per-message suggest: always send only the targeted message
+            clean_target = self._strip_html(target_message_override)
+            clean_target = self._strip_email_quotes(clean_target)
+            if not clean_target.strip():
+                clean_target = target_message_override.strip()
+            messages.append({'role': 'user', 'content': clean_target})
+        elif unanswered_count >= 2:
+            # Build numbered multi-message user turn from trailing guest messages
+            trailing_messages = []
+            for msg in reversed(conversation_history):
+                if msg.get('sender_type') == 'guest':
+                    content = self._strip_html(msg.get('content', ''))
+                    content = self._strip_email_quotes(content)
+                    if content.strip():
+                        trailing_messages.append(content.strip())
+                else:
+                    break
+            trailing_messages.reverse()
+
+            if len(trailing_messages) >= 2:
+                # Number them [1], [2], ...
+                numbered = [f"[{i+1}] {text}" for i, text in enumerate(trailing_messages)]
+                messages.append({'role': 'user', 'content': "\n".join(numbered)})
+            else:
+                # After cleaning, only 1 message has content — send as single message
+                messages.append({'role': 'user', 'content': trailing_messages[0] if trailing_messages else clean_latest})
+        else:
+            messages.append({'role': 'user', 'content': clean_latest})
+
+        return messages
+
+    @staticmethod
+    def _strip_html(text: str) -> str:
+        """Strip HTML tags and decode common entities from message content."""
+        if not text or '<' not in text:
+            return text
+        # Remove HTML tags
+        text = re.sub(r'<br\s*/?\s*>', '\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'<[^>]+>', '', text)
+        # Decode common HTML entities
+        text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+        text = text.replace('&quot;', '"').replace('&#39;', "'").replace('&nbsp;', ' ')
+        # Collapse excessive whitespace from HTML structure
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = re.sub(r'[ \t]{2,}', ' ', text)
+        return text.strip()
+
+    @staticmethod
+    def _strip_email_quotes(text: str) -> str:
+        """Strip quoted replies, signatures, and email noise from message content.
+        Keeps only the new content the person actually wrote."""
+        if not text:
+            return ""
+
+        lines = text.splitlines()
+        cleaned = []
+
+        for line in lines:
+            stripped = line.strip()
+
+            # Stop at quoted reply markers
+            if re.match(r'^On .+ wrote:\s*$', stripped):
+                break
+            if re.match(r'^Am .+ schrieb .+:\s*$', stripped):
+                break
+            if re.match(r'^-{2,}\s*(Original Message|Forwarded message|Urspr)', stripped, re.IGNORECASE):
+                break
+            if stripped.startswith('>'):
+                break
+            if stripped == '--':
+                break
+
+            cleaned.append(line)
+
+        result = '\n'.join(cleaned).strip()
+        # Collapse excessive whitespace
+        result = re.sub(r'\n{3,}', '\n\n', result)
+        result = re.sub(r'\r\n', '\n', result)
+
+        return result
+
+    @staticmethod
+    def _count_trailing_guest_messages(history: list) -> int:
+        """Count consecutive guest messages at the end of the history (no host/AI reply between them)."""
+        count = 0
+        for msg in reversed(history):
+            if msg.get('sender_type') == 'guest':
+                count += 1
+            else:
+                break
+        return count
+
+    def _format_conversation_log(
+            self,
+            conversation_history: List[Dict[str, str]],
+            max_history: int = 10
+    ) -> str:
+        """Format conversation history as a numbered, timestamped log.
+
+        Returns a string like:
+            [1] Guest (2 days ago): What's the WiFi password?
+            [2] Host (2 days ago): The WiFi password is XYZ.
+            [3] Guest (5 min ago): Where is the parking card?  ← LATEST
+
+        Deduplicates by platform_message_id and content.
+        Strips HTML, email quotes, and empty messages.
+        Caps at max_history messages.
+        """
+        sender_labels = {'guest': 'Guest', 'owner': 'Host', 'ai': 'Host'}
+        now = datetime.utcnow()
+
+        seen_platform_ids = set()
+        seen_content = set()
+        entries = []
+
+        for msg in conversation_history:
+            # Skip duplicates by platform_message_id
+            pmid = msg.get('platform_message_id')
+            if pmid:
+                if pmid in seen_platform_ids:
+                    continue
+                seen_platform_ids.add(pmid)
+
+            sender_type = msg.get('sender_type', 'guest')
+            content = msg.get('content', '').strip()
+            if not content:
+                continue
+
+            # Clean content
+            content = self._strip_html(content)
+            stripped = self._strip_email_quotes(content)
+            content = stripped if stripped.strip() else content
+
+            if not content.strip():
+                continue
+
+            label = sender_labels.get(sender_type, 'Guest')
+
+            # Skip duplicate content (use label to pool owner+ai under Host)
+            content_key = (label, content.strip())
+            if content_key in seen_content:
+                continue
+            seen_content.add(content_key)
+            # Truncate messages to keep the log compact (reduces distraction for 8B models)
+            if len(content) > 150:
+                content = content[:150] + "..."
+
+            # Parse timestamp for relative time
+            time_ago = self._relative_time(msg.get('sent_at'), now)
+
+            entries.append((label, time_ago, content.strip()))
+
+        # Keep last N messages
+        entries = entries[-max_history:]
+
+        # Build numbered lines with LATEST marker on last entry
+        lines = []
+        for i, (label, time_ago, content) in enumerate(entries, 1):
+            marker = "  ← LATEST" if i == len(entries) else ""
+            lines.append(f"[{i}] {label} ({time_ago}): {content}{marker}")
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def _relative_time(sent_at_value, now: datetime) -> str:
+        """Convert a sent_at value (ISO string or datetime) to a relative time string."""
+        if not sent_at_value:
+            return "unknown"
+
+        if isinstance(sent_at_value, str):
+            try:
+                sent_dt = datetime.fromisoformat(sent_at_value.replace('Z', '+00:00')).replace(tzinfo=None)
+            except (ValueError, TypeError):
+                return "unknown"
+        elif isinstance(sent_at_value, datetime):
+            sent_dt = sent_at_value.replace(tzinfo=None)
+        else:
+            return "unknown"
+
+        delta = now - sent_dt
+        seconds = int(delta.total_seconds())
+
+        if seconds < 0:
+            return "just now"
+        elif seconds < 60:
+            return "just now"
+        elif seconds < 3600:
+            mins = seconds // 60
+            return f"{mins} min ago"
+        elif seconds < 86400:
+            hours = seconds // 3600
+            return f"{hours}h ago"
+        else:
+            days = seconds // 86400
+            return f"{days}d ago"
+
+    @staticmethod
+    def _strip_think_tags(text: str) -> str:
+        """Strip <think>...</think> blocks from model output (qwen3 chain-of-thought)."""
+        if not text or '<think>' not in text:
+            return text
+        # Strip closed think blocks
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+        # Strip unclosed think tag (model stopped mid-thought)
+        text = re.sub(r'<think>.*', '', text, flags=re.DOTALL)
+        return text.strip()
+
+    def _clean_ai_response(self, text: str) -> Optional[str]:
+        """Clean AI response: strip artifacts, enforce length guards.
+
+        Returns cleaned text, or None if response is broken/empty.
+        """
+        if not text:
+            return None
+
+        # Strip thinking blocks first (can be large)
+        text = self._strip_think_tags(text)
+
+        # Strip model artifacts
+        artifact_patterns = [
+            r'\[INST\]', r'\[/INST\]',
+            r'<<SYS>>', r'<</SYS>>',
+            r'<\|assistant\|>', r'<\|user\|>', r'<\|system\|>',
+            r'<\|im_start\|>', r'<\|im_end\|>',
+            r'<\|end\|>',
+            r'<s>', r'</s>',
+        ]
+        for pattern in artifact_patterns:
+            text = re.sub(pattern, '', text)
+
+        # Clean up whitespace left by stripping
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = text.strip()
+
+        # Minimum length guard
+        if len(text) < 10:
+            logger.warning(f"[AI QUALITY] Response too short ({len(text)} chars), rejecting: '{text}'")
+            return None
+
+        # Maximum length guard — truncate at sentence boundary
+        if len(text) > 2000:
+            original_len = len(text)
+            truncated = text[:2000]
+            # Find last sentence boundary
+            last_boundary = max(
+                truncated.rfind('.'),
+                truncated.rfind('!'),
+                truncated.rfind('?')
+            )
+            if last_boundary > 100:  # Only use boundary if it leaves a reasonable response
+                text = truncated[:last_boundary + 1]
+            else:
+                text = truncated
+            logger.info(f"[AI QUALITY] Response truncated from {original_len} to {len(text)} chars")
+
+        return text
+
+    def _format_guest_profile(self, profile: Dict[str, Any]) -> str:
+        """Format guest profile for the prompt"""
+        lines = []
+
+        if profile.get('name'):
+            lines.append(f"- Name: {profile['name']}")
+
+        if profile.get('total_stays', 0) > 0:
+            lines.append(f"- Previous stays: {profile['total_stays']}")
+
+        # Booking details (num_guests, check_in, check_out)
+        booking = profile.get('booking', [])
+        if booking:
+            booking_map = {b['key']: b['value'] for b in booking}
+            if booking_map.get('num_guests'):
+                lines.append(f"- Number of guests: {booking_map['num_guests']}")
+            if booking_map.get('check_in'):
+                lines.append(f"- Check-in date: {booking_map['check_in']}")
+            if booking_map.get('check_out'):
+                lines.append(f"- Check-out date: {booking_map['check_out']}")
+
+        # Family members
+        family = profile.get('family', [])
+        if family:
+            family_str = ", ".join([f"{f['value']} ({f['key']})" for f in family])
+            lines.append(f"- Family: {family_str}")
+
+        # Pets
+        pets = profile.get('pets', [])
+        if pets:
+            pets_str = ", ".join([f"{p['value']} ({p['key']})" for p in pets])
+            lines.append(f"- Pets: {pets_str}")
+
+        # Preferences
+        prefs = profile.get('preferences', [])
+        if prefs:
+            prefs_str = ", ".join([f"{p['key']}: {p['value']}" for p in prefs])
+            lines.append(f"- Preferences: {prefs_str}")
+
+        # Allergies
+        allergies = profile.get('allergies', [])
+        if allergies:
+            allergies_str = ", ".join([f"{a['key']}: {a['value']}" for a in allergies])
+            lines.append(f"- ALLERGIES (CRITICAL - never ignore): {allergies_str}")
+
+        # Interests
+        interests = profile.get('interests', [])
+        if interests:
+            interests_str = ", ".join([i['value'] for i in interests])
+            lines.append(f"- Interests: {interests_str}")
+
+        # Special requests
+        special_requests = profile.get('special_requests', [])
+        if special_requests:
+            requests_str = ", ".join([r['value'] for r in special_requests])
+            lines.append(f"- Special requests: {requests_str}")
+
+        return "\n".join(lines)
+
+    def _format_property_info(self, property_info: Dict[str, Any]) -> str:
+        """Format property information for the prompt"""
+        lines = []
+
+        if property_info.get('name'):
+            lines.append(f"- Property: {property_info['name']}")
+        if property_info.get('address'):
+            lines.append(f"- Address: {property_info['address']}")
+        if property_info.get('max_guests'):
+            lines.append(f"- Max guests: {property_info['max_guests']}")
+        if property_info.get('bedrooms'):
+            lines.append(f"- Bedrooms: {property_info['bedrooms']}")
+        if property_info.get('check_in_time'):
+            lines.append(f"- Check-in: {property_info['check_in_time']}")
+        if property_info.get('check_out_time'):
+            lines.append(f"- Check-out: {property_info['check_out_time']}")
+        if property_info.get('pet_friendly'):
+            lines.append("- Pet-friendly: Yes")
+        if property_info.get('amenities'):
+            lines.append(f"- Amenities: {', '.join(property_info['amenities'])}")
+        if property_info.get('house_rules'):
+            lines.append(f"- House rules: {property_info['house_rules'][:200]}...")
+
+        return "\n".join(lines)
+
+    def _format_reservation_info(self, reservation_info: Dict[str, Any]) -> str:
+        """Format Smoobu reservation details for the AI prompt"""
+        lines = []
+        if reservation_info.get('arrival') or reservation_info.get('check_in'):
+            lines.append(f"- Check-in: {reservation_info.get('arrival') or reservation_info.get('check_in')}")
+        if reservation_info.get('departure') or reservation_info.get('check_out'):
+            lines.append(f"- Check-out: {reservation_info.get('departure') or reservation_info.get('check_out')}")
+        if reservation_info.get('adults'):
+            lines.append(f"- Adults: {reservation_info['adults']}")
+        if reservation_info.get('children'):
+            lines.append(f"- Children: {reservation_info['children']}")
+        if reservation_info.get('price') or reservation_info.get('total_price'):
+            lines.append(f"- Total price: {reservation_info.get('price') or reservation_info.get('total_price')}")
+        if reservation_info.get('channel') or reservation_info.get('channel_name'):
+            lines.append(f"- Booking channel: {reservation_info.get('channel') or reservation_info.get('channel_name')}")
+        if reservation_info.get('apartment') and reservation_info['apartment'].get('name'):
+            lines.append(f"- Property: {reservation_info['apartment']['name']}")
+        return "\n".join(lines)
+
+    def _format_reservation_compact(self, reservation_info: Dict[str, Any]) -> str:
+        """Format reservation as a single compact line for the slim prompt."""
+        parts = []
+        arrival = reservation_info.get('arrival') or reservation_info.get('check_in')
+        departure = reservation_info.get('departure') or reservation_info.get('check_out')
+        if arrival and departure:
+            parts.append(f"{arrival} to {departure}")
+        elif arrival:
+            parts.append(f"Check-in: {arrival}")
+
+        adults = reservation_info.get('adults')
+        children = reservation_info.get('children')
+        if adults and children:
+            parts.append(f"{adults} adults + {children} children")
+        elif adults:
+            parts.append(f"{adults} guests")
+
+        apt = reservation_info.get('apartment', {})
+        if apt and apt.get('name'):
+            parts.append(f"Property: {apt['name']}")
+
+        return "Reservation: " + ", ".join(parts) if parts else ""
+
+    @staticmethod
+    def _format_corrections(corrections: List[Dict[str, Any]], max_chars: int = 1500) -> str:
+        """Format correction entries for the AI system prompt."""
+        lines = []
+        total = 0
+        for c in corrections:
+            label = c.get('label', 'Unknown')
+            value = c.get('value', '')
+
+            # Parse FALSCH:/RICHTIG: format
+            if '\nRICHTIG: ' in value:
+                parts = value.split('\nRICHTIG: ', 1)
+                original = parts[0].replace('FALSCH: ', '', 1).strip()
+                corrected = parts[1].strip()
+                line = f'- "{label}": Don\'t say "{original[:150]}" → Correct: "{corrected[:150]}"'
+            else:
+                line = f'- "{label}": {value[:200]}'
+
+            if total + len(line) > max_chars:
+                break
+            lines.append(line)
+            total += len(line)
+
+        return "\n".join(lines) if lines else ""
+
+    def _format_knowledge_entries(entries: List[Dict[str, Any]], max_chars: int = 2000) -> str:
+        """Format knowledge base entries for the AI prompt, grouped by category."""
+        if not entries:
+            return ""
+
+        CATEGORY_LABELS = {
+            'general': 'General Info',
+            'checkin_checkout': 'Check-in / Check-out',
+            'nearby': 'Nearby Places',
+            'house_rules': 'House Rules',
+            'emergency': 'Emergency Contacts',
+            'faq': 'FAQ',
+        }
+
+        # Group by category
+        by_category = {}
+        for entry in entries:
+            cat = entry.get('category', 'general')
+            by_category.setdefault(cat, []).append(entry)
+
+        lines = []
+        total_len = 0
+        truncated = False
+
+        for cat_key in ['general', 'checkin_checkout', 'nearby', 'house_rules', 'emergency', 'faq']:
+            cat_entries = by_category.get(cat_key, [])
+            if not cat_entries:
+                continue
+
+            header = f"[{CATEGORY_LABELS.get(cat_key, cat_key)}]"
+            if total_len + len(header) + 1 > max_chars:
+                truncated = True
+                break
+
+            lines.append(header)
+            total_len += len(header) + 1
+
+            for entry in cat_entries:
+                line = f"- {entry['label']}: {entry['value']}"
+                if total_len + len(line) + 1 > max_chars:
+                    truncated = True
+                    break
+                lines.append(line)
+                total_len += len(line) + 1
+
+            if truncated:
+                break
+            lines.append("")  # blank line between categories
+
+        if truncated:
+            lines.append("(...additional entries omitted)")
+
+        return "\n".join(lines).strip()
+
+    @staticmethod
+    def _format_restricted_topics(escalation_entries: List[Dict[str, Any]]) -> str:
+        """Format escalation KB entries as restricted topics for the AI prompt."""
+        if not escalation_entries:
+            return ""
+
+        lines = [
+            "You MUST NOT answer questions about these topics yourself.",
+            'Instead, reply with something like: "I\'ll check with my colleague and get back to you shortly."',
+            "(Always in the guest's language.)",
+            "",
+        ]
+        for entry in escalation_entries:
+            lines.append(f"- {entry['label']}")
+
+        return "\n".join(lines)
+
+    def _format_conversation(self, messages: List[Dict[str, str]], max_messages: int = 10) -> str:
+        """Format conversation history for the prompt"""
+        recent = messages[-max_messages:] if len(messages) > max_messages else messages
+
+        sender_labels = {
+            'guest': 'Guest',
+            'owner': 'You (Host)',
+            'ai': 'You (Host)',
+        }
+
+        lines = []
+        for msg in recent:
+            sender_type = msg.get('sender_type', 'unknown')
+            label = sender_labels.get(sender_type, sender_type)
+            content = msg.get('content', '')[:800]
+            lines.append(f"{label}: {content}")
+
+        return "\n".join(lines)
+
+    def _validate_extraction(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate and normalize extracted data types.
+        Ensures correct types and normalizes null-like strings to None."""
+        null_values = {'null', 'none', 'n/a', 'na', 'nil', ''}
+
+        def normalize_str(val):
+            """Return None for null-like strings, else stripped string."""
+            if val is None:
+                return None
+            if isinstance(val, str) and val.strip().lower() in null_values:
+                return None
+            return str(val).strip() if val else None
+
+        def ensure_list_of_dicts(val):
+            """Ensure value is a list of dicts."""
+            if not isinstance(val, list):
+                return []
+            return [item for item in val if isinstance(item, dict)]
+
+        def ensure_list_of_strings(val):
+            """Ensure value is a list of strings."""
+            if not isinstance(val, list):
+                return []
+            return [str(item).strip() for item in val if item and str(item).strip()]
+
+        result = self._empty_extraction()
+
+        # String fields
+        result['detected_language'] = normalize_str(data.get('detected_language'))
+        result['guest_name'] = normalize_str(data.get('guest_name'))
+        result['check_in'] = normalize_str(data.get('check_in'))
+        result['check_out'] = normalize_str(data.get('check_out'))
+
+        # Integer field
+        num_guests = data.get('num_guests')
+        if num_guests is not None:
+            try:
+                result['num_guests'] = int(num_guests)
+            except (ValueError, TypeError):
+                result['num_guests'] = None
+
+        # List of dicts fields
+        result['family_members'] = ensure_list_of_dicts(data.get('family_members'))
+        result['pets'] = ensure_list_of_dicts(data.get('pets'))
+        result['preferences'] = ensure_list_of_dicts(data.get('preferences'))
+        result['allergies'] = ensure_list_of_dicts(data.get('allergies'))
+
+        # List of strings fields
+        result['special_requests'] = ensure_list_of_strings(data.get('special_requests'))
+        result['mentioned_interests'] = ensure_list_of_strings(data.get('mentioned_interests'))
+
+        return result
+
+    def _empty_extraction(self) -> Dict[str, Any]:
+        """Return an empty extraction structure"""
+        return {
+            'detected_language': None,
+            'guest_name': None,
+            'family_members': [],
+            'pets': [],
+            'preferences': [],
+            'allergies': [],
+            'check_in': None,
+            'check_out': None,
+            'num_guests': None,
+            'special_requests': [],
+            'mentioned_interests': []
+        }
+
+    def _summarize_extraction(self, data: Dict[str, Any]) -> str:
+        """Create a summary of extracted data for logging"""
+        parts = []
+        if data.get('guest_name'):
+            parts.append(f"name:{data['guest_name']}")
+        if data.get('family_members'):
+            parts.append(f"family:{len(data['family_members'])}")
+        if data.get('pets'):
+            parts.append(f"pets:{len(data['pets'])}")
+        if data.get('preferences'):
+            parts.append(f"prefs:{len(data['preferences'])}")
+        if data.get('allergies'):
+            parts.append(f"allergies:{len(data['allergies'])}")
+        if data.get('num_guests'):
+            parts.append(f"guests:{data['num_guests']}")
+        return ", ".join(parts) if parts else "no data extracted"
+
+
+# Global instance for Flask app context
+_ai_service: Optional[AIService] = None
+
+
+def init_ai_service(app) -> AIService:
+    """Initialize the AI service with Flask app configuration"""
+    global _ai_service
+    _ai_service = AIService(
+        ollama_url=app.config.get('OLLAMA_URL', 'http://localhost:11434'),
+        model=app.config.get('OLLAMA_MODEL', 'gemma2:9b'),
+        timeout=app.config.get('OLLAMA_TIMEOUT', 120)
+    )
+    logger.info(f"AI Service initialized with model {_ai_service.model}")
+    return _ai_service
+
+
+def get_ai_service() -> Optional[AIService]:
+    """Get the current AI service instance"""
+    return _ai_service

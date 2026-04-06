@@ -1,0 +1,259 @@
+{% extends "chatbot/base.html" %}
+{% block body_class %}conversation-page{% endblock %}
+
+{% block title %}{{ _('Conversation') if _ else 'Konversation' }} - {{ guest.name or 'Gast' }}{% endblock %}
+
+{% block extra_css %}
+<!-- Prefetch inbox page so "back" navigation is instant -->
+<link rel="prefetch" href="{{ url_for('chatbot.index') }}">
+{% endblock %}
+
+{% block content %}
+<div class="conversation-container">
+    <!-- Conversation Header -->
+    <div class="conversation-header-bar">
+        <a href="{{ url_for('chatbot.index') }}" class="back-btn">
+            <i class="fas fa-arrow-left"></i>
+        </a>
+        <div class="conversation-title">
+            {% set dp = conversation.display_platform %}
+            <div class="guest-avatar" data-guest-name="{{ guest.name or guest.email or '' }}">
+                {% if conversation.platform == 'email' %}
+                    <i class="fas fa-envelope"></i>
+                {% elif conversation.platform == 'whatsapp' %}
+                    <i class="fab fa-whatsapp"></i>
+                {% elif conversation.platform == 'airbnb' %}
+                    <i class="fab fa-airbnb"></i>
+                {% elif conversation.platform == 'smoobu' %}
+                    <i class="fas fa-building"></i>
+                {% else %}
+                    <i class="fas fa-user"></i>
+                {% endif %}
+            </div>
+            <div class="guest-info">
+                <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="guest-name-link">
+                    {{ guest.name or guest.email or 'Unbekannter Gast' }}
+                </a>
+                <span class="conversation-meta-text">
+                    {% if conversation.property %}{{ conversation.property.name }}{% elif conversation.subject %}{{ conversation.subject }}{% endif %}
+                    {% if 'airbnb' in dp|lower %}
+                        <span class="platform-mini-badge airbnb">AB</span>
+                    {% elif 'booking' in dp|lower %}
+                        <span class="platform-mini-badge booking">BK</span>
+                    {% endif %}
+                </span>
+                {% if conversation.check_in and conversation.check_out %}
+                <span class="conversation-stay-dates">
+                    {{ conversation.check_in.strftime('%d.%m') }} – {{ conversation.check_out.strftime('%d.%m') }}
+                    ({{ (conversation.check_out - conversation.check_in).days }}n)
+                </span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="conversation-actions">
+            <div class="property-selector-wrapper">
+                <select id="propertySelector" class="property-selector" onchange="assignProperty(this.value)"
+                    data-i18n-title="conversation.property.assign" title="Unterkunft zuweisen">
+                    <option value="" data-i18n="conversation.property.none">-- Unterkunft --</option>
+                </select>
+            </div>
+            <button class="btn btn-icon" onclick="toggleAI()" data-i18n-title="conversation.ai.toggle" title="UMI-Antworten" id="aiToggleBtn">
+                <i class="fas fa-robot"></i>
+                <span class="toggle-status" data-ai-on="{{ 'AN' }}" data-ai-off="{{ 'AUS' }}">{{ 'AN' if conversation.ai_enabled else 'AUS' }}</span>
+            </button>
+            <button class="btn btn-icon {{ 'auto-respond-active' if conversation.auto_respond else '' }}" onclick="toggleAutoRespond()" data-i18n-title="conversation.ai.autoRespond" title="Automatische UMI-Antwort" id="autoRespondBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
+                <i class="fas fa-bolt"></i>
+                <span class="toggle-status" id="autoRespondStatus">{{ 'AN' if conversation.auto_respond else 'AUS' }}</span>
+            </button>
+            <button class="btn btn-icon" onclick="toggleAutoApprove()" id="autoApproveToggle"
+                data-i18n-title="conversation.autoApprove" title="Auto-Freigabe"
+                style="display:none;">
+                <i class="fas fa-check-double"></i>
+                <span class="toggle-status" id="autoApproveStatus">AUS</span>
+            </button>
+            {% if conversation.escalated %}
+            <button class="btn btn-icon btn-escalation-resolve" onclick="resolveEscalation()" id="resolveEscalationBtn"
+                data-i18n-title="conversation.escalation.resolve" title="Als gelöst markieren">
+                <i class="fas fa-check-circle"></i>
+                <span class="toggle-status" data-i18n="conversation.escalation.resolve">Lösen</span>
+            </button>
+            {% endif %}
+            {% if conversation.platform == 'smoobu' and conversation.smoobu_reservation_id %}
+            <button class="btn btn-icon" onclick="syncConversation()" id="syncBtn" title="Nachrichten synchronisieren">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+            {% endif %}
+            <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="btn btn-icon" data-i18n-title="conversation.guest.profile" title="Gästeprofil anzeigen">
+                <i class="fas fa-user"></i>
+            </a>
+            <button class="btn btn-icon tour-trigger-btn" onclick="startGuidedTour()" data-i18n-title="conversation.tour.start" title="Geführte Tour">
+                <i class="fas fa-question-circle"></i>
+            </button>
+        </div>
+        <button class="mobile-overflow-btn" aria-label="Menu" id="mobileOverflowBtn">
+            <i class="fas fa-ellipsis-v"></i>
+        </button>
+        <div class="mobile-overflow-menu" id="mobileOverflowMenu">
+            <div class="overflow-menu-item">
+                <select id="mobilePropertySelector" class="mobile-property-selector" onchange="assignProperty(this.value)"
+                    title="Unterkunft zuweisen">
+                    <option value="" data-i18n="conversation.property.none">-- Unterkunft --</option>
+                </select>
+            </div>
+            <button class="overflow-menu-item" onclick="toggleAI()" id="mobileAiToggleBtn">
+                <i class="fas fa-robot"></i>
+                <span>UMI: <span class="toggle-status" id="mobileAiStatus">{{ 'AN' if conversation.ai_enabled else 'AUS' }}</span></span>
+            </button>
+            <button class="overflow-menu-item" onclick="toggleAutoRespond()" id="mobileAutoRespondBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
+                <i class="fas fa-bolt"></i>
+                <span>Auto: <span id="mobileAutoRespondStatus">{{ 'AN' if conversation.auto_respond else 'AUS' }}</span></span>
+            </button>
+            {% if conversation.escalated %}
+            <button class="overflow-menu-item btn-escalation-resolve" onclick="resolveEscalation()" id="mobileResolveBtn">
+                <i class="fas fa-check-circle"></i>
+                <span data-i18n="conversation.escalation.resolve">Als gelöst markieren</span>
+            </button>
+            {% endif %}
+            {% if conversation.platform == 'smoobu' and conversation.smoobu_reservation_id %}
+            <button class="overflow-menu-item" onclick="syncConversation()" id="mobileSyncBtn">
+                <i class="fas fa-sync-alt"></i>
+                <span>Synchronisieren</span>
+            </button>
+            {% endif %}
+            <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="overflow-menu-item">
+                <i class="fas fa-user"></i>
+                <span data-i18n="conversation.guest.profile">Gästeprofil</span>
+            </a>
+            <button class="overflow-menu-item" onclick="startGuidedTour()">
+                <i class="fas fa-question-circle"></i>
+                <span data-i18n="conversation.tour.start">Geführte Tour</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Messages Area -->
+    <div class="messages-container" id="messagesContainer">
+        {% if conversation.escalated %}
+        <div class="escalation-banner" id="escalationBanner">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span data-i18n="conversation.escalation.banner">Dieses Gespräch wurde eskaliert und benötigt Ihre Aufmerksamkeit.</span>
+            <button class="btn btn-sm btn-resolve" onclick="resolveEscalation()" data-i18n="conversation.escalation.resolve">Als gelöst markieren</button>
+        </div>
+        {% endif %}
+        {% if has_older %}
+        <div class="load-older-wrapper" id="loadOlderWrapper">
+            <button class="btn btn-secondary load-older-btn" id="loadOlderBtn" onclick="loadOlderMessages()">
+                <i class="fas fa-arrow-up"></i> <span data-i18n="conversation.loadOlder">Ältere Nachrichten laden</span>
+                <span class="message-count-hint">({{ total_messages - messages|length }} weitere)</span>
+            </button>
+        </div>
+        {% endif %}
+        {% for message in messages %}
+        <div class="message {{ message.sender_type }}" data-message-id="{{ message.id }}" data-sent-at="{{ message.sent_at.isoformat() ~ 'Z' if message.sent_at else '' }}">
+            <div class="message-avatar">
+                {% if message.sender_type == 'guest' %}
+                    <i class="fas fa-user"></i>
+                {% elif message.sender_type == 'owner' %}
+                    <i class="fas fa-home"></i>
+                {% else %}
+                    <i class="fas fa-robot"></i>
+                {% endif %}
+            </div>
+            <div class="message-content">
+                <div class="message-header">
+                    <span class="sender-name">
+                        {% if message.sender_type == 'guest' %}{{ guest.name or 'Gast' }}
+                        {% elif message.sender_type == 'owner' %}{{ message.sender_user.display_name if message.sender_user else 'Team' }}
+                        {% else %}<span data-i18n="conversation.ai">UMI-Assistent</span>{% endif %}
+                    </span>
+                    <span class="message-time">{{ message.sent_at|to_local if message.sent_at else '' }}</span>
+                </div>
+                <div class="message-text">{{ message.content }}</div>
+            </div>
+            {% if message.sender_type == 'guest' %}
+            <button class="btn-suggest-for-message" onclick="suggestForMessage({{ message.id }})"
+                data-i18n-title="conversation.ai.suggestForMessage"
+                title="UMI-Antwort für diese Nachricht"
+                {% if not conversation.ai_enabled %}disabled{% endif %}>
+                <i class="fas fa-lightbulb"></i>
+            </button>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        {% if not messages %}
+        <div class="empty-messages">
+            <i class="fas fa-comments"></i>
+            <p data-i18n="conversation.empty">Noch keine Nachrichten in dieser Konversation.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Message Input -->
+    <div class="message-input-container">
+        <div class="input-actions">
+            <div class="template-dropdown" id="templateDropdown">
+                <button class="btn btn-secondary" onclick="toggleTemplateDropdown()" type="button">
+                    <i class="fas fa-reply"></i> <span data-i18n="conversation.templates">Vorlagen</span>
+                    <i class="fas fa-caret-down" style="margin-left:4px;"></i>
+                </button>
+                <div class="template-dropdown-menu" id="templateMenu" style="display:none;">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+            <button class="btn btn-secondary" onclick="suggestAIResponse()" id="suggestAiBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
+                <i class="fas fa-lightbulb"></i> <span data-i18n="conversation.ai.suggest">UMI-Vorschlag</span>
+            </button>
+            <button class="btn btn-secondary" onclick="generateAIResponse()" id="generateAiBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
+                <i class="fas fa-magic"></i> <span data-i18n="conversation.ai.create">UMI-Antwort erstellen</span>
+            </button>
+        </div>
+        <form class="message-form" id="messageForm" onsubmit="sendMessage(event)">
+            <textarea
+                id="messageInput"
+                data-i18n-placeholder="conversation.placeholder"
+                placeholder="Nachricht eingeben..."
+                rows="2"
+                required
+            ></textarea>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-paper-plane"></i> <span data-i18n="conversation.send">Senden</span>
+            </button>
+        </form>
+        <div class="send-hint">
+            <span class="draft-indicator" id="draftIndicator" data-i18n="conversation.draft">Entwurf gespeichert</span>
+            {% if gmail_connected and conversation.platform == 'email' %}
+            <span class="gmail-indicator" style="color: #34a853; font-size: 0.8em;">
+                <i class="fas fa-envelope"></i> via Gmail
+            </span>
+            {% elif smoobu_connected and conversation.platform == 'smoobu' %}
+            <span class="smoobu-indicator" style="color: #2a7de1; font-size: 0.8em;">
+                <i class="fas fa-building"></i> via Smoobu
+            </span>
+            {% endif %}
+            <span data-i18n="conversation.sendHint">Strg+Enter zum Senden</span>
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('chatbot.static', filename='js/polling.js') }}?v=8"></script>
+<script>
+    window.CONV_CONFIG = {
+        conversationId: {{ conversation.id }},
+        aiEnabled: {{ 'true' if conversation.ai_enabled else 'false' }},
+        autoRespond: {{ 'true' if conversation.auto_respond else 'false' }},
+        escalated: {{ 'true' if conversation.escalated else 'false' }},
+        platform: {{ conversation.platform|tojson }},
+        gmailConnected: {{ 'true' if gmail_connected else 'false' }},
+        smoobuConnected: {{ 'true' if smoobu_connected else 'false' }},
+        currentPropertyId: {{ conversation.property_id|tojson if conversation.property_id else 'null' }},
+        guestName: {{ (guest.name or "Guest")|tojson }},
+        guestNotifyName: {{ (guest.name or guest.email or "New Message")|tojson }},
+        propertyName: {{ (conversation.property.name if conversation.property else "")|tojson }},
+        checkInTime: {{ (conversation.property.check_in_time if conversation.property else "3:00 PM")|tojson }},
+        approvalQueueEnabled: {{ 'true' if approval_queue_enabled else 'false' }},
+        autoApprove: {{ 'true' if conversation.auto_approve else 'false' }}
+    };
+</script>
+<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=20"></script>
+{% endblock %}

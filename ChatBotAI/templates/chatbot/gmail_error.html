@@ -1,0 +1,84 @@
+{% extends "chatbot/base.html" %}
+
+{% block title %}Gmail Error{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <div class="error-card">
+        <div class="error-icon">
+            <i class="fas fa-exclamation-triangle"></i>
+        </div>
+        <h1>Gmail Connection Error</h1>
+        <p class="error-message">{{ error }}</p>
+        {% if redirect_uri %}
+        <div class="redirect-uri-box">
+            <code>{{ redirect_uri }}</code>
+        </div>
+        <p class="error-hint">Go to <strong>Google Cloud Console</strong> &rarr; APIs &amp; Services &rarr; Credentials &rarr; your OAuth Client &rarr; Authorized redirect URIs, and add this exact URL.</p>
+        {% endif %}
+        <div class="error-actions">
+            <a href="{{ url_for('chatbot.settings') }}" class="btn btn-primary">
+                <i class="fas fa-arrow-left"></i> Back to Settings
+            </a>
+            <a href="{{ url_for('chatbot.gmail_authorize_redirect') }}" class="btn btn-secondary">
+                <i class="fas fa-redo"></i> Try Again
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+    .error-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 60vh;
+    }
+    .error-card {
+        background: white;
+        padding: 40px;
+        border-radius: 12px;
+        text-align: center;
+        max-width: 500px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .error-icon {
+        font-size: 4rem;
+        color: #ef4444;
+        margin-bottom: 20px;
+    }
+    .error-card h1 {
+        font-size: 1.5rem;
+        margin-bottom: 16px;
+        color: #1e293b;
+    }
+    .error-message {
+        color: #64748b;
+        margin-bottom: 24px;
+        line-height: 1.6;
+    }
+    .redirect-uri-box {
+        background: var(--bg-tertiary, #f1f5f9);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+        word-break: break-all;
+    }
+    .redirect-uri-box code {
+        color: var(--text-primary, #1e293b);
+        font-size: 0.9rem;
+    }
+    .error-hint {
+        color: #64748b;
+        font-size: 0.85rem;
+        margin-bottom: 24px;
+        line-height: 1.5;
+    }
+    .error-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+    }
+</style>
+{% endblock %}

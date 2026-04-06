@@ -1,0 +1,563 @@
+{% extends "chatbot/base.html" %}
+
+{% block title %}Debug{% endblock %}
+
+{% block extra_css %}
+<style>
+    .debug-container { padding: 24px; max-width: 1400px; overflow-y: auto; height: 100%; }
+    .debug-header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+    .debug-header h1 { font-size: 1.5em; margin: 0; }
+    .debug-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .debug-tab { padding: 8px 16px; border-radius: 6px; cursor: pointer; border: 1px solid var(--border-color, #ddd); background: var(--card-bg, #fff); font-size: 0.9em; }
+    .debug-tab.active { background: var(--primary-color, #2563eb); color: #fff; border-color: transparent; }
+    .debug-tab .badge { background: #ef4444; color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 0.75em; margin-left: 6px; }
+
+    /* Status cards */
+    .status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .status-card { background: var(--card-bg, #fff); border: 1px solid var(--border-color, #ddd); border-radius: 8px; padding: 16px; }
+    .status-card h3 { margin: 0 0 8px; font-size: 1em; display: flex; align-items: center; gap: 8px; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .status-dot.green { background: #22c55e; }
+    .status-dot.red { background: #ef4444; }
+    .status-dot.gray { background: #9ca3af; }
+    .status-detail { font-size: 0.85em; color: var(--text-secondary, #666); margin: 4px 0; }
+
+    /* Log table */
+    .log-controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .log-controls select, .log-controls input { padding: 6px 10px; border: 1px solid var(--border-color, #ddd); border-radius: 6px; background: var(--card-bg, #fff); color: var(--text-color, #333); font-size: 0.85em; }
+    .log-table-wrap { overflow-x: auto; max-height: 60vh; overflow-y: auto; border: 1px solid var(--border-color, #ddd); border-radius: 8px; }
+    .log-table { width: 100%; border-collapse: collapse; font-size: 0.82em; font-family: 'Consolas', 'Monaco', monospace; }
+    .log-table th { position: sticky; top: 0; background: var(--card-bg, #f8f9fa); padding: 8px 10px; text-align: left; border-bottom: 2px solid var(--border-color, #ddd); white-space: nowrap; }
+    .log-table td { padding: 6px 10px; border-bottom: 1px solid var(--border-color, #eee); vertical-align: top; }
+    .log-table tr:hover { background: var(--hover-bg, #f0f4ff); }
+    .log-level { padding: 2px 6px; border-radius: 3px; font-size: 0.8em; font-weight: 600; }
+    .log-level.ERROR, .log-level.CRITICAL { background: #fecaca; color: #991b1b; }
+    .log-level.WARNING { background: #fef3c7; color: #92400e; }
+    .log-level.INFO { background: #dbeafe; color: #1e40af; }
+    .log-level.DEBUG { background: #f3f4f6; color: #6b7280; }
+    .log-msg { max-width: 700px; word-break: break-word; white-space: pre-wrap; }
+    .log-time { white-space: nowrap; color: var(--text-secondary, #888); }
+    .log-source { white-space: nowrap; color: var(--text-secondary, #888); max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+
+    /* API calls */
+    .api-table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+    .api-table th { position: sticky; top: 0; background: var(--card-bg, #f8f9fa); padding: 8px 10px; text-align: left; border-bottom: 2px solid var(--border-color, #ddd); }
+    .api-table td { padding: 6px 10px; border-bottom: 1px solid var(--border-color, #eee); }
+    .api-status { font-weight: 600; }
+    .api-status.ok { color: #16a34a; }
+    .api-status.err { color: #dc2626; }
+    .api-duration { color: var(--text-secondary, #888); }
+    .api-summary { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+    .api-summary-card { background: var(--card-bg, #fff); border: 1px solid var(--border-color, #ddd); border-radius: 8px; padding: 12px 16px; min-width: 180px; }
+    .api-summary-card h4 { margin: 0 0 4px; font-size: 0.95em; text-transform: capitalize; }
+    .api-summary-card .num { font-size: 1.3em; font-weight: 700; }
+
+    /* Refresh */
+    /* Push test */
+    .push-sub-list { font-size: 0.8em; margin-top: 8px; }
+    .push-sub-item { padding: 4px 0; border-top: 1px solid var(--border-color, #eee); display: flex; justify-content: space-between; }
+    .push-test-btn { margin-top: 8px; padding: 6px 14px; background: var(--primary-color, #2563eb); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85em; }
+    .push-test-btn:hover { opacity: 0.9; }
+    .push-test-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .push-result { font-size: 0.8em; margin-top: 6px; padding: 6px 10px; border-radius: 4px; display: none; }
+    .push-result.success { display: block; background: #dcfce7; color: #166534; }
+    .push-result.error { display: block; background: #fecaca; color: #991b1b; }
+
+    .auto-refresh { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 0.85em; }
+    .auto-refresh label { cursor: pointer; }
+    #refreshCountdown { color: var(--text-secondary, #888); min-width: 30px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="debug-container">
+    <div class="debug-header">
+        <h1><i class="fas fa-bug"></i> Debug Dashboard</h1>
+        <div class="auto-refresh">
+            <label><input type="checkbox" id="autoRefreshToggle" checked> Auto-refresh</label>
+            <span id="refreshCountdown">5s</span>
+            <button class="btn btn-secondary" onclick="refreshAll()" style="padding:4px 12px;font-size:0.85em;">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="debug-tabs">
+        <button class="debug-tab active" onclick="switchTab('status')">
+            <i class="fas fa-heartbeat"></i> Status
+        </button>
+        <button class="debug-tab" onclick="switchTab('logs')">
+            <i class="fas fa-list-alt"></i> Logs <span class="badge" id="errorBadge" style="display:none;">0</span>
+        </button>
+        <button class="debug-tab" onclick="switchTab('api')">
+            <i class="fas fa-exchange-alt"></i> API Calls
+        </button>
+    </div>
+
+    <!-- STATUS TAB -->
+    <div id="tab-status" class="tab-content">
+        <div class="status-grid" id="statusGrid">
+            <div class="status-card"><h3><span class="status-dot gray"></span> Loading...</h3></div>
+        </div>
+    </div>
+
+    <!-- LOGS TAB -->
+    <div id="tab-logs" class="tab-content" style="display:none;">
+        <div class="log-controls">
+            <select id="logLevel" onchange="refreshLogs()">
+                <option value="">All Levels</option>
+                <option value="DEBUG">DEBUG</option>
+                <option value="INFO">INFO</option>
+                <option value="WARNING" selected>WARNING+</option>
+                <option value="ERROR">ERROR+</option>
+            </select>
+            <input type="text" id="logFilter" placeholder="Filter logger name..." oninput="refreshLogs()">
+            <button class="btn btn-secondary" onclick="clearLogs()" style="padding:4px 12px;font-size:0.85em;">Clear</button>
+        </div>
+        <div class="log-table-wrap">
+            <table class="log-table">
+                <thead><tr><th>Time</th><th>Level</th><th>Source</th><th>Message</th></tr></thead>
+                <tbody id="logBody"><tr><td colspan="4">Loading...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- API CALLS TAB -->
+    <div id="tab-api" class="tab-content" style="display:none;">
+        <div class="api-summary" id="apiSummary"></div>
+        <div class="log-controls">
+            <select id="apiServiceFilter" onchange="refreshApiCalls()">
+                <option value="">All Services</option>
+                <option value="smoobu">Smoobu</option>
+                <option value="gmail">Gmail</option>
+                <option value="ollama">Ollama</option>
+            </select>
+        </div>
+        <div class="log-table-wrap">
+            <table class="api-table">
+                <thead><tr><th>Time</th><th>Service</th><th>Method</th><th>Endpoint</th><th>Status</th><th>Duration</th><th>Error</th></tr></thead>
+                <tbody id="apiBody"><tr><td colspan="7">Loading...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentTab = 'status';
+let autoRefresh = true;
+let refreshTimer = null;
+let countdown = 5;
+
+function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+    document.getElementById('tab-' + tab).style.display = '';
+    document.querySelectorAll('.debug-tab').forEach(el => el.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+    refreshAll();
+}
+
+function refreshAll() {
+    if (currentTab === 'status') refreshStatus();
+    if (currentTab === 'logs') refreshLogs();
+    if (currentTab === 'api') refreshApiCalls();
+    countdown = 5;
+}
+
+function refreshStatus() {
+    fetch('/chatbot/api/debug/status')
+        .then(r => r.json())
+        .then(data => {
+            const grid = document.getElementById('statusGrid');
+            grid.innerHTML = '';
+            // Ollama
+            const ol = data.ollama || {};
+            grid.innerHTML += `<div class="status-card">
+                <h3><span class="status-dot ${ol.connected ? 'green' : 'red'}"></span> Ollama AI</h3>
+                <div class="status-detail">Model: ${ol.model || 'N/A'}</div>
+                <div class="status-detail">Status: ${ol.connected ? 'Connected' : 'Disconnected'}</div>
+            </div>`;
+            // Gmail
+            const gm = data.gmail || {};
+            grid.innerHTML += `<div class="status-card">
+                <h3><span class="status-dot ${gm.connected ? 'green' : 'red'}"></span> Gmail</h3>
+                <div class="status-detail">Status: ${gm.connected ? 'Authenticated' : 'Not connected'}</div>
+            </div>`;
+            // Smoobu
+            const sm = data.smoobu || {};
+            grid.innerHTML += `<div class="status-card">
+                <h3><span class="status-dot ${sm.configured ? 'green' : 'red'}"></span> Smoobu</h3>
+                <div class="status-detail">Status: ${sm.configured ? 'Configured' : 'Not configured'}</div>
+                <div class="status-detail">Rate limit remaining: ${sm.rate_limit_remaining ?? 'N/A'}</div>
+            </div>`;
+            // DB
+            const d = data.db || {};
+            grid.innerHTML += `<div class="status-card">
+                <h3><span class="status-dot green"></span> Database</h3>
+                <div class="status-detail">Conversations: ${d.conversations || 0}</div>
+                <div class="status-detail">Messages: ${d.messages || 0}</div>
+                <div class="status-detail">Guests: ${d.guests || 0}</div>
+            </div>`;
+
+            // Push — fetch separately
+            refreshPushStatus(grid);
+        })
+        .catch(err => console.error('Status error:', err));
+}
+
+function refreshPushStatus(grid) {
+    fetch('/chatbot/api/push/status')
+        .then(r => r.json())
+        .then(ps => {
+            const ok = ps.initialized && ps.subscriptions && ps.subscriptions.length > 0;
+            const dotClass = !ps.initialized ? 'red' : (ok ? 'green' : 'gray');
+            const statusText = !ps.initialized ? 'Service not initialized' : (ok ? `${ps.subscriptions.length} subscription(s)` : 'No subscriptions');
+
+            let subsHtml = '';
+            if (ps.subscriptions && ps.subscriptions.length > 0) {
+                subsHtml = '<div class="push-sub-list">' + ps.subscriptions.map(s =>
+                    `<div class="push-sub-item"><span>${s.endpoint_domain}</span><span style="color:var(--text-secondary,#888)">${s.user_agent || ''}</span></div>`
+                ).join('') + '</div>';
+            }
+
+            grid.innerHTML += `<div class="status-card">
+                <h3><span class="status-dot ${dotClass}"></span> Push Notifications</h3>
+                <div class="status-detail">Status: ${statusText}</div>
+                <div class="status-detail">VAPID keys: ${ps.has_vapid_keys ? 'Loaded' : 'Not loaded'}</div>
+                ${subsHtml}
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                    <button class="push-test-btn" onclick="testLocalNotification(this)" style="background:#16a34a;">
+                        <i class="fas fa-desktop"></i> 1. Test Browser
+                    </button>
+                    <button class="push-test-btn" onclick="testSWNotification(this)" style="background:#d97706;">
+                        <i class="fas fa-cog"></i> 2. Test SW
+                    </button>
+                    <button class="push-test-btn" onclick="testPush(this)" ${!ok ? 'disabled title="Enable push notifications first"' : ''}>
+                        <i class="fas fa-satellite-dish"></i> 3. Test Push
+                    </button>
+                    <button class="push-test-btn" onclick="resetPush(this)" style="background:#dc2626;">
+                        <i class="fas fa-redo"></i> Reset & Re-subscribe
+                    </button>
+                </div>
+                <div class="push-result" id="pushTestResult"></div>
+            </div>`;
+        })
+        .catch(err => {
+            grid.innerHTML += `<div class="status-card">
+                <h3><span class="status-dot red"></span> Push Notifications</h3>
+                <div class="status-detail">Error loading status</div>
+            </div>`;
+        });
+}
+
+function testLocalNotification(btn) {
+    const result = document.getElementById('pushTestResult');
+    result.style.display = 'block';
+
+    if (!('Notification' in window)) {
+        result.className = 'push-result error';
+        result.textContent = 'FAIL: Notification API not available in this browser.';
+        return;
+    }
+
+    result.className = 'push-result success';
+    result.innerHTML = `Permission: <strong>${Notification.permission}</strong>`;
+
+    if (Notification.permission === 'granted') {
+        try {
+            const n = new Notification('Test 1: Browser Notification', {
+                body: 'If you see this, browser notifications work!',
+                icon: '/chatbot/static/favicon.ico',
+                tag: 'test-local'
+            });
+            n.onclick = () => n.close();
+            setTimeout(() => n.close(), 8000);
+            result.innerHTML += '<br>Notification created. You should see it NOW.';
+        } catch (e) {
+            result.className = 'push-result error';
+            result.innerHTML += `<br>Error creating notification: ${e.message}`;
+        }
+    } else if (Notification.permission === 'denied') {
+        result.className = 'push-result error';
+        result.innerHTML += '<br>BLOCKED: Notifications are denied for this site. Reset in Chrome site settings.';
+    } else {
+        Notification.requestPermission().then(perm => {
+            result.innerHTML += `<br>User chose: <strong>${perm}</strong>`;
+            if (perm === 'granted') {
+                result.innerHTML += ' — Click the button again to test.';
+            }
+        });
+    }
+}
+
+async function testSWNotification(btn) {
+    const result = document.getElementById('pushTestResult');
+    result.style.display = 'block';
+
+    if (!('serviceWorker' in navigator)) {
+        result.className = 'push-result error';
+        result.textContent = 'FAIL: Service Workers not supported.';
+        return;
+    }
+
+    try {
+        const reg = await navigator.serviceWorker.getRegistration('/chatbot/');
+        if (!reg) {
+            result.className = 'push-result error';
+            result.textContent = 'FAIL: No service worker registered at /chatbot/ scope.';
+            return;
+        }
+
+        let info = `SW state: <strong>${reg.active ? 'active' : reg.installing ? 'installing' : reg.waiting ? 'waiting' : 'none'}</strong>`;
+        info += `<br>SW scope: ${reg.scope}`;
+
+        // Try showing notification via service worker registration
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') {
+            result.className = 'push-result error';
+            result.innerHTML = info + `<br>Permission: ${perm} — cannot show notifications.`;
+            return;
+        }
+
+        await reg.showNotification('Test 2: Service Worker Notification', {
+            body: 'If you see this, the SW can show notifications!',
+            icon: '/chatbot/static/favicon.ico',
+            tag: 'test-sw',
+            data: { url: '/chatbot/' }
+        });
+
+        result.className = 'push-result success';
+        result.innerHTML = info + '<br>Notification sent via SW. You should see it NOW.';
+    } catch (e) {
+        result.className = 'push-result error';
+        result.textContent = `Error: ${e.message}`;
+    }
+}
+
+async function resetPush(btn) {
+    const result = document.getElementById('pushTestResult');
+    result.style.display = 'block';
+    result.className = 'push-result success';
+    result.innerHTML = 'Step 1/4: Unsubscribing old push...';
+    btn.disabled = true;
+
+    try {
+        // Step 1: Unsubscribe from browser push
+        const reg = await navigator.serviceWorker.getRegistration('/chatbot/');
+        if (reg) {
+            const oldSub = await reg.pushManager.getSubscription();
+            if (oldSub) {
+                // Tell server to delete it
+                await fetch('/chatbot/api/push/unsubscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ endpoint: oldSub.endpoint })
+                });
+                await oldSub.unsubscribe();
+                result.innerHTML += '<br>Old subscription removed.';
+            } else {
+                result.innerHTML += '<br>No existing browser subscription found.';
+            }
+        }
+
+        // Step 2: Delete all server-side subscriptions for this user
+        result.innerHTML += '<br>Step 2/4: Cleaning server subscriptions...';
+        await fetch('/chatbot/api/push/reset', { method: 'POST' });
+        result.innerHTML += '<br>Server subscriptions cleared.';
+
+        // Step 3: Re-register service worker
+        result.innerHTML += '<br>Step 3/4: Re-registering service worker...';
+        const newReg = await navigator.serviceWorker.register('/chatbot/sw.js', { scope: '/chatbot/' });
+        await navigator.serviceWorker.ready;
+        result.innerHTML += '<br>Service worker ready.';
+
+        // Step 4: Create new subscription with current VAPID key
+        result.innerHTML += '<br>Step 4/4: Creating new push subscription...';
+        const vapidRes = await fetch('/chatbot/api/push/vapid-key');
+        const vapidData = await vapidRes.json();
+        const vapidKey = vapidData.publicKey;
+
+        const padding = '='.repeat((4 - vapidKey.length % 4) % 4);
+        const base64 = (vapidKey + padding).replace(/-/g, '+').replace(/_/g, '/');
+        const rawData = window.atob(base64);
+        const keyArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; i++) keyArray[i] = rawData.charCodeAt(i);
+
+        const newSub = await newReg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: keyArray
+        });
+
+        const subJson = newSub.toJSON();
+        await fetch('/chatbot/api/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                endpoint: subJson.endpoint,
+                keys: subJson.keys,
+                user_agent: navigator.userAgent
+            })
+        });
+
+        result.className = 'push-result success';
+        result.innerHTML += `<br><br><strong>Done! New subscription created.</strong><br>Endpoint: ${subJson.endpoint.substring(0, 60)}...<br><br>Now click "3. Test Push" to verify!`;
+        localStorage.setItem('chatbot_push_enabled', 'true');
+
+        // Refresh the status card after a moment
+        setTimeout(() => refreshAll(), 1500);
+    } catch (e) {
+        result.className = 'push-result error';
+        result.innerHTML += `<br><br>Error: ${e.message}`;
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function testPush(btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+    const result = document.getElementById('pushTestResult');
+    result.className = 'push-result';
+    result.style.display = 'none';
+
+    fetch('/chatbot/api/push/test', { method: 'POST' })
+        .then(r => r.json().then(data => ({ ok: r.ok, data })))
+        .then(({ ok, data }) => {
+            result.style.display = 'block';
+            if (data.results) {
+                let html = '';
+                data.results.forEach(r => {
+                    if (r.ok) {
+                        html += `<div style="color:#166534;">&#10003; HTTP ${r.status} — ${r.endpoint}</div>`;
+                    } else {
+                        html += `<div style="color:#991b1b;">&#10007; HTTP ${r.status || 'N/A'} — ${r.endpoint}</div>`;
+                        if (r.error) html += `<div style="font-size:0.9em;margin-left:16px;">${escapeHtml(r.error)}</div>`;
+                        if (r.response_body) html += `<div style="font-size:0.85em;margin-left:16px;opacity:0.7;">${escapeHtml(r.response_body)}</div>`;
+                    }
+                });
+                const anyOk = data.results.some(r => r.ok);
+                result.className = anyOk ? 'push-result success' : 'push-result error';
+                result.innerHTML = html;
+            } else {
+                result.className = 'push-result error';
+                result.textContent = data.error || 'Unknown error';
+            }
+        })
+        .catch(err => {
+            result.style.display = 'block';
+            result.className = 'push-result error';
+            result.textContent = 'Network error: ' + err.message;
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-bell"></i> Test Push Notification';
+        });
+}
+
+function refreshLogs() {
+    const level = document.getElementById('logLevel').value;
+    const logger = document.getElementById('logFilter').value;
+    const params = new URLSearchParams();
+    if (level) params.set('level', level);
+    if (logger) params.set('logger', logger);
+    params.set('limit', '200');
+
+    fetch('/chatbot/api/debug/logs?' + params)
+        .then(r => r.json())
+        .then(data => {
+            const body = document.getElementById('logBody');
+            if (!data.entries || data.entries.length === 0) {
+                body.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:#888;">No log entries</td></tr>';
+            } else {
+                body.innerHTML = data.entries.map(e => {
+                    const time = e.timestamp ? e.timestamp.split('T')[1]?.substring(0, 12) || e.timestamp : '';
+                    const src = (e.logger || '').replace('ChatBotAI.', '');
+                    return `<tr>
+                        <td class="log-time">${time}</td>
+                        <td><span class="log-level ${e.level}">${e.level}</span></td>
+                        <td class="log-source" title="${e.logger}:${e.lineno}">${src}</td>
+                        <td class="log-msg">${escapeHtml(e.message || '')}</td>
+                    </tr>`;
+                }).join('');
+            }
+            // Error badge
+            const badge = document.getElementById('errorBadge');
+            if (data.stats && data.stats.errors > 0) {
+                badge.textContent = data.stats.errors;
+                badge.style.display = '';
+            } else {
+                badge.style.display = 'none';
+            }
+        })
+        .catch(err => console.error('Logs error:', err));
+}
+
+function refreshApiCalls() {
+    const service = document.getElementById('apiServiceFilter').value;
+    const params = service ? '?service=' + service : '';
+
+    fetch('/chatbot/api/debug/api-calls' + params)
+        .then(r => r.json())
+        .then(data => {
+            // Summary cards
+            const summary = document.getElementById('apiSummary');
+            if (data.summary) {
+                summary.innerHTML = Object.entries(data.summary).map(([svc, s]) =>
+                    `<div class="api-summary-card">
+                        <h4>${svc}</h4>
+                        <div class="num">${s.total_calls}</div>
+                        <div class="status-detail">Errors: ${s.errors} | Avg: ${s.avg_duration_ms}ms</div>
+                    </div>`
+                ).join('');
+            }
+            // Table
+            const body = document.getElementById('apiBody');
+            if (!data.calls || data.calls.length === 0) {
+                body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#888;">No API calls recorded yet</td></tr>';
+            } else {
+                body.innerHTML = data.calls.map(c => {
+                    const time = c.timestamp ? c.timestamp.split('T')[1]?.substring(0, 12) || c.timestamp : '';
+                    const ok = c.status_code && c.status_code < 400;
+                    return `<tr>
+                        <td class="log-time">${time}</td>
+                        <td>${c.service}</td>
+                        <td><strong>${c.method}</strong></td>
+                        <td>${escapeHtml(c.endpoint || '')}</td>
+                        <td class="api-status ${ok ? 'ok' : 'err'}">${c.status_code || '-'}</td>
+                        <td class="api-duration">${c.duration_ms}ms</td>
+                        <td style="color:#dc2626;max-width:300px;overflow:hidden;text-overflow:ellipsis;">${c.error || ''}</td>
+                    </tr>`;
+                }).join('');
+            }
+        })
+        .catch(err => console.error('API calls error:', err));
+}
+
+function clearLogs() {
+    fetch('/chatbot/api/debug/logs?limit=0').then(() => refreshLogs());
+}
+
+function escapeHtml(text) {
+    const d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
+}
+
+// Auto-refresh
+document.getElementById('autoRefreshToggle').addEventListener('change', function() {
+    autoRefresh = this.checked;
+});
+
+setInterval(() => {
+    if (!autoRefresh) return;
+    countdown--;
+    document.getElementById('refreshCountdown').textContent = countdown + 's';
+    if (countdown <= 0) {
+        refreshAll();
+    }
+}, 1000);
+
+// Initial load
+refreshAll();
+</script>
+{% endblock %}

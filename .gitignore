@@ -18,3 +18,13 @@ venv.bak/
 # IDE
 .vscode/
 .idea/
+
+# ChatBotAI nested git backup
+ChatBotAI/.git-backup/
+
+# Planning/docs
+ChatBotAI/.planning/
+
+# Junk files
+=*
+nul

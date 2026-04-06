@@ -1,0 +1,156 @@
+{% extends "chatbot/base.html" %}
+
+{% block title %}{{ _('Inbox') if _ else 'Inbox' }}{% endblock %}
+
+{% block content %}
+<div class="inbox-container">
+    <!-- Header -->
+    <div class="page-header">
+        <h1><i class="fas fa-inbox"></i> <span data-i18n="inbox.title">Posteingang</span></h1>
+        <div class="header-actions">
+            <button class="btn btn-secondary" id="markAllReadBtn" onclick="markAllRead()">
+                <i class="fas fa-check-double"></i> <span data-i18n="inbox.markAllRead">Alle gelesen</span>
+            </button>
+            <button class="btn btn-secondary" id="syncSmoobuBtn" onclick="syncSmoobuNow()" style="display: none;">
+                <i class="fas fa-building"></i> <span data-i18n="inbox.syncSmoobu">Smoobu Sync</span>
+            </button>
+            <button class="btn btn-secondary" id="syncGmailBtn" onclick="syncGmailNow()" style="display: none;">
+                <i class="fas fa-envelope"></i> <span data-i18n="inbox.syncGmail">Sync Gmail</span>
+            </button>
+            <button class="btn btn-secondary" onclick="refreshConversations()">
+                <i class="fas fa-sync-alt"></i> <span data-i18n="common.refresh">Aktualisieren</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats Card -->
+    <div class="stats-card" id="statsCard">
+        <div class="stat-item">
+            <span class="stat-value" id="statConversations">-</span>
+            <span class="stat-label" data-i18n="inbox.stats.conversations">Konversationen</span>
+        </div>
+        <div class="stat-item stat-highlight">
+            <span class="stat-value" id="statUnread">-</span>
+            <span class="stat-label" data-i18n="inbox.stats.unread">Ungelesen</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-value" id="statMessagesToday">-</span>
+            <span class="stat-label" data-i18n="inbox.stats.messagesToday">Nachrichten heute</span>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-bar">
+        <!-- Platform Filter Group -->
+        <div class="filter-group" role="group" aria-label="Filter by platform">
+            <button class="filter-btn active" data-filter-platform="" data-i18n="inbox.filter.all">Alle</button>
+            <button class="filter-btn" data-filter-platform="email">
+                <i class="fas fa-envelope"></i> <span data-i18n="platform.email">E-Mail</span>
+            </button>
+            <button class="filter-btn" data-filter-platform="smoobu">
+                <i class="fas fa-building"></i> <span data-i18n="platform.smoobu">Smoobu</span>
+            </button>
+        </div>
+
+        <!-- Status Filter Group -->
+        <div class="filter-group" role="group" aria-label="Filter by status">
+            <button class="filter-btn active" data-filter-status="" data-i18n="inbox.filter.all">Alle</button>
+            <button class="filter-btn" data-filter-status="active" data-i18n="inbox.filter.active">Aktiv</button>
+            <button class="filter-btn" data-filter-status="pending_owner" data-i18n="inbox.filter.pending">Ausstehend</button>
+            <button class="filter-btn" data-filter-status="closed" data-i18n="inbox.filter.closed">Geschlossen</button>
+            <button class="filter-btn" data-filter-status="escalated" data-i18n="inbox.filter.escalated">Eskaliert</button>
+            <button class="filter-btn" data-filter-status="pending_approval" data-i18n="inbox.filter.pendingApproval">UMI-Freigabe</button>
+        </div>
+
+        <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" data-i18n-placeholder="inbox.search" placeholder="Konversationen durchsuchen..." id="searchInput">
+            <button class="search-clear-btn" id="searchClearBtn" type="button" aria-label="Clear search">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Active Filter Indicators -->
+    <div class="filter-indicators" style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+        <div id="activeFilters" class="active-filters"></div>
+        <button id="clearFiltersBtn" class="btn btn-secondary btn-sm" style="display: none;">
+            <i class="fas fa-times"></i> <span data-i18n="inbox.filter.clear">Filter löschen</span>
+        </button>
+    </div>
+
+    <!-- Conversation List -->
+    <div class="conversation-list" id="conversationList">
+        {% if conversations %}
+            {% for conv in conversations %}
+            <a href="{{ url_for('chatbot.conversation_view', conversation_id=conv.id) }}" class="conversation-card{% if not conv.is_read %} unread{% endif %}" data-conversation-id="{{ conv.id }}" data-updated-at="{{ conv.updated_at.isoformat() if conv.updated_at else '' }}" data-platform="{{ conv.platform }}" data-status="{{ conv.status }}" data-guest-id="{{ conv.guest_id }}" data-is-read="{{ 'true' if conv.is_read else 'false' }}">
+                {% if not conv.is_read %}
+                <span class="sr-only">Unread</span>
+                {% endif %}
+                <div class="conversation-avatar" data-guest-name="{{ conv.guest.name or conv.guest.email or '' }}">
+                    {% if conv.platform == 'email' %}
+                        <i class="fas fa-envelope"></i>
+                    {% elif conv.platform == 'whatsapp' %}
+                        <i class="fab fa-whatsapp"></i>
+                    {% elif conv.platform == 'airbnb' %}
+                        <i class="fab fa-airbnb"></i>
+                    {% elif conv.platform == 'smoobu' %}
+                        <i class="fas fa-building"></i>
+                    {% else %}
+                        <i class="fas fa-comment"></i>
+                    {% endif %}
+                </div>
+                <div class="conversation-info">
+                    <div class="conversation-header">
+                        <span class="guest-name">{{ conv.guest.name or conv.guest.email or 'Unknown Guest' }}</span>
+                        <span class="conversation-time" data-timestamp="{{ conv.updated_at.isoformat() ~ 'Z' if conv.updated_at else '' }}" title="{{ conv.updated_at|to_local if conv.updated_at else '' }}">{{ conv.updated_at|to_local_short if conv.updated_at else '' }}</span>
+                    </div>
+                    <div class="conversation-subject">{{ conv.property.name if conv.property else conv.subject or 'No subject' }}{% if conv.check_in and conv.check_out %} <span class="stay-dates">{{ conv.check_in.strftime('%d.%m') }} – {{ conv.check_out.strftime('%d.%m') }} ({{ (conv.check_out - conv.check_in).days }}n)</span>{% endif %}</div>
+                    <div class="conversation-preview">
+                        {% if conv.last_message %}
+                            {% if conv.last_message.sender_type == 'owner' %}{{ conv.last_message.sender_user.display_name if conv.last_message.sender_user else 'Team' }}: {% elif conv.last_message.sender_type == 'ai' %}UMI: {% endif %}{{ conv.last_message.content[:80] }}{% if conv.last_message.content|length > 80 %}...{% endif %}
+                        {% else %}
+                            No messages yet
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="conversation-meta">
+                    <span class="platform-badge {{ conv.display_platform|lower|replace('booking.com', 'booking')|replace(' ', '') }}">{{ conv.display_platform }}</span>
+                    {% if conv.ai_enabled %}
+                        <span class="ai-badge"><i class="fas fa-robot"></i></span>
+                    {% endif %}
+                    <span class="status-badge {{ conv.status }}">{{ conv.status|replace('_', ' ')|title }}</span>
+                    {% if conv.status != 'closed' %}
+                        <button class="btn-close-conv" onclick="closeConversation(event, {{ conv.id }})" title="Gespräch beenden"><i class="fas fa-times"></i></button>
+                    {% endif %}
+                </div>
+            </a>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <i class="fas fa-inbox"></i>
+                <h3 data-i18n="inbox.empty">Keine Konversationen gefunden</h3>
+                <p data-i18n="inbox.empty.hint">Wenn Gäste Ihnen schreiben, erscheinen ihre Konversationen hier.</p>
+            </div>
+        {% endif %}
+        <div class="empty-state search-empty" id="searchEmptyState" style="display: none;">
+            <i class="fas fa-search"></i>
+            <h3 data-i18n="inbox.search.noResults">Keine Ergebnisse gefunden</h3>
+            <p class="search-query-display"><span data-i18n="inbox.search.noMatches">Keine Treffer für</span> "<strong id="searchQueryText"></strong>"</p>
+            <p data-i18n="inbox.search.suggestions">Vorschläge:</p>
+            <ul class="search-suggestions">
+                <li data-i18n="inbox.search.suggestion1">Überprüfen Sie die Rechtschreibung</li>
+                <li data-i18n="inbox.search.suggestion2">Versuchen Sie andere Suchbegriffe</li>
+                <li data-i18n="inbox.search.suggestion3">Suchen Sie nach Gastnamen oder Nachrichteninhalt</li>
+            </ul>
+            <button class="btn btn-secondary" onclick="clearSearch()">
+                <i class="fas fa-times"></i> <span data-i18n="inbox.search.clear">Suche löschen</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('chatbot.static', filename='js/polling.js') }}?v=8"></script>
+<script src="{{ url_for('chatbot.static', filename='js/filter-state.js') }}?v=10"></script>
+<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=25"></script>
+{% endblock %}

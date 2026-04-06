@@ -1,0 +1,33 @@
+# ChatBotAI Requirements
+# Flask and extensions
+flask>=3.0.0
+flask-sqlalchemy>=3.1.1
+flask-migrate>=4.0.0
+flask-login>=0.6.3
+flask-compress>=1.14
+Werkzeug>=3.0.0
+
+# HTTP requests for Ollama
+requests>=2.31.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Google APIs (for Gmail integration - future)
+google-api-python-client>=2.100.0
+google-auth-httplib2>=0.1.1
+google-auth-oauthlib>=1.1.0
+
+# Database (production - optional)
+# psycopg2-binary>=2.9.9  # Uncomment for PostgreSQL
+
+# Web Push Notifications
+pywebpush>=2.0.0
+cryptography>=41.0.0
+
+# Production WSGI server
+waitress>=3.0.0
+
+# Development tools
+# pytest>=7.4.0
+# pytest-flask>=1.3.0
