@@ -17,9 +17,14 @@ function getPlatformIcon(platform) {
     }
 }
 
+function ensureUTC(dateString) {
+    if (!dateString) return dateString;
+    return dateString.endsWith('Z') || dateString.includes('+') ? dateString : dateString + 'Z';
+}
+
 function formatAbsoluteTime(dateString) {
     if (!dateString) return '';
-    const date = new Date(dateString);
+    const date = new Date(ensureUTC(dateString));
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const hours = String(date.getHours()).padStart(2, '0');
@@ -321,7 +326,7 @@ function loadCachedInbox() {
 
 function getDateGroup(dateString) {
     if (!dateString) return 'older';
-    const d = new Date(dateString);
+    const d = new Date(ensureUTC(dateString));
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const cardDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -378,9 +383,12 @@ document.querySelectorAll('[data-filter-status]').forEach(btn => {
     });
 });
 
-document.getElementById('guestFilter').addEventListener('change', function() {
-    filterState.setGuest(this.value || null);
-});
+const guestFilterEl = document.getElementById('guestFilter');
+if (guestFilterEl) {
+    guestFilterEl.addEventListener('change', function() {
+        filterState.setGuest(this.value || null);
+    });
+}
 
 document.getElementById('clearFiltersBtn').addEventListener('click', function() {
     filterState.reset();
@@ -391,6 +399,8 @@ let isSearchMode = false;
 
 document.getElementById('searchInput').addEventListener('input', function() {
     const query = this.value.trim();
+    const clearBtn = document.getElementById('searchClearBtn');
+    if (clearBtn) clearBtn.classList.toggle('visible', query.length > 0);
 
     if (searchTimeout) clearTimeout(searchTimeout);
 
@@ -405,6 +415,12 @@ document.getElementById('searchInput').addEventListener('input', function() {
             clearSearchMode();
         }
     }, 500);
+});
+
+document.getElementById('searchClearBtn').addEventListener('click', function() {
+    clearSearch();
+    this.classList.remove('visible');
+    document.getElementById('searchInput').focus();
 });
 
 // =========================================================================
@@ -578,6 +594,8 @@ function clearSearchMode() {
 
 function clearSearch() {
     document.getElementById('searchInput').value = '';
+    const clearBtn = document.getElementById('searchClearBtn');
+    if (clearBtn) clearBtn.classList.remove('visible');
     clearSearchMode();
 }
 
@@ -977,6 +995,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('searchInput');
     if (filterState.state.search && searchInput) {
         searchInput.value = filterState.state.search;
+        const clearBtn = document.getElementById('searchClearBtn');
+        if (clearBtn) clearBtn.classList.add('visible');
         setTimeout(async () => {
             const results = await fetchSearchResults(filterState.state.search);
             renderSearchResults(results);

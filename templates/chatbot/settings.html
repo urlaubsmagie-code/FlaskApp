@@ -357,6 +357,9 @@
                         <button class="btn btn-secondary btn-sm" onclick="syncSmoobuProperties()">
                             <i class="fas fa-home"></i> <span data-i18n="settings.integrations.smoobu.syncProperties">Unterkünfte synchronisieren</span>
                         </button>
+                        <button class="btn btn-secondary btn-sm" onclick="fullSmoobuSync()">
+                            <i class="fas fa-sync"></i> <span data-i18n="settings.integrations.smoobu.fullSync">Vollständige Synchronisierung</span>
+                        </button>
                         <button class="btn btn-danger btn-sm" onclick="disconnectSmoobu()">
                             <i class="fas fa-unlink"></i> <span data-i18n="settings.integrations.disconnect">Trennen</span>
                         </button>
@@ -1498,6 +1501,40 @@ confirmation</textarea>
                 btn.disabled = false;
                 btn.innerHTML = originalHtml;
             });
+    }
+
+    async function fullSmoobuSync() {
+        const btn = event.currentTarget;
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + (i18n.t('settings.integrations.smoobu.fullSyncing') || 'Vollständige Sync...');
+
+        try {
+            // Step 1: Sync properties
+            await fetch('/chatbot/api/smoobu/sync-properties', { method: 'POST' });
+
+            // Step 2: Sync messages
+            const syncRes = await fetch('/chatbot/api/smoobu/sync', { method: 'POST' });
+            const syncData = await syncRes.json();
+
+            // Step 3: Fix timestamps & reorder
+            const fixRes = await fetch('/chatbot/api/smoobu/fix-timestamps', { method: 'POST' });
+            const fixData = await fixRes.json();
+
+            const msgs = syncData.imported || 0;
+            const fixed = fixData.fixed || 0;
+            showNotification(
+                (i18n.t('settings.integrations.smoobu.fullSyncDone') || 'Vollständige Sync abgeschlossen: {msgs} neue Nachrichten, {fixed} Zeitstempel korrigiert')
+                    .replace('{msgs}', msgs).replace('{fixed}', fixed),
+                'success', 5000
+            );
+        } catch (err) {
+            console.error('Full Smoobu sync failed:', err);
+            showNotification('Full sync failed', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
     }
 
     // Check Smoobu status on page load

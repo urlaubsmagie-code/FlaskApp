@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>{% block title %}ChatBotAI{% endblock %} - Guest Messaging</title>
+    <title>{% block title %}UMI{% endblock %} - Message System</title>
 
     <!-- Preconnect to CDN origins (saves DNS+TLS handshake ~100-200ms) -->
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
@@ -17,7 +17,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('chatbot.static', filename='css/style.css') }}?v=33">
+    <link rel="stylesheet" href="{{ url_for('chatbot.static', filename='css/style.css') }}?v=46">
 
     {% block extra_css %}{% endblock %}
 </head>
@@ -27,8 +27,8 @@
         <nav class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <i class="fas fa-robot"></i>
-                    <span>ChatBotAI</span>
+                    <img src="{{ url_for('chatbot.static', filename='img/umi-logo-white.png') }}" alt="UMI" class="sidebar-logo-img">
+                    <span>Urlaubsmagie Messenger</span>
                 </div>
             </div>
 
@@ -74,14 +74,13 @@
                 {% endif %}
             </ul>
 
-            {% if online_users %}
-            <div class="online-users">
+            <div class="online-users" id="sidebarOnlineUsers" {% if not online_users %}style="display:none"{% endif %}>
                 <div class="online-users-header">
                     <i class="fas fa-circle" style="color:#22c55e;font-size:0.5em;"></i>
                     <span data-i18n="nav.online">Online</span>
-                    <span class="online-count">{{ online_users|length }}</span>
+                    <span class="online-count" id="sidebarOnlineCount">{{ online_users|length }}</span>
                 </div>
-                <div class="online-users-list">
+                <div class="online-users-list" id="sidebarOnlineList">
                     {% for user in online_users %}
                     <div class="online-user">
                         <span class="online-avatar">{{ user.display_name[0]|upper }}</span>
@@ -90,7 +89,6 @@
                     {% endfor %}
                 </div>
             </div>
-            {% endif %}
 
             <div class="sidebar-footer">
                 <!-- User Menu -->
@@ -142,6 +140,13 @@
                 </div>
             </div>
         </nav>
+
+        <!-- Mobile Brand Banner (hidden on desktop via CSS) -->
+        <div class="mobile-brand-banner">
+            <span class="mobile-brand-text">Urlaubsmagie</span>
+            <img src="{{ url_for('chatbot.static', filename='img/umi-logo-white.png') }}" alt="UMI" class="mobile-logo-img">
+            <span class="mobile-brand-text">Messenger</span>
+        </div>
 
         <!-- Main Content -->
         <main class="main-content">
@@ -200,14 +205,13 @@
                     </select>
                 </div>
             </div>
-            {% if online_users %}
-            <div class="account-panel-online">
+            <div class="account-panel-online" id="mobileOnlineUsers" {% if not online_users %}style="display:none"{% endif %}>
                 <div class="account-panel-online-header">
                     <i class="fas fa-circle" style="color:#22c55e;font-size:0.5em;"></i>
                     <span data-i18n="nav.online">Online</span>
-                    <span class="online-count">{{ online_users|length }}</span>
+                    <span class="online-count" id="mobileOnlineCount">{{ online_users|length }}</span>
                 </div>
-                <div class="account-panel-online-list">
+                <div class="account-panel-online-list" id="mobileOnlineList">
                     {% for user in online_users %}
                     <div class="online-user">
                         <span class="online-avatar">{{ user.display_name[0]|upper }}</span>
@@ -216,7 +220,6 @@
                     {% endfor %}
                 </div>
             </div>
-            {% endif %}
             {% if current_user.is_authenticated %}
             <form action="{{ url_for('chatbot.logout') }}" method="POST" class="account-panel-logout">
                 <button type="submit" class="account-panel-btn account-panel-logout-btn">
@@ -237,8 +240,8 @@
     </script>
 
     <!-- Scripts -->
-    <script src="{{ url_for('chatbot.static', filename='js/i18n.js') }}?v=19"></script>
-    <script src="{{ url_for('chatbot.static', filename='js/app.js') }}?v=11"></script>
+    <script src="{{ url_for('chatbot.static', filename='js/i18n.js') }}?v=21"></script>
+    <script src="{{ url_for('chatbot.static', filename='js/app.js') }}?v=13"></script>
     {% block extra_js %}{% endblock %}
 
     <script>

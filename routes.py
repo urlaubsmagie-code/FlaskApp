@@ -29,7 +29,7 @@ from sqlalchemy.orm import joinedload
 from . import chatbot_bp
 
 logger = logging.getLogger(__name__)
-from .models import db, User, Guest, GuestDetail, Conversation, Message, Property, AISettings, ReplyTemplate, KnowledgeEntry, preload_last_messages, preload_unread_counts
+from .models import db, User, UserSession, Guest, GuestDetail, Conversation, Message, Property, AISettings, ReplyTemplate, KnowledgeEntry, preload_last_messages, preload_unread_counts, preload_display_platforms
 from .services.ai_service import get_ai_service
 from .services.memory_service import get_memory_service
 
@@ -126,7 +126,48 @@ def require_login():
             return None
         return redirect(url_for('chatbot.login'))
 
+    # Track user online presence and session time
+    _track_user_session(current_user)
+
     return None
+
+
+# Session inactivity gap (minutes) — gap > this starts a new session
+_SESSION_GAP_MINUTES = 15
+# Rate-limit last_seen writes to once per this many seconds
+_LAST_SEEN_RATE_LIMIT = 60
+
+
+def _track_user_session(user):
+    """Update last_seen and maintain session tracking for online-time stats."""
+    from datetime import timedelta
+
+    now = datetime.utcnow()
+
+    # Rate-limit: skip if last_seen was updated less than 60s ago
+    if user.last_seen and (now - user.last_seen).total_seconds() < _LAST_SEEN_RATE_LIMIT:
+        return
+
+    try:
+        gap = timedelta(minutes=_SESSION_GAP_MINUTES)
+
+        if user.last_seen is None or (now - user.last_seen) > gap:
+            # New session — either first visit or returning after inactivity
+            new_session = UserSession(user_id=user.id, started_at=now, last_active_at=now)
+            db.session.add(new_session)
+        else:
+            # Extend current session — find the latest one and update last_active_at
+            latest = UserSession.query.filter_by(user_id=user.id).order_by(
+                UserSession.started_at.desc()
+            ).first()
+            if latest:
+                latest.last_active_at = now
+
+        user.last_seen = now
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logging.getLogger(__name__).debug('Failed to track user session', exc_info=True)
 
 
 # ============================================================================
@@ -213,6 +254,7 @@ def index():
     ).order_by(Conversation.updated_at.desc()).limit(50).all()
     preload_last_messages(conversations)
     preload_unread_counts(conversations)
+    preload_display_platforms(conversations)
     return render_template('chatbot/inbox.html', conversations=conversations)
 
 
@@ -282,6 +324,7 @@ def guest_profile(guest_id):
     ).order_by(Conversation.updated_at.desc()).all()
     preload_last_messages(conversations)
     preload_unread_counts(conversations)
+    preload_display_platforms(conversations)
 
     # Preload message counts to avoid N+1 in template
     if conversations:
@@ -448,6 +491,7 @@ def api_get_conversations():
     # Preload last messages and unread counts in batch queries instead of N+1
     preload_last_messages(pagination.items)
     preload_unread_counts(pagination.items)
+    preload_display_platforms(pagination.items)
 
     # Get conversation IDs with pending approvals
     pending_conv_ids = set(
@@ -519,6 +563,7 @@ def api_search():
 
     # Group results by conversation
     grouped = {}
+    guest_ids_for_channel = set()
     for r in results:
         conv_id = r['conversation_id']
         if conv_id not in grouped:
@@ -529,12 +574,26 @@ def api_search():
                 'subject': r['subject'],
                 'property_name': r.get('property_name'),
                 'platform': r['platform'],
+                'display_platform': r['platform'].capitalize() if r['platform'] else '',
                 'match_count': 0,
                 'first_snippet': None
             }
+            if r['platform'] == 'smoobu' and r.get('guest_id'):
+                guest_ids_for_channel.add(r['guest_id'])
         grouped[conv_id]['match_count'] += 1
         if grouped[conv_id]['first_snippet'] is None:
             grouped[conv_id]['first_snippet'] = r.get('snippet')
+
+    # Batch-resolve booking channels for Smoobu conversations
+    if guest_ids_for_channel:
+        channels = GuestDetail.query.filter(
+            GuestDetail.guest_id.in_(list(guest_ids_for_channel)),
+            GuestDetail.detail_key == 'booking_channel'
+        ).all()
+        channel_map = {ch.guest_id: ch.detail_value for ch in channels}
+        for g in grouped.values():
+            if g['platform'] == 'smoobu' and g.get('guest_id') in channel_map:
+                g['display_platform'] = channel_map[g['guest_id']]
 
     return jsonify({
         'results': list(grouped.values()),
@@ -771,11 +830,12 @@ def api_generate_ai_response(conversation_id):
         if not messages:
             return jsonify({'error': 'No messages in conversation'}), 400
 
-        latest_guest_message = None
-        for msg in reversed(messages):
-            if msg.sender_type == 'guest':
-                latest_guest_message = msg
-                break
+        # Query latest guest message directly (bypass relationship default ordering)
+        latest_guest_message = Message.query.filter(
+            Message.conversation_id == conversation.id,
+            Message.sender_type == 'guest',
+            db.or_(Message.approval_status.is_(None), Message.approval_status == 'approved')
+        ).order_by(Message.sent_at.desc()).first()
 
         if not latest_guest_message:
             return jsonify({'error': 'No guest message to respond to'}), 400
@@ -997,11 +1057,13 @@ def api_suggest_ai_response(conversation_id):
         if not messages:
             return jsonify({'error': 'No messages in conversation'}), 400
 
-        latest_guest_message = None
-        for msg in reversed(messages):
-            if msg.sender_type == 'guest':
-                latest_guest_message = msg
-                break
+        # Query latest guest message directly (bypass relationship default ordering)
+        latest_guest_message = Message.query.filter(
+            Message.conversation_id == conversation.id,
+            Message.sender_type == 'guest',
+            db.or_(Message.approval_status.is_(None), Message.approval_status == 'approved')
+        ).order_by(Message.sent_at.desc()).first()
+        logger.info(f"[AI SUGGEST] latest_guest_message: id={latest_guest_message.id if latest_guest_message else None}, sent_at={latest_guest_message.sent_at if latest_guest_message else None}, content='{latest_guest_message.content[:60] if latest_guest_message else ''}...'")
 
         if not latest_guest_message:
             return jsonify({'error': 'No guest message to respond to'}), 400
@@ -1612,6 +1674,21 @@ def api_update_email_filter():
 # USER MANAGEMENT API
 # ============================================================================
 
+@chatbot_bp.route('/api/users/online', methods=['GET'])
+@login_required
+def api_get_online_users():
+    """Get currently online users (active within last 5 minutes)."""
+    from datetime import timedelta
+    threshold = datetime.utcnow() - timedelta(minutes=5)
+    online = User.query.filter(
+        User.last_seen >= threshold
+    ).order_by(User.display_name).all()
+    return jsonify({'users': [
+        {'id': u.id, 'display_name': u.display_name}
+        for u in online
+    ]})
+
+
 @chatbot_bp.route('/api/users', methods=['GET'])
 @admin_required
 def api_get_users():
@@ -2178,6 +2255,28 @@ def api_get_detailed_stats():
         day_str = str(r.day)
         daily_map[r.user_id][day_str] = r.count
 
+    # Batch: online time per user (last 7 days) — sum of session durations
+    sessions_week = UserSession.query.filter(
+        UserSession.user_id.in_(user_ids),
+        UserSession.started_at >= week_ago
+    ).all()
+    # Build map: {user_id: total_minutes}
+    online_map = {}
+    for s in sessions_week:
+        mins = (s.last_active_at - s.started_at).total_seconds() / 60.0
+        online_map[s.user_id] = online_map.get(s.user_id, 0) + mins
+
+    # Batch: online time today
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    sessions_today = UserSession.query.filter(
+        UserSession.user_id.in_(user_ids),
+        UserSession.started_at >= today_start
+    ).all()
+    online_today_map = {}
+    for s in sessions_today:
+        mins = (s.last_active_at - s.started_at).total_seconds() / 60.0
+        online_today_map[s.user_id] = online_today_map.get(s.user_id, 0) + mins
+
     team = []
     for user in users:
         uid = user.id
@@ -2210,6 +2309,9 @@ def api_get_detailed_stats():
             'messages_month': int(msg_data['month'] or 0),
             'avg_response_minutes': user_avg_response,
             'last_activity': last_at.isoformat() if last_at else None,
+            'last_seen': user.last_seen.isoformat() if user.last_seen else None,
+            'online_minutes_week': round(online_map.get(uid, 0), 1),
+            'online_minutes_today': round(online_today_map.get(uid, 0), 1),
             'daily': daily,
         })
 
@@ -2566,11 +2668,11 @@ def api_debug_ai_prompt(conversation_id):
     profile = memory_service.get_guest_profile(conversation.guest_id) if memory_service else {}
     property_info = conversation.property.to_dict() if conversation.property else None
 
-    latest_guest_message = None
-    for msg in reversed(messages):
-        if msg.sender_type == 'guest':
-            latest_guest_message = msg
-            break
+    # Query latest guest message directly (bypass relationship default ordering)
+    latest_guest_message = Message.query.filter(
+        Message.conversation_id == conversation.id,
+        Message.sender_type == 'guest'
+    ).order_by(Message.sent_at.desc()).first()
 
     # Read AI settings for debug display
     tone = AISettings.get('ai_response_tone', 'friendly_professional')
@@ -3281,7 +3383,7 @@ def api_smoobu_sync_properties():
 @chatbot_bp.route('/api/smoobu/fix-timestamps', methods=['POST'])
 def api_smoobu_fix_timestamps():
     """One-time fix: re-fetch Smoobu messages and update sent_at timestamps."""
-    from .services.smoobu_service import get_smoobu_service
+    from .services.smoobu_service import get_smoobu_service, _parse_smoobu_timestamp
     from datetime import datetime as dt
 
     smoobu = get_smoobu_service()
@@ -3318,11 +3420,8 @@ def api_smoobu_fix_timestamps():
             created_at = msg.get('created_at') or msg.get('createdAt') or msg.get('date')
             if not created_at:
                 continue
-            try:
-                msg_time = dt.fromisoformat(
-                    str(created_at).replace('Z', '+00:00')
-                ).replace(tzinfo=None)
-            except (ValueError, TypeError):
+            msg_time = _parse_smoobu_timestamp(created_at)
+            if not msg_time:
                 continue
 
             # Try matching by platform_message_id first

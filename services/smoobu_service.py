@@ -6,6 +6,7 @@ Handles all interactions with the Smoobu messaging and reservation API.
 import logging
 import re
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Optional, Dict, List, Any
 
 import requests
@@ -16,15 +17,21 @@ logger = logging.getLogger(__name__)
 def _parse_smoobu_timestamp(raw) -> 'datetime | None':
     """Parse a Smoobu timestamp string to a naive UTC datetime.
 
-    Smoobu may return timestamps with timezone offsets (e.g. +01:00 for CET).
-    We convert to UTC before stripping tzinfo so all stored datetimes are
-    consistently UTC — matching ``datetime.utcnow()`` used elsewhere.
+    Smoobu returns timestamps in Europe/Berlin local time without timezone info.
+    We assume Europe/Berlin, convert to UTC, then strip tzinfo so all stored
+    datetimes are consistently naive UTC — matching ``datetime.utcnow()`` used
+    elsewhere.
     """
     if not raw:
         return None
     try:
         dt = datetime.fromisoformat(str(raw).replace('Z', '+00:00'))
         if dt.tzinfo is not None:
+            # Explicit timezone provided — convert to UTC
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        else:
+            # No timezone — Smoobu gives Europe/Berlin local time
+            dt = dt.replace(tzinfo=ZoneInfo('Europe/Berlin'))
             dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
         return dt
     except (ValueError, TypeError):
@@ -624,12 +631,17 @@ class SmoobuService:
                                 is_processed=True
                             )
                             db.session.add(owner_msg)
+                            db.session.flush()  # get owner_msg.id
                             # Update conversation timestamp for inbox ordering
                             if not conv.updated_at or owner_msg.sent_at > conv.updated_at:
                                 conv.updated_at = owner_msg.sent_at
                             # Update sync watermark
                             if not conv.last_synced_message_at or owner_msg.sent_at > conv.last_synced_message_at:
                                 conv.last_synced_message_at = owner_msg.sent_at
+                            # Mark as read — someone already replied outside the app
+                            conv.is_read = True
+                            if not conv.last_read_message_id or owner_msg.id > conv.last_read_message_id:
+                                conv.last_read_message_id = owner_msg.id
                             db.session.commit()
                             result['imported'] += 1
 
@@ -844,12 +856,17 @@ class SmoobuService:
                             is_processed=True
                         )
                         db.session.add(owner_msg)
+                        db.session.flush()  # get owner_msg.id
                         # Update conversation timestamp for inbox ordering
                         if not conv.updated_at or owner_msg.sent_at > conv.updated_at:
                             conv.updated_at = owner_msg.sent_at
                         # Update sync watermark
                         if not conv.last_synced_message_at or owner_msg.sent_at > conv.last_synced_message_at:
                             conv.last_synced_message_at = owner_msg.sent_at
+                        # Mark as read — someone already replied outside the app
+                        conv.is_read = True
+                        if not conv.last_read_message_id or owner_msg.id > conv.last_read_message_id:
+                            conv.last_read_message_id = owner_msg.id
                         db.session.commit()
                         result['imported'] += 1
 
