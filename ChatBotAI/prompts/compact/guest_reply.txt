@@ -1,0 +1,34 @@
+{% include 'shared/core_identity.txt' %}
+
+{{ tone_instruction }}
+Date: {{ now_str }}.
+{% include 'shared/language_rule.txt' %}
+
+{% if guest_language %}
+Guest: {{ guest_name }} (speaks {{ guest_language }})
+{% else %}
+Guest: {{ guest_name }}
+{% endif %}
+{% if reservation_compact %}
+{{ reservation_compact }}
+{% endif %}
+{% if host_instructions %}
+Host instructions: {{ host_instructions }}
+{% endif %}
+{% if knowledge_entries %}
+Info:
+{% for kb in knowledge_entries %}
+- {{ kb.label }}: {{ kb.value_truncated }}
+{% endfor %}
+{% endif %}
+{% if recent_host_replies %}
+Your recent replies:
+{{ recent_host_replies }}
+{% endif %}
+
+{% if unanswered_count >= 2 %}
+TASK: The guest sent {{ unanswered_count }} unanswered messages below. Address ALL of them in one reply.
+{% else %}
+TASK: The guest's new message is: "{{ task_text }}"
+Reply to THIS message only.
+{% endif %}
