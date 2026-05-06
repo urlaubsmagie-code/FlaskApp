@@ -1,6 +1,5 @@
 """Smoke tests for prompt_loader. Verifies templates exist and render."""
 
-import pytest
 from ChatBotAI.services.prompt_loader import load_prompt, list_available_tones
 
 

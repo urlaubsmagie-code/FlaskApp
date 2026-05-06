@@ -21,7 +21,7 @@ PROMPT_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 _auto_reload = os.environ.get("PROMPT_DEV_AUTO_RELOAD", "false").lower() == "true"
 
-env = Environment(
+_env = Environment(
     loader=FileSystemLoader(str(PROMPT_DIR)),
     autoescape=False,
     trim_blocks=True,
@@ -47,7 +47,7 @@ def load_prompt(name: str, tier: str, **context) -> str:
     """
     template_path = f"{tier}/{name}.txt"
     try:
-        template = env.get_template(template_path)
+        template = _env.get_template(template_path)
     except TemplateNotFound:
         logger.error("Prompt template not found: %s", template_path)
         raise
