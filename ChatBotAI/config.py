@@ -28,6 +28,9 @@ class Config:
     OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'gemma2:9b')
     OLLAMA_TIMEOUT = int(os.environ.get('OLLAMA_TIMEOUT', '120'))
 
+    # Prompt template settings
+    PROMPT_DEV_AUTO_RELOAD = os.environ.get('PROMPT_DEV_AUTO_RELOAD', 'false').lower() == 'true'
+
     # AI behavior settings
     AI_AUTO_RESPONSE_ENABLED = os.environ.get('AI_AUTO_RESPONSE_ENABLED', 'true').lower() == 'true'
     AI_MEMORY_EXTRACTION_ENABLED = os.environ.get('AI_MEMORY_EXTRACTION_ENABLED', 'true').lower() == 'true'
@@ -91,6 +94,7 @@ class DevelopmentConfig(Config):
     """Development configuration"""
     DEBUG = True
     SQLALCHEMY_ECHO = True
+    PROMPT_DEV_AUTO_RELOAD = True
 
 
 class ProductionConfig(Config):
