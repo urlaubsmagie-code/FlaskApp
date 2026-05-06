@@ -1,4 +1,3 @@
-import os
 import pytest
 from ChatBotAI.services.prompt_tier import detect_tier
 

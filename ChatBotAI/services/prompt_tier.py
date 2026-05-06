@@ -5,12 +5,9 @@ Rule: cloud models (suffix '-cloud') or local models >= 70B are 'rich'.
 Everything else is 'compact'.
 """
 
-import logging
 import os
 import re
 from typing import Optional
-
-logger = logging.getLogger(__name__)
 
 RICH_SIZE_THRESHOLD_B = 70
 _VALID_TIERS = {"compact", "rich"}
