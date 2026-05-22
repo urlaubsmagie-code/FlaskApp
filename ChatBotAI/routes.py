@@ -113,6 +113,7 @@ def require_login():
         or request.endpoint in ('chatbot.login', 'chatbot.setup', 'chatbot.service_worker')
         or (request.endpoint and request.endpoint.startswith('chatbot.webhook_'))
         or request.endpoint == 'chatbot.health_check'
+        or request.endpoint == 'chatbot.api_keepalive'
     ):
         return None
 
@@ -251,11 +252,13 @@ def index():
     conversations = Conversation.query.options(
         joinedload(Conversation.guest),
         joinedload(Conversation.property)
-    ).order_by(Conversation.updated_at.desc()).limit(50).all()
+    ).filter(Conversation.platform != 'playtest').order_by(Conversation.last_message_at.desc()).limit(50).all()
+    total_conversations = Conversation.query.count()
     preload_last_messages(conversations)
     preload_unread_counts(conversations)
     preload_display_platforms(conversations)
-    return render_template('chatbot/inbox.html', conversations=conversations)
+    return render_template('chatbot/inbox.html', conversations=conversations,
+                           total_conversations=total_conversations)
 
 
 @chatbot_bp.route('/conversation/<int:conversation_id>')
@@ -267,13 +270,16 @@ def conversation_view(conversation_id):
         joinedload(Conversation.guest)
     ).get_or_404(conversation_id)
 
+    # Exclude rejected drafts from all queries
+    base_filter = Message.query.filter_by(conversation_id=conversation_id).filter(
+        db.or_(Message.approval_status.is_(None), Message.approval_status != 'rejected')
+    )
+
     # Count total messages for "load older" indicator
-    total_messages = Message.query.filter_by(conversation_id=conversation_id).count()
+    total_messages = base_filter.count()
 
     # Load only the last PAGE_SIZE messages (most recent)
-    messages = Message.query.filter_by(
-        conversation_id=conversation_id
-    ).order_by(Message.sent_at.desc()).limit(PAGE_SIZE).all()
+    messages = base_filter.order_by(Message.sent_at.desc()).limit(PAGE_SIZE).all()
     messages.reverse()  # Back to chronological order for display
 
     has_older = total_messages > len(messages)
@@ -298,6 +304,7 @@ def conversation_view(conversation_id):
             pass
 
     approval_queue_enabled = AISettings.get('approval_queue_enabled', 'true') != 'false'
+    is_playtest = conversation.platform == 'playtest'
 
     return render_template(
         'chatbot/conversation.html',
@@ -308,11 +315,13 @@ def conversation_view(conversation_id):
         smoobu_connected=smoobu_connected,
         has_older=has_older,
         total_messages=total_messages,
-        approval_queue_enabled=approval_queue_enabled
+        approval_queue_enabled=approval_queue_enabled,
+        is_playtest=is_playtest
     )
 
 
 @chatbot_bp.route('/guest/<int:guest_id>')
+@login_required
 def guest_profile(guest_id):
     """Guest profile view showing all stored memories"""
     from sqlalchemy import func
@@ -321,7 +330,7 @@ def guest_profile(guest_id):
     profile = memory_service.get_guest_profile(guest_id) if memory_service else {}
     conversations = Conversation.query.filter_by(
         guest_id=guest_id
-    ).order_by(Conversation.updated_at.desc()).all()
+    ).order_by(Conversation.last_message_at.desc()).all()
     preload_last_messages(conversations)
     preload_unread_counts(conversations)
     preload_display_platforms(conversations)
@@ -345,6 +354,7 @@ def guest_profile(guest_id):
 
 
 @chatbot_bp.route('/statistics')
+@login_required
 def statistics():
     """Statistics dashboard page"""
     return render_template('chatbot/statistics.html')
@@ -360,6 +370,7 @@ def settings():
 
 
 @chatbot_bp.route('/knowledge')
+@login_required
 def knowledge_base():
     """Knowledge Base management page"""
     properties = Property.query.order_by(Property.name).all()
@@ -448,6 +459,188 @@ def api_debug_status():
 
 
 # ============================================================================
+# CHAT PLAYTEST API (Debug)
+# ============================================================================
+
+@chatbot_bp.route('/api/debug/playtest/start', methods=['POST'])
+@admin_required
+def api_playtest_start():
+    """Create a new playtest conversation with optional guest profile."""
+    import uuid
+    from .services.playtest_events import playtest_log
+
+    data = request.get_json() or {}
+    guest_name = data.get('guest_name', 'Playtest Guest')
+
+    # Create a dedicated playtest guest
+    guest = Guest(
+        name=guest_name,
+        email=f"playtest-{uuid.uuid4().hex[:8]}@test.local"
+    )
+    db.session.add(guest)
+    db.session.flush()
+
+    # Create GuestDetail records for each non-empty profile field
+    detail_fields = {
+        'family': ('family', 'family_info'),
+        'pets': ('pet', 'pet_info'),
+        'allergies': ('allergy', 'allergy_info'),
+        'preferences': ('preference', 'preference_info'),
+        'special_requests': ('special_request', 'request_info'),
+    }
+    for field_name, (detail_type, detail_key) in detail_fields.items():
+        value = data.get(field_name, '').strip()
+        if value:
+            detail = GuestDetail(
+                guest_id=guest.id,
+                detail_type=detail_type,
+                detail_key=detail_key,
+                detail_value=value,
+                confidence=1.0
+            )
+            db.session.add(detail)
+
+    # Create playtest conversation — AI enabled, auto-respond OFF by default
+    conversation = Conversation(
+        guest_id=guest.id,
+        platform='playtest',
+        platform_id=f"playtest-{uuid.uuid4().hex[:8]}",
+        subject=f"Playtest {datetime.utcnow().strftime('%H:%M')}",
+        status='active',
+        ai_enabled=True,
+        auto_respond=False,
+        is_read=True
+    )
+    db.session.add(conversation)
+    db.session.commit()
+
+    playtest_log(conversation.id, 'conversation_created',
+                 f'Playtest conversation #{conversation.id} created (guest: {guest_name})')
+
+    return jsonify({
+        'conversation_id': conversation.id,
+        'guest_id': guest.id,
+        'guest_name': guest_name
+    })
+
+
+@chatbot_bp.route('/api/debug/playtest/history')
+@admin_required
+def api_playtest_history():
+    """Get recent playtest conversations for the launcher."""
+    conversations = Conversation.query.filter_by(
+        platform='playtest'
+    ).order_by(Conversation.created_at.desc()).limit(10).all()
+
+    return jsonify({
+        'conversations': [{
+            'id': c.id,
+            'guest_name': c.guest.name if c.guest else 'Unknown',
+            'created_at': c.created_at.strftime('%d.%m.%Y %H:%M') if c.created_at else '',
+        } for c in conversations]
+    })
+
+
+@chatbot_bp.route('/api/debug/playtest/<int:conversation_id>/message', methods=['POST'])
+@admin_required
+def api_playtest_message(conversation_id):
+    """Send a message in a playtest conversation as guest or host."""
+    from .services.message_router import get_message_router
+
+    conversation = Conversation.query.get_or_404(conversation_id)
+    if conversation.platform != 'playtest':
+        return jsonify({'error': 'Not a playtest conversation'}), 400
+
+    data = request.get_json()
+    if not data or not data.get('content', '').strip():
+        return jsonify({'error': 'Content is required'}), 400
+
+    content = data['content'].strip()
+    role = data.get('role', 'guest')
+    router = get_message_router()
+
+    if role == 'guest':
+        result = router.process_incoming_message(
+            platform='playtest',
+            platform_conversation_id=conversation.platform_id,
+            sender_email=conversation.guest.email,
+            sender_name=conversation.guest.name,
+            message_content=content,
+            subject=conversation.subject,
+            auto_respond=False,
+            skip_push=True
+        )
+        return jsonify({
+            'message_id': result.get('message_id'),
+            'success': result.get('success', False)
+        })
+    elif role == 'host':
+        result = router.process_owner_message(
+            conversation_id=conversation_id,
+            content=content,
+            extract_memory=True,
+            sent_via_app=True
+        )
+        return jsonify({
+            'message_id': result.get('message_id'),
+            'success': result.get('success', False)
+        })
+    else:
+        return jsonify({'error': 'Invalid role — use "guest" or "host"'}), 400
+
+
+@chatbot_bp.route('/api/debug/playtest/<int:conversation_id>/ai-response', methods=['POST'])
+@admin_required
+def api_playtest_ai_response(conversation_id):
+    """Generate an AI response for a playtest conversation."""
+    from .services.message_router import get_message_router
+
+    conversation = Conversation.query.get_or_404(conversation_id)
+    if conversation.platform != 'playtest':
+        return jsonify({'error': 'Not a playtest conversation'}), 400
+
+    router = get_message_router()
+    result = router.generate_ai_response_for_conversation(conversation_id)
+
+    if result.get('success'):
+        return jsonify({
+            'message_id': result.get('message_id'),
+            'content': result.get('response'),
+            'success': True
+        })
+    else:
+        return jsonify({'error': result.get('error', 'AI generation failed')}), 500
+
+
+@chatbot_bp.route('/api/debug/playtest/<int:conversation_id>/events')
+@admin_required
+def api_playtest_events(conversation_id):
+    """Poll for new playtest events."""
+    from .services.playtest_events import get_events
+
+    since = request.args.get('since', 0, type=int)
+    events, cursor = get_events(conversation_id, since)
+    return jsonify({'events': events, 'cursor': cursor})
+
+
+@chatbot_bp.route('/api/debug/playtest/<int:conversation_id>/messages')
+@admin_required
+def api_playtest_messages(conversation_id):
+    """Get all messages in a playtest conversation."""
+    conversation = Conversation.query.get_or_404(conversation_id)
+    if conversation.platform != 'playtest':
+        return jsonify({'error': 'Not a playtest conversation'}), 400
+
+    messages = Message.query.filter_by(
+        conversation_id=conversation_id
+    ).order_by(Message.sent_at.asc()).all()
+
+    return jsonify({
+        'messages': [m.to_dict() for m in messages]
+    })
+
+
+# ============================================================================
 # API ROUTES (JSON Responses)
 # ============================================================================
 
@@ -456,9 +649,12 @@ def api_conversations_last_updated():
     """Lightweight check: returns the most recent updated_at and unread count.
     Used by the inbox poller to decide whether a full fetch is needed."""
     from sqlalchemy import func
-    ts_result = db.session.query(func.max(Conversation.updated_at)).scalar()
+    ts_result = db.session.query(func.max(Conversation.updated_at)).filter(
+        Conversation.platform != 'playtest'
+    ).scalar()
     unread = db.session.query(func.count(Conversation.id)).filter(
-        Conversation.is_read == False
+        Conversation.is_read == False,
+        Conversation.platform != 'playtest'
     ).scalar()
     ts = ts_result.isoformat() if ts_result else None
     return jsonify({'ts': ts, 'unread': unread})
@@ -472,6 +668,7 @@ def api_get_conversations():
     status = request.args.get('status')
 
     query = Conversation.query.options(joinedload(Conversation.guest), joinedload(Conversation.property))
+    query = query.filter(Conversation.platform != 'playtest')
     if status == 'pending_approval':
         query = query.filter(Conversation.id.in_(
             db.session.query(Message.conversation_id)
@@ -484,7 +681,7 @@ def api_get_conversations():
     if escalated == 'true':
         query = query.filter_by(escalated=True)
 
-    pagination = query.order_by(Conversation.updated_at.desc()).paginate(
+    pagination = query.order_by(Conversation.last_message_at.desc()).paginate(
         page=page, per_page=per_page, error_out=False
     )
 
@@ -583,6 +780,51 @@ def api_search():
         grouped[conv_id]['match_count'] += 1
         if grouped[conv_id]['first_snippet'] is None:
             grouped[conv_id]['first_snippet'] = r.get('snippet')
+
+    # Also search Guest fields (name/email/phone) so guests are findable even
+    # when the query text never appears in any message body.
+    like = f'%{query}%'
+    guest_matches = Guest.query.filter(
+        db.or_(
+            Guest.name.ilike(like),
+            Guest.email.ilike(like),
+            Guest.phone.ilike(like),
+        )
+    ).limit(50).all()
+    if guest_matches:
+        guest_ids = [g.id for g in guest_matches]
+        guest_by_id = {g.id: g for g in guest_matches}
+        guest_convs = (
+            Conversation.query
+            .filter(Conversation.guest_id.in_(guest_ids))
+            .filter(Conversation.platform != 'playtest')
+            .options(joinedload(Conversation.property))
+            .limit(50)
+            .all()
+        )
+        for conv in guest_convs:
+            # Apply the same platform/status filters as the FTS path
+            if platform and conv.platform != platform:
+                continue
+            if status and conv.status != status:
+                continue
+            if conv.id in grouped:
+                continue  # already added by FTS — dedupe
+            g = guest_by_id.get(conv.guest_id)
+            prop_name = conv.property.name if conv.property else None
+            grouped[conv.id] = {
+                'conversation_id': conv.id,
+                'guest_name': g.name if g else None,
+                'guest_id': conv.guest_id,
+                'subject': conv.subject,
+                'property_name': prop_name,
+                'platform': conv.platform,
+                'display_platform': conv.platform.capitalize() if conv.platform else '',
+                'match_count': 0,
+                'first_snippet': None,
+            }
+            if conv.platform == 'smoobu' and conv.guest_id:
+                guest_ids_for_channel.add(conv.guest_id)
 
     # Batch-resolve booking channels for Smoobu conversations
     if guest_ids_for_channel:
@@ -751,7 +993,11 @@ def api_send_message(conversation_id):
         user_id=current_user.id if current_user.is_authenticated else None
     )
     db.session.add(message)
-    conversation.updated_at = datetime.utcnow()
+    now_ts = datetime.utcnow()
+    conversation.updated_at = now_ts
+    msg_sent_at = message.sent_at or now_ts
+    if not conversation.last_message_at or msg_sent_at > conversation.last_message_at:
+        conversation.last_message_at = msg_sent_at
 
     # Assign conversation to the user who is responding
     if current_user.is_authenticated and conversation.user_id is None:
@@ -948,14 +1194,17 @@ def api_generate_ai_response(conversation_id):
             sent_at=datetime.utcnow()
         )
         db.session.add(ai_message)
-        conversation.updated_at = datetime.utcnow()
+        now_ts = datetime.utcnow()
+        conversation.updated_at = now_ts
+        ai_sent_at = ai_message.sent_at or now_ts
+        if not conversation.last_message_at or ai_sent_at > conversation.last_message_at:
+            conversation.last_message_at = ai_sent_at
         db.session.commit()
 
-        # Check if approval queue is enabled
-        # Manual button ALWAYS creates a pending draft when queue is enabled
+        # Check if approval queue is enabled (respects per-conversation auto-approve)
         approval_queue_enabled = AISettings.get('approval_queue_enabled', 'true') == 'true'
 
-        if approval_queue_enabled:
+        if approval_queue_enabled and not conversation.auto_approve:
             ai_message.approval_status = 'pending'
             db.session.commit()
             return jsonify({
@@ -1505,7 +1754,7 @@ def api_get_settings():
 
 
 # Settings keys that only admins may change
-ADMIN_ONLY_SETTINGS = {'ai_temperature', 'ai_max_tokens', 'ollama_model'}
+ADMIN_ONLY_SETTINGS = {'ai_temperature', 'ai_max_tokens', 'ollama_model', 'reasoning_model'}
 
 
 @chatbot_bp.route('/api/settings', methods=['PUT'])
@@ -1578,8 +1827,11 @@ def api_get_ollama_models():
     installed_names = {m['name'] for m in installed}
     suggested = [s for s in suggested if not any(s['name'].split(':')[0] in inst for inst in installed_names)]
 
+    reasoning_model = AISettings.get('reasoning_model') or ''
+
     return jsonify({
         'current_model': current_model,
+        'reasoning_model': reasoning_model,
         'installed': installed,
         'suggested': suggested
     })
@@ -1781,6 +2033,7 @@ def api_reset_password(user_id):
 # ============================================================================
 
 @chatbot_bp.route('/api/conversations/<int:conversation_id>/assign', methods=['PATCH'])
+@login_required
 def api_assign_conversation(conversation_id):
     """Assign or unassign a conversation to a user"""
     conversation = Conversation.query.get_or_404(conversation_id)
@@ -1807,6 +2060,7 @@ def api_assign_conversation(conversation_id):
 
 
 @chatbot_bp.route('/api/conversations/<int:conversation_id>/toggle-ai', methods=['POST'])
+@login_required
 def api_toggle_ai(conversation_id):
     """Toggle AI for a specific conversation"""
     conversation = Conversation.query.get_or_404(conversation_id)
@@ -1819,6 +2073,7 @@ def api_toggle_ai(conversation_id):
 
 
 @chatbot_bp.route('/api/conversations/<int:conversation_id>/toggle-auto-respond', methods=['POST'])
+@login_required
 def api_toggle_auto_respond(conversation_id):
     """Toggle automatic AI responses for a conversation"""
     conversation = Conversation.query.get_or_404(conversation_id)
@@ -1832,6 +2087,7 @@ def api_toggle_auto_respond(conversation_id):
 
 
 @chatbot_bp.route('/api/conversations/<int:conversation_id>/resolve', methods=['POST'])
+@login_required
 def api_resolve_escalation(conversation_id):
     """Resolve an escalated conversation. Does NOT re-enable auto-respond."""
     conversation = Conversation.query.get_or_404(conversation_id)
@@ -1848,6 +2104,7 @@ def api_resolve_escalation(conversation_id):
 
 
 @chatbot_bp.route('/api/messages/<int:message_id>/approve', methods=['POST'])
+@login_required
 def api_approve_message(message_id):
     """Approve a pending AI draft and send it via platform."""
     message = Message.query.get_or_404(message_id)
@@ -1914,6 +2171,7 @@ def api_approve_message(message_id):
 
 
 @chatbot_bp.route('/api/messages/<int:message_id>/reject', methods=['POST'])
+@login_required
 def api_reject_message(message_id):
     """Reject a pending AI draft."""
     message = Message.query.get_or_404(message_id)
@@ -2340,7 +2598,7 @@ def _compute_avg_response_time_for_user(user_id):
     query = Conversation.query.filter_by(status='active')
     if user_id is not None:
         query = query.filter_by(user_id=user_id)
-    conversations = query.order_by(Conversation.updated_at.desc()).limit(50).all()
+    conversations = query.order_by(Conversation.last_message_at.desc()).limit(50).all()
 
     if not conversations:
         return None
@@ -2402,6 +2660,7 @@ def api_push_vapid_key():
 
 
 @chatbot_bp.route('/api/push/subscribe', methods=['POST'])
+@login_required
 def api_push_subscribe():
     """Store a push subscription (upsert by endpoint)"""
     from .models import PushSubscription
@@ -2439,6 +2698,7 @@ def api_push_subscribe():
 
 
 @chatbot_bp.route('/api/push/unsubscribe', methods=['POST'])
+@login_required
 def api_push_unsubscribe():
     """Remove a push subscription"""
     from .models import PushSubscription
@@ -2458,6 +2718,7 @@ def api_push_unsubscribe():
 
 
 @chatbot_bp.route('/api/push/test', methods=['POST'])
+@login_required
 def api_push_test():
     """Send a test push notification with detailed diagnostics per subscription"""
     import json as _json
@@ -2539,6 +2800,7 @@ def api_push_test():
 
 
 @chatbot_bp.route('/api/push/reset', methods=['POST'])
+@login_required
 def api_push_reset():
     """Delete all push subscriptions for the current user"""
     from .models import PushSubscription
@@ -2618,6 +2880,21 @@ def health_check():
         'ai_service': ai_status,
         'timestamp': datetime.utcnow().isoformat()
     })
+
+
+@chatbot_bp.route('/api/keepalive')
+def api_keepalive():
+    """Lightweight endpoint hit by the keepalive daemon every few minutes.
+
+    Touches the DB so SQLite pages stay in the OS file cache; does NOT call
+    Ollama or any external service. Safe to hit from monitoring tools too.
+    """
+    # Tiny DB query — warms the most-used table without doing real work
+    try:
+        db.session.execute(db.text('SELECT 1 FROM user LIMIT 1'))
+    except Exception:
+        pass
+    return jsonify({'status': 'ok', 'ts': datetime.utcnow().isoformat() + 'Z'}), 200
 
 
 @chatbot_bp.route('/api/test-ai', methods=['POST'])
@@ -3315,17 +3592,21 @@ def smoobu_connect():
     if not api_key:
         return jsonify({'error': 'API key is required'}), 400
 
-    # Save to DB
+    # Save to DB and invalidate the in-memory cache so the next request reads the new key
     AISettings.set('smoobu_api_key', api_key, description='Smoobu API key')
-
-    # Verify by fetching apartments
     from .services.smoobu_service import get_smoobu_service
     smoobu = get_smoobu_service()
+    if smoobu:
+        smoobu.reload_api_key()
+
+    # Verify by fetching apartments
     if smoobu and smoobu.is_authenticated():
         return jsonify({'success': True, 'message': 'Connected to Smoobu'})
     else:
         # Clear invalid key
         AISettings.set('smoobu_api_key', '', description='Smoobu API key')
+        if smoobu:
+            smoobu.reload_api_key()
         return jsonify({'error': 'Invalid API key — could not connect to Smoobu'}), 400
 
 
@@ -3340,16 +3621,372 @@ def smoobu_disconnect():
     return jsonify({'success': True})
 
 
+@chatbot_bp.route('/api/webhooks/smoobu', methods=['POST', 'GET'])
+def webhook_smoobu_discovery():
+    """Smoobu webhook endpoint.
+
+    Two responsibilities, in order:
+      1. ALWAYS log the full payload to instance/smoobu_webhooks.log.
+         This was originally a pure-discovery endpoint and we keep that
+         behaviour so any new/unknown Smoobu event type still gets captured
+         and we can extend the handler later.
+      2. Dispatch on the `action` field for known events:
+           - "newMessage" → trigger sync_conversation_messages(booking.id)
+             in a background thread so we respond fast (Smoobu retries if
+             we take >5s).
+           - "onlineCheckInUpdate" → logged only (no DB writes yet).
+           - anything else → logged only.
+
+    Endpoint name starts with 'webhook_' so the before_request hook in
+    routes.py:114 skips login_required.
+
+    Always returns 200 so Smoobu doesn't mark the webhook as failing.
+    Errors during dispatch are swallowed + logged — they must not block
+    the response to Smoobu.
+
+    Spec-reference: WEBHOOK_IMPLEMENTATION.md Step 2 (2026-05-18).
+    """
+    import hashlib
+    import hmac
+    import json
+    import os
+    import threading
+    from datetime import datetime
+    from flask import request, current_app
+
+    # ---- 0. Optional HMAC signature verification ----
+    # If SMOOBU_WEBHOOK_SECRET is set, every webhook must carry a valid
+    # signature header — otherwise we reject with 401 to block forgeries.
+    # If the secret is NOT set, we accept all webhooks (back-compat with
+    # the live deployment) but log a one-time warning so the user knows
+    # this surface is unauthenticated.
+    raw_body_bytes = request.get_data(cache=True)
+    webhook_secret = (os.environ.get('SMOOBU_WEBHOOK_SECRET')
+                      or current_app.config.get('SMOOBU_WEBHOOK_SECRET'))
+    if webhook_secret and request.method == 'POST':
+        sig_header = (
+            request.headers.get('X-Smoobu-Signature')
+            or request.headers.get('X-Webhook-Signature')
+            or request.headers.get('X-Signature')
+            or ''
+        ).strip()
+        expected = hmac.new(
+            webhook_secret.encode('utf-8'),
+            raw_body_bytes,
+            hashlib.sha256,
+        ).hexdigest()
+        # Accept either "sha256=<hex>" or bare hex.
+        candidate = sig_header.split('=', 1)[-1] if '=' in sig_header else sig_header
+        if not candidate or not hmac.compare_digest(candidate, expected):
+            current_app.logger.warning(
+                'Smoobu webhook signature MISMATCH from %s — rejecting',
+                request.remote_addr,
+            )
+            return jsonify({'error': 'invalid signature'}), 401
+    elif request.method == 'POST':
+        current_app.logger.warning(
+            'Smoobu webhook accepted WITHOUT signature verification — '
+            'set SMOOBU_WEBHOOK_SECRET env var to enable HMAC check.'
+        )
+
+    # ---- 1. Discovery logging (unchanged from original endpoint) ----
+    try:
+        raw_body = raw_body_bytes.decode('utf-8', errors='replace')
+    except Exception:
+        raw_body = '<unreadable>'
+
+    try:
+        parsed_json = request.get_json(silent=True)
+    except Exception:
+        parsed_json = None
+
+    entry = {
+        'timestamp': datetime.utcnow().isoformat() + 'Z',
+        'method': request.method,
+        'remote_addr': request.remote_addr,
+        'path': request.path,
+        'query_string': request.query_string.decode('utf-8', errors='replace'),
+        'headers': {k: v for k, v in request.headers.items()},
+        'raw_body': raw_body,
+        'parsed_json': parsed_json,
+    }
+
+    log_dir = os.path.join(current_app.instance_path, '')
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, 'smoobu_webhooks.log')
+    try:
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(entry, ensure_ascii=False, default=str) + '\n')
+    except Exception:
+        current_app.logger.exception('Failed to write Smoobu webhook log entry')
+
+    current_app.logger.info(
+        'Smoobu webhook received: method=%s bytes=%d json=%s',
+        request.method, len(raw_body), 'yes' if parsed_json is not None else 'no'
+    )
+
+    # ---- 2. Dispatch on action (only for valid POST JSON) ----
+    # Wrapped in try/except so any handler bug NEVER prevents the 200 response.
+    try:
+        if request.method == 'POST' and isinstance(parsed_json, dict):
+            action = parsed_json.get('action')
+            data = parsed_json.get('data') or {}
+
+            if action == 'newMessage':
+                # Smoobu payload: {"action":"newMessage","user":...,
+                #                  "data":{"id":<msgid>,"sender":"host"|"guest",
+                #                          "booking":{"id":<bookingid>}}}
+                booking = data.get('booking') or {}
+                booking_id = booking.get('id') or data.get('bookingId')
+                if booking_id:
+                    app_obj = current_app._get_current_object()
+                    threading.Thread(
+                        target=_run_webhook_message_sync,
+                        args=(app_obj, str(booking_id)),
+                        daemon=True,
+                        name=f'smoobu-webhook-{booking_id}',
+                    ).start()
+                    current_app.logger.info(
+                        'Smoobu newMessage webhook dispatched: booking=%s msg=%s sender=%s',
+                        booking_id, data.get('id'), data.get('sender')
+                    )
+                else:
+                    current_app.logger.warning(
+                        'Smoobu newMessage webhook missing booking id: %s', parsed_json
+                    )
+
+            elif action == 'cancelReservation':
+                # Smoobu payload likely mirrors newReservation (full reservation
+                # inline) but we only need the reservation id. Mark the linked
+                # Conversation as cancelled so the UI can show a "Storniert"
+                # label. NO change to AI behavior, history, or visibility —
+                # the team decides whether to keep chatting.
+                cancel_id = data.get('id') or data.get('bookingId')
+                if cancel_id:
+                    app_obj = current_app._get_current_object()
+                    threading.Thread(
+                        target=_run_webhook_cancel_reservation,
+                        args=(app_obj, cancel_id),
+                        daemon=True,
+                        name=f'smoobu-webhook-cancel-{cancel_id}',
+                    ).start()
+                    current_app.logger.info(
+                        'Smoobu cancelReservation webhook dispatched: res=%s', cancel_id
+                    )
+                else:
+                    current_app.logger.warning(
+                        'Smoobu cancelReservation webhook missing id: %s', parsed_json
+                    )
+
+            elif action == 'updateReservation':
+                # Silent refresh of Conversation.check_in/check_out and
+                # GuestDetail records (adults, children, language, etc.).
+                # No team notification — user wants this invisible, just
+                # the data kept current.
+                if data.get('id'):
+                    app_obj = current_app._get_current_object()
+                    threading.Thread(
+                        target=_run_webhook_update_reservation,
+                        args=(app_obj, data),
+                        daemon=True,
+                        name=f'smoobu-webhook-update-{data.get("id")}',
+                    ).start()
+                    current_app.logger.info(
+                        'Smoobu updateReservation webhook dispatched: res=%s', data.get('id')
+                    )
+                else:
+                    current_app.logger.warning(
+                        'Smoobu updateReservation webhook missing data.id: %s', parsed_json
+                    )
+
+            elif action == 'newReservation':
+                # Smoobu fires this with the FULL reservation inline (dates,
+                # adults/children, channel, language, phone, notice, etc.).
+                # We pre-create/match the Guest and populate GuestDetail so the
+                # very first AI response to the first guest message already
+                # has rich context (party size, channel, language preference,
+                # booking note). No Conversation is created yet — that happens
+                # via MessageRouter when the first message actually arrives.
+                if data.get('id'):
+                    app_obj = current_app._get_current_object()
+                    threading.Thread(
+                        target=_run_webhook_reservation_enrich,
+                        args=(app_obj, data),
+                        daemon=True,
+                        name=f'smoobu-webhook-res-{data.get("id")}',
+                    ).start()
+                    current_app.logger.info(
+                        'Smoobu newReservation webhook dispatched: res=%s channel=%s',
+                        data.get('id'),
+                        (data.get('channel') or {}).get('name') if isinstance(data.get('channel'), dict) else data.get('channel')
+                    )
+                else:
+                    current_app.logger.warning(
+                        'Smoobu newReservation webhook missing data.id: %s', parsed_json
+                    )
+
+            # Other action types fall through — logged only via the
+            # discovery write above. Add more `elif action == ...:` branches
+            # as new event types appear.
+    except Exception:
+        # Never let a handler bug break the 200 response to Smoobu.
+        current_app.logger.exception('Smoobu webhook dispatch failed')
+
+    # Always 200 so Smoobu doesn't mark the webhook as failing and back off
+    return jsonify({'success': True, 'received': True}), 200
+
+
+def _run_webhook_message_sync(app, booking_id):
+    """Background worker: sync messages for one Smoobu reservation.
+
+    Spawned as a daemon thread by webhook_smoobu_discovery on newMessage events.
+    Reuses the existing, well-tested SmoobuService.sync_conversation_messages
+    path — same dedup logic (p14 unique index + IntegrityError guard), same
+    last_message_at / is_read semantics as the periodic daemon sync. No new
+    business logic introduced by the webhook.
+
+    Errors are logged and swallowed (we cannot signal failure back to Smoobu
+    after the route has already returned).
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        with app.app_context():
+            from .services.smoobu_service import get_smoobu_service
+            smoobu = get_smoobu_service()
+            if not smoobu or not smoobu.is_configured():
+                logger.warning('Webhook sync skipped: Smoobu not configured (booking=%s)', booking_id)
+                return
+            result = smoobu.sync_conversation_messages(booking_id)
+            imported = result.get('imported', 0)
+            if imported:
+                logger.info('Webhook sync imported %d message(s) for booking=%s', imported, booking_id)
+            else:
+                logger.debug('Webhook sync no-op for booking=%s (already in sync)', booking_id)
+    except Exception:
+        logger.exception('Webhook background sync failed for booking=%s', booking_id)
+
+
+def _run_webhook_cancel_reservation(app, reservation_id):
+    """Background worker: mark the Conversation for one Smoobu reservation as cancelled.
+
+    Spawned as a daemon thread by webhook_smoobu_discovery on cancelReservation events.
+    Delegates to SmoobuService.mark_reservation_cancelled which is idempotent.
+    Errors are logged and swallowed.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        with app.app_context():
+            from .services.smoobu_service import get_smoobu_service
+            smoobu = get_smoobu_service()
+            if not smoobu or not smoobu.is_configured():
+                logger.warning(
+                    'Webhook cancel skipped: Smoobu not configured (res=%s)', reservation_id
+                )
+                return
+            ok = smoobu.mark_reservation_cancelled(reservation_id)
+            if not ok:
+                logger.debug('Webhook cancel: no Conversation matched res=%s', reservation_id)
+    except Exception:
+        logger.exception('Webhook cancel-reservation failed for res=%s', reservation_id)
+
+
+def _run_webhook_update_reservation(app, res_data):
+    """Background worker: silently refresh Conversation/Guest data from updateReservation.
+
+    Spawned as a daemon thread by webhook_smoobu_discovery on updateReservation events.
+    Delegates to SmoobuService.update_reservation_from_webhook. Errors are logged
+    and swallowed.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        with app.app_context():
+            from .services.smoobu_service import get_smoobu_service
+            smoobu = get_smoobu_service()
+            if not smoobu or not smoobu.is_configured():
+                logger.warning(
+                    'Webhook update skipped: Smoobu not configured (res=%s)',
+                    res_data.get('id'),
+                )
+                return
+            smoobu.update_reservation_from_webhook(res_data)
+    except Exception:
+        logger.exception(
+            'Webhook update-reservation failed for res=%s', res_data.get('id')
+        )
+
+
+def _run_webhook_reservation_enrich(app, res_data):
+    """Background worker: pre-enrich Guest from a Smoobu newReservation payload.
+
+    Spawned as a daemon thread by webhook_smoobu_discovery on newReservation
+    events. Delegates to SmoobuService.process_new_reservation, which uses
+    the existing find_or_create_guest + _enrich_guest_from_reservation upsert
+    helpers. Errors are logged and swallowed.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        with app.app_context():
+            from .services.smoobu_service import get_smoobu_service
+            smoobu = get_smoobu_service()
+            if not smoobu or not smoobu.is_configured():
+                logger.warning(
+                    'Webhook reservation enrich skipped: Smoobu not configured (res=%s)',
+                    res_data.get('id'),
+                )
+                return
+            guest = smoobu.process_new_reservation(res_data)
+            if guest:
+                logger.info(
+                    'Webhook reservation pre-enrich complete: res=%s guest_id=%s',
+                    res_data.get('id'), guest.id,
+                )
+            else:
+                logger.debug(
+                    'Webhook reservation pre-enrich no-op: res=%s', res_data.get('id')
+                )
+    except Exception:
+        logger.exception(
+            'Webhook reservation enrich failed for res=%s', res_data.get('id')
+        )
+
+
 @chatbot_bp.route('/api/smoobu/sync', methods=['POST'])
 def api_smoobu_sync():
-    """Sync messages from Smoobu"""
+    """Trigger a Smoobu sync in the background and return immediately.
+
+    The sync itself can take 2+ minutes for accounts with many properties,
+    which exceeds the Cloudflare tunnel's 100s HTTP timeout and ties up a
+    Waitress thread. We hand off to the daemon's _run_one_sync (which has
+    a lock that prevents overlap with the periodic 2-min cycle) and return
+    right away. New messages appear via the inbox's regular polling.
+    """
+    import threading
+    from flask import current_app
     from .services.smoobu_service import get_smoobu_service
+
     smoobu = get_smoobu_service()
     if not smoobu or not smoobu.is_configured():
         return jsonify({'error': 'Smoobu not connected'}), 400
 
-    result = smoobu.sync_messages()
-    return jsonify(result)
+    trigger = getattr(current_app._get_current_object(), 'smoobu_trigger_sync', None)
+    if trigger is None:
+        # Fallback for dev mode where the background daemon didn't start.
+        result = smoobu.sync_messages(force=True)
+        return jsonify(result)
+
+    # force=True so a human click always does real work, even if the daemon
+    # just ran within the 30s cooldown. The daemon itself leaves force=False
+    # to avoid duplicate work between adjacent cycles.
+    threading.Thread(
+        target=lambda: trigger(force=True),
+        daemon=True,
+        name='smoobu-manual-sync',
+    ).start()
+    return jsonify({'success': True, 'started': True})
 
 
 @chatbot_bp.route('/api/smoobu/sync/<int:conversation_id>', methods=['POST'])
@@ -3442,14 +4079,22 @@ def api_smoobu_fix_timestamps():
                 existing.sent_at = msg_time
                 fixed += 1
 
-    # Also fix conversation.updated_at to match the latest message
+    # Also fix conversation timestamps to match the latest message.
+    # last_message_at is authoritative for sort; updated_at is the polling
+    # tripwire and we align it to the latest message during a full fix.
     for conv in conversations:
         latest_msg = Message.query.filter_by(
             conversation_id=conv.id
         ).order_by(Message.sent_at.desc()).first()
         if latest_msg and latest_msg.sent_at:
+            changed = False
+            if not conv.last_message_at or conv.last_message_at != latest_msg.sent_at:
+                conv.last_message_at = latest_msg.sent_at
+                changed = True
             if not conv.updated_at or conv.updated_at != latest_msg.sent_at:
                 conv.updated_at = latest_msg.sent_at
+                changed = True
+            if changed:
                 fixed += 1
 
     db.session.commit()
@@ -3629,7 +4274,46 @@ def api_list_knowledge():
     return jsonify([e.to_dict() for e in entries])
 
 
+@chatbot_bp.route('/api/messages/<int:message_id>/extract-knowledge', methods=['POST'])
+@login_required
+def api_extract_knowledge_from_message(message_id):
+    """Use AI to extract knowledge from an owner/AI message and save to KB."""
+    message = Message.query.get_or_404(message_id)
+
+    if message.sender_type == 'guest':
+        return jsonify({'error': 'Only owner/AI messages supported'}), 400
+
+    ai_service = get_ai_service()
+    if not ai_service:
+        return jsonify({'error': 'AI service not available'}), 503
+
+    entries = ai_service.extract_knowledge_from_message(message.content)
+    if entries is None:
+        return jsonify({'error': 'AI extraction failed'}), 500
+    if not entries:
+        return jsonify({'saved': 0, 'message': 'No useful knowledge found in this message'}), 200
+
+    # Determine property_id from the conversation
+    conversation = Conversation.query.get(message.conversation_id)
+    property_id = conversation.property_id if conversation else None
+
+    saved = []
+    for entry in entries:
+        ke = KnowledgeEntry(
+            property_id=property_id,
+            category=entry['category'],
+            label=entry['label'],
+            value=entry['value']
+        )
+        db.session.add(ke)
+        saved.append(entry)
+    db.session.commit()
+
+    return jsonify({'saved': len(saved), 'entries': saved}), 201
+
+
 @chatbot_bp.route('/api/knowledge', methods=['POST'])
+@login_required
 def api_create_knowledge():
     """Create a knowledge entry"""
     data = request.get_json()
@@ -3677,6 +4361,7 @@ def api_create_knowledge():
 
 
 @chatbot_bp.route('/api/knowledge/<int:entry_id>', methods=['PUT'])
+@login_required
 def api_update_knowledge(entry_id):
     """Update a knowledge entry"""
     entry = KnowledgeEntry.query.get_or_404(entry_id)
@@ -3715,16 +4400,95 @@ def api_update_knowledge(entry_id):
         entry.property_id = pid
 
     if 'sort_order' in data:
-        entry.sort_order = int(data['sort_order'])
+        try:
+            so = int(data['sort_order'])
+        except (TypeError, ValueError):
+            return jsonify({'error': 'sort_order must be an integer'}), 400
+        if so < 0 or so > 10000:
+            return jsonify({'error': 'sort_order must be between 0 and 10000'}), 400
+        entry.sort_order = so
 
     db.session.commit()
     return jsonify(entry.to_dict())
 
 
 @chatbot_bp.route('/api/knowledge/<int:entry_id>', methods=['DELETE'])
+@login_required
 def api_delete_knowledge(entry_id):
     """Delete a knowledge entry"""
     entry = KnowledgeEntry.query.get_or_404(entry_id)
     db.session.delete(entry)
     db.session.commit()
     return jsonify({'success': True})
+
+
+@chatbot_bp.route('/debug/prompt-compare')
+@admin_required
+def debug_prompt_compare():
+    """Render compact and rich guest-reply prompts side-by-side for a conversation."""
+    import os
+    from .services.prompt_tier import detect_tier
+
+    conversation_id = request.args.get('conversation_id', type=int)
+    if not conversation_id:
+        return jsonify({'error': 'Missing conversation_id query param'}), 400
+
+    conversation = Conversation.query.get(conversation_id)
+    if not conversation:
+        return jsonify({'error': f'Conversation {conversation_id} not found'}), 404
+
+    ai = get_ai_service()
+    if not ai:
+        return jsonify({'error': 'AI service not initialized'}), 500
+
+    guest = conversation.guest
+    guest_profile = {
+        'name': guest.name if guest else 'guest',
+        'language': getattr(guest, 'language', None) if guest else None,
+    }
+
+    msgs = (
+        Message.query
+        .filter_by(conversation_id=conversation_id)
+        .order_by(Message.timestamp.asc())
+        .limit(20)
+        .all()
+    )
+    history = [{'sender_type': m.sender_type, 'content': m.content} for m in msgs]
+    last_guest_msg = next(
+        (m['content'] for m in reversed(history) if m['sender_type'] == 'guest'),
+        '',
+    )
+
+    kwargs = dict(
+        guest_profile=guest_profile,
+        conversation_history=history,
+        clean_latest=last_guest_msg,
+        unanswered_count=1,
+        tone='friendly_professional',
+        host_instructions=None,
+        reservation_info=None,
+        knowledge_entries=None,
+    )
+
+    saved = os.environ.get('FORCE_PROMPT_TIER')
+    try:
+        os.environ['FORCE_PROMPT_TIER'] = 'compact'
+        compact_prompt = ai._build_guest_reply_prompt(**kwargs)
+        os.environ['FORCE_PROMPT_TIER'] = 'rich'
+        rich_prompt = ai._build_guest_reply_prompt(**kwargs)
+    finally:
+        if saved is None:
+            os.environ.pop('FORCE_PROMPT_TIER', None)
+        else:
+            os.environ['FORCE_PROMPT_TIER'] = saved
+
+    return jsonify({
+        'conversation_id': conversation_id,
+        'detected_tier_for_current_model': detect_tier(ai.model),
+        'current_model': ai.model,
+        'compact_prompt': compact_prompt,
+        'rich_prompt': rich_prompt,
+        'compact_token_estimate': len(compact_prompt) // 4,
+        'rich_token_estimate': len(rich_prompt) // 4,
+    })
