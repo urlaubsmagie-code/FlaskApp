@@ -12,8 +12,21 @@ BASE_DIR = Path(__file__).resolve().parent
 class Config:
     """Base configuration"""
 
-    # Flask settings
+    # Flask settings — dev-only fallback. ProductionConfig overrides and
+    # enforces that the env var is set (no fallback).
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+
+    # Session cookie hardening. HTTPONLY blocks document.cookie reads from
+    # XSS. SECURE forces HTTPS-only cookie (safe behind the Cloudflare tunnel,
+    # which is always HTTPS at the edge). SAMESITE=Lax blocks cross-site POST
+    # CSRF while still allowing normal top-level navigation.
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    # SECURE is overridden in DevelopmentConfig because local http:// needs it off.
+    SESSION_COOKIE_SECURE = True
+    REMEMBER_COOKIE_HTTPONLY = True
+    REMEMBER_COOKIE_SAMESITE = 'Lax'
+    REMEMBER_COOKIE_SECURE = True
 
     # Database settings
     SQLALCHEMY_DATABASE_URI = os.environ.get(
@@ -89,12 +102,25 @@ class Config:
     SMOOBU_API_URL = os.environ.get('SMOOBU_API_URL', 'https://login.smoobu.com/api')
     SMOOBU_API_KEY = os.environ.get('SMOOBU_API_KEY', '')
 
+    # Keepalive: ping our own public URL on a schedule to keep
+    # Cloudflare edge cache, the CF tunnel, Waitress threads, and the
+    # SQLite OS file cache warm during idle periods (e.g. overnight).
+    # Set KEEPALIVE_URL='' to disable.
+    KEEPALIVE_URL = os.environ.get(
+        'KEEPALIVE_URL',
+        'https://umteamsbz.com/chatbot/api/keepalive',
+    )
+    KEEPALIVE_INTERVAL = int(os.environ.get('KEEPALIVE_INTERVAL', '300'))  # 5 min
+
 
 class DevelopmentConfig(Config):
     """Development configuration"""
     DEBUG = True
     SQLALCHEMY_ECHO = True
     PROMPT_DEV_AUTO_RELOAD = True
+    # Local dev runs over http://, so secure cookies would block sessions.
+    SESSION_COOKIE_SECURE = False
+    REMEMBER_COOKIE_SECURE = False
 
 
 class ProductionConfig(Config):
@@ -106,6 +132,9 @@ class ProductionConfig(Config):
         'DATABASE_URL',
         Config.SQLALCHEMY_DATABASE_URI
     )
+    # SECRET_KEY enforcement happens in create_app() — it inspects the loaded
+    # config and refuses to start production with the dev fallback. We can't
+    # raise from class-body because Flask uses from_object(cls) (no __init__).
 
 
 class TestingConfig(Config):

@@ -623,6 +623,19 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+/**
+ * Escape HTML but preserve <mark>...</mark> tags used by server-side
+ * search to highlight matches. Defense-in-depth so a regression in the
+ * backend sanitizer cannot inject script tags via search snippets.
+ */
+function escapeHtmlAllowMark(text) {
+    if (text == null) return '';
+    const escaped = escapeHtml(String(text));
+    return escaped
+        .replace(/&lt;mark&gt;/g, '<mark>')
+        .replace(/&lt;\/mark&gt;/g, '</mark>');
+}
+
 // ============================================================================
 // Conversation Functions
 // ============================================================================

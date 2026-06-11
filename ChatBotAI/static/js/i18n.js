@@ -174,6 +174,9 @@ const translations = {
         'settings.model.apply': 'Modell anwenden',
         'settings.model.suggested': 'Empfohlene Modelle',
         'settings.model.suggested.desc': 'Diese Modelle sind noch nicht installiert. Führen Sie den Befehl in Ihrem Terminal aus, um sie herunterzuladen.',
+        'settings.model.reasoning': 'Reasoning-Modell (optional)',
+        'settings.model.reasoning.desc': 'Für Speicher-Extraktion, Zusammenfassungen und Wissens-Extraktion. Auf „Standard" lassen, um das Hauptmodell für alles zu verwenden.',
+        'settings.model.reasoning.default': 'Standard (wie Hauptmodell)',
         'settings.integrations.title': 'Plattform-Integrationen',
         'settings.integrations.gmail': 'Gmail',
         'settings.integrations.whatsapp': 'WhatsApp',
@@ -299,6 +302,7 @@ const translations = {
         'settings.integrations.smoobu.syncProperties': 'Unterkünfte synchronisieren',
         'settings.integrations.smoobu.syncing': 'Synchronisiere...',
         'settings.integrations.smoobu.synced': '{count} neue Nachricht(en) synchronisiert',
+        'settings.integrations.smoobu.syncStarted': 'Smoobu-Sync gestartet — neue Nachrichten erscheinen in Kürze',
         'settings.integrations.smoobu.propertiesSynced': '{count} Unterkunft(en) synchronisiert',
         'settings.integrations.smoobu.fullSync': 'Vollständige Synchronisierung',
         'settings.integrations.smoobu.fullSyncing': 'Vollständige Sync...',
@@ -397,11 +401,19 @@ const translations = {
         'inbox.senderMe': 'Ich',
         'inbox.senderAI': 'UMI',
         'inbox.filter.escalated': 'Eskaliert',
+        'inbox.filter.unread': 'Ungelesen',
+        'inbox.loadMore': 'Mehr laden',
 
         // Conversation escalation
         'conversation.escalation.resolve': 'Als gelöst markieren',
         'conversation.escalation.banner': 'Dieses Gespräch wurde eskaliert und benötigt Ihre Aufmerksamkeit.',
         'conversation.escalation.resolved': 'Eskalation gelöst',
+
+        // Knowledge extraction from messages
+        'conversation.knowledge.extract': 'Wissen extrahieren',
+        'conversation.knowledge.saved': '{count} Einträge zur Wissensdatenbank hinzugefügt',
+        'conversation.knowledge.nothingFound': 'Keine nützlichen Informationen in dieser Nachricht gefunden',
+        'conversation.knowledge.extractFailed': 'Wissensextraktion fehlgeschlagen',
 
         // Approval Queue
         'conversation.approval.waiting': 'Wartet auf Freigabe',
@@ -419,6 +431,7 @@ const translations = {
         'conversation.autoApprove.off': 'Auto-Freigabe: AUS',
         'conversation.ai.create': 'UMI-Antwort erstellen',
         'inbox.badge.pendingApproval': 'UMI-Freigabe',
+        'inbox.badge.cancelled': 'Storniert',
         'inbox.filter.pendingApproval': 'UMI-Freigabe',
         'settings.ai.approvalQueue': 'UMI-Freigabe',
         'settings.ai.approvalQueue.desc': 'UMI-Antworten müssen vor dem Versand genehmigt werden',
@@ -453,7 +466,24 @@ const translations = {
         'tour.send.desc': 'Sende deine Nachricht an den Gast. Du kannst auch Strg+Enter drücken.',
         'tour.next': 'Weiter',
         'tour.skip': 'Beenden',
-        'tour.done': 'Fertig'
+        'tour.done': 'Fertig',
+
+        // Email Reconciliation
+        'nav.emailReview': 'E-Mail-Abgleich',
+        'emailReview.title': 'E-Mail-Abgleich',
+        'emailReview.subtitle': 'Nachrichten aus Airbnb-/Booking-E-Mails, die Smoobu evtl. verpasst hat.',
+        'emailReview.empty': 'Nichts zu überprüfen.',
+        'emailReview.confirm': 'Bestätigen',
+        'emailReview.reject': 'Verwerfen',
+        'emailReview.noMatch': 'keine Konversation gefunden',
+        'settings.emailReconcile.enabled': 'E-Mail-Abgleich aktivieren',
+        'settings.emailReconcile.enabled.desc': 'Eingehende Plattform-E-Mails auf fehlende Nachrichten prüfen und vorschlagen',
+        'settings.emailReconcile.autoinsertBooking': 'Booking.com-Treffer automatisch einfügen',
+        'settings.emailReconcile.autoinsertBooking.desc': 'Gefundene Booking.com-Nachrichten ohne manuelle Bestätigung direkt einfügen',
+        'settings.emailReconcile.autoinsertAirbnb': 'Airbnb-Treffer automatisch einfügen (sobald zuverlässig)',
+        'settings.emailReconcile.autoinsertAirbnb.desc': 'Gefundene Airbnb-Nachrichten ohne manuelle Bestätigung direkt einfügen — erst aktivieren, wenn die Trefferquote gut ist',
+        'settings.emailReconcile.confidenceThreshold': 'Mindest-Konfidenz',
+        'settings.emailReconcile.confidenceThreshold.desc': 'Nur Treffer mit mindestens diesem Konfidenzscore vorschlagen (0.0–1.0, Standard 0.8)'
     },
 
     en: {
@@ -626,6 +656,9 @@ const translations = {
         'settings.model.apply': 'Apply Model',
         'settings.model.suggested': 'Recommended Models',
         'settings.model.suggested.desc': 'These models are not installed yet. Run the command in your terminal to download them.',
+        'settings.model.reasoning': 'Reasoning Model (optional)',
+        'settings.model.reasoning.desc': 'For memory extraction, summaries, and knowledge extraction. Leave on "Standard" to use the main model for everything.',
+        'settings.model.reasoning.default': 'Standard (same as main model)',
         'settings.integrations.title': 'Platform Integrations',
         'settings.integrations.gmail': 'Gmail',
         'settings.integrations.whatsapp': 'WhatsApp',
@@ -751,6 +784,7 @@ const translations = {
         'settings.integrations.smoobu.syncProperties': 'Sync Properties',
         'settings.integrations.smoobu.syncing': 'Syncing...',
         'settings.integrations.smoobu.synced': '{count} new message(s) synced',
+        'settings.integrations.smoobu.syncStarted': 'Smoobu sync started — new messages will appear shortly',
         'settings.integrations.smoobu.propertiesSynced': '{count} property(ies) synced',
         'settings.integrations.smoobu.fullSync': 'Full Sync & Fix',
         'settings.integrations.smoobu.fullSyncing': 'Full sync...',
@@ -849,11 +883,19 @@ const translations = {
         'inbox.senderMe': 'Me',
         'inbox.senderAI': 'UMI',
         'inbox.filter.escalated': 'Escalated',
+        'inbox.filter.unread': 'Unread',
+        'inbox.loadMore': 'Load more',
 
         // Conversation escalation
         'conversation.escalation.resolve': 'Mark as Resolved',
         'conversation.escalation.banner': 'This conversation has been escalated and needs your attention.',
         'conversation.escalation.resolved': 'Escalation resolved',
+
+        // Knowledge extraction from messages
+        'conversation.knowledge.extract': 'Extract knowledge',
+        'conversation.knowledge.saved': '{count} entries added to Knowledge Base',
+        'conversation.knowledge.nothingFound': 'No useful information found in this message',
+        'conversation.knowledge.extractFailed': 'Knowledge extraction failed',
 
         // Approval Queue
         'conversation.approval.waiting': 'Waiting for approval',
@@ -871,6 +913,7 @@ const translations = {
         'conversation.autoApprove.off': 'Auto-approve: OFF',
         'conversation.ai.create': 'Create UMI response',
         'inbox.badge.pendingApproval': 'UMI Approval',
+        'inbox.badge.cancelled': 'Cancelled',
         'inbox.filter.pendingApproval': 'UMI Approval',
         'settings.ai.approvalQueue': 'UMI Approval',
         'settings.ai.approvalQueue.desc': 'UMI responses must be approved before sending',
@@ -905,7 +948,24 @@ const translations = {
         'tour.send.desc': 'Send your message to the guest. You can also press Ctrl+Enter.',
         'tour.next': 'Next',
         'tour.skip': 'Close',
-        'tour.done': 'Done'
+        'tour.done': 'Done',
+
+        // Email Reconciliation
+        'nav.emailReview': 'Email Reconcile',
+        'emailReview.title': 'Email Reconcile',
+        'emailReview.subtitle': 'Messages from Airbnb/Booking emails that Smoobu may have missed.',
+        'emailReview.empty': 'Nothing to review.',
+        'emailReview.confirm': 'Confirm',
+        'emailReview.reject': 'Reject',
+        'emailReview.noMatch': 'no conversation found',
+        'settings.emailReconcile.enabled': 'Enable Email Reconciliation',
+        'settings.emailReconcile.enabled.desc': 'Check incoming platform emails for missing messages and suggest them',
+        'settings.emailReconcile.autoinsertBooking': 'Auto-insert Booking.com matches',
+        'settings.emailReconcile.autoinsertBooking.desc': 'Insert found Booking.com messages directly without manual confirmation',
+        'settings.emailReconcile.autoinsertAirbnb': 'Auto-insert Airbnb matches (once reliable)',
+        'settings.emailReconcile.autoinsertAirbnb.desc': 'Insert found Airbnb messages directly without manual confirmation — enable only once match quality is good',
+        'settings.emailReconcile.confidenceThreshold': 'Minimum Confidence',
+        'settings.emailReconcile.confidenceThreshold.desc': 'Only suggest matches with at least this confidence score (0.0–1.0, default 0.8)'
     }
 };
 

@@ -3446,5 +3446,5 @@ if __name__ == '__main__':
 
     # Production WSGI server (handles concurrent requests properly)
     from waitress import serve
-    print("Starting Waitress server on http://0.0.0.0:80 (8 threads)...")
-    serve(app, host='0.0.0.0', port=80, threads=8)
+    print("Starting Waitress server on http://0.0.0.0:80 (16 threads)...")
+    serve(app, host='0.0.0.0', port=80, threads=16)

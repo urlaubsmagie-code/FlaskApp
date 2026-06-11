@@ -431,6 +431,7 @@ class GmailService:
             'sender_name': sender_name,
             'sender_email': sender_email,
             'to': headers.get('to', ''),
+            'reply_to': headers.get('reply-to', ''),
             'date': headers.get('date', ''),
             'body': body,
             'snippet': message.get('snippet', ''),

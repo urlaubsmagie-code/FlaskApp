@@ -243,6 +243,12 @@ class Conversation(db.Model):
     escalated = db.Column(db.Boolean, default=False, server_default='0', nullable=False, index=True)
     escalated_at = db.Column(db.DateTime, nullable=True)
 
+    # Cancellation tracking (set by Smoobu cancelReservation webhook).
+    # When non-NULL, UI shows a "Storniert" label so the team can decide
+    # if the conversation still needs attention. Conversation history,
+    # AI behavior, and visibility are unchanged.
+    cancelled_at = db.Column(db.DateTime, nullable=True)
+
     # Approval queue: skip the queue for this conversation
     auto_approve = db.Column(db.Boolean, default=False, nullable=False)
 
@@ -265,8 +271,12 @@ class Conversation(db.Model):
 
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    # Only updated explicitly on message activity (not on read/toggle/assign changes)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Polling tripwire: bumped whenever ANY change should refresh inbox clients
+    # (new message, out-of-order sync, owner reply). Do NOT use for ordering.
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # Sort key: timestamp of the most recent message in this conversation.
+    # Mirrors MAX(Message.sent_at). Used for inbox ordering — matches Smoobu order.
+    last_message_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
     # Relationships
     messages = db.relationship('Message', backref='conversation', lazy='dynamic', cascade='all, delete-orphan',
@@ -295,6 +305,7 @@ class Conversation(db.Model):
             'user_id': self.user_id,
             'escalated': self.escalated,
             'escalated_at': self.escalated_at.isoformat() if self.escalated_at else None,
+            'cancelled_at': self.cancelled_at.isoformat() if self.cancelled_at else None,
             'auto_approve': self.auto_approve,
             'assigned_user_name': self.assigned_user.display_name if self.assigned_user else None,
             'property_id': self.property_id,
@@ -303,6 +314,7 @@ class Conversation(db.Model):
             'check_out': self.check_out.isoformat() if self.check_out else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'last_message_at': self.last_message_at.isoformat() if self.last_message_at else None,
             'guest': self.guest.to_dict() if self.guest else None,
             'last_message': lm.to_dict() if lm else None
         }
@@ -570,6 +582,47 @@ class AISettings(db.Model):
             db.session.add(setting)
         db.session.commit()
         return setting
+
+
+class EmailBackfillCandidate(db.Model):
+    """A guest message found in an Airbnb/Booking notification email that may be
+    missing from a conversation. High-confidence matches are inserted directly;
+    low-confidence ones land here for one-click review. See
+    docs/superpowers/specs/2026-06-09-email-reconciliation-design.md.
+    """
+    __tablename__ = 'email_backfill_candidate'
+
+    id = db.Column(db.Integer, primary_key=True)
+    # Idempotency: one candidate per source email. Prevents re-queuing on re-scan.
+    gmail_message_id = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    platform = db.Column(db.String(20), nullable=False)  # 'airbnb' | 'booking'
+    parsed_name = db.Column(db.String(255))
+    parsed_text = db.Column(db.Text)
+    parsed_timestamp = db.Column(db.DateTime)
+    guessed_conversation_id = db.Column(
+        db.Integer, db.ForeignKey('conversation.id', ondelete='SET NULL'), nullable=True
+    )
+    confidence = db.Column(db.Float, default=0.0)
+    # 'pending' | 'confirmed' | 'rejected'
+    status = db.Column(db.String(20), nullable=False, default='pending', index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'gmail_message_id': self.gmail_message_id,
+            'platform': self.platform,
+            'parsed_name': self.parsed_name,
+            'parsed_text': self.parsed_text,
+            'parsed_timestamp': self.parsed_timestamp.isoformat() if self.parsed_timestamp else None,
+            'guessed_conversation_id': self.guessed_conversation_id,
+            'confidence': self.confidence,
+            'status': self.status,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+    def __repr__(self):
+        return f'<EmailBackfillCandidate {self.platform} {self.status} conf={self.confidence}>'
 
 
 class KnowledgeEntry(db.Model):

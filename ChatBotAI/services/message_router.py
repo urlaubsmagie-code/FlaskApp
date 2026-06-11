@@ -14,11 +14,15 @@ import logging
 from datetime import datetime
 from typing import Optional, Dict, Any, Tuple
 
+from sqlalchemy.exc import IntegrityError
+
 from ..models import db, Guest, Conversation, Message, Property, AISettings, KnowledgeEntry
 from .ai_service import get_ai_service
 from .memory_service import get_memory_service, MemoryService
 
 logger = logging.getLogger(__name__)
+
+from .playtest_events import playtest_log
 
 
 class MessageRouter:
@@ -120,20 +124,48 @@ class MessageRouter:
 
             if not is_new:
                 logger.info(f"Duplicate message skipped: {message.id} (platform_message_id={platform_message_id})")
+                if conversation.platform == 'playtest':
+                    playtest_log(conversation.id, 'dedup_check',
+                                 f'Duplicate skipped — existing message #{message.id} '
+                                 f'(platform_message_id={platform_message_id})')
                 result['success'] = True
                 result['is_new'] = False
                 return result
 
             logger.info(f"Message stored: {message.id}")
 
+            if conversation.platform == 'playtest':
+                playtest_log(conversation.id, 'guest_message_stored',
+                             f'Message #{message.id}: "{message_content[:80]}"')
+
             # Step 4: Update conversation timestamps and unread state
-            conversation.updated_at = message.sent_at or datetime.utcnow()
-            # Update sync watermark to the newest message timestamp
             msg_ts = message.sent_at or datetime.utcnow()
+            now_ts = datetime.utcnow()
+            old_updated_at = conversation.updated_at
+            is_forward = not old_updated_at or msg_ts > old_updated_at
+
+            # Update sync watermark to the newest message timestamp
             if not conversation.last_synced_message_at or msg_ts > conversation.last_synced_message_at:
                 conversation.last_synced_message_at = msg_ts
-            # Mark unread: new guest message means is_read = False
-            conversation.is_read = False
+
+            # updated_at remains the polling tripwire — always bump it so
+            # clients refresh, even for out-of-order deliveries.
+            conversation.updated_at = msg_ts if is_forward else max(old_updated_at, now_ts)
+
+            # last_message_at is the sort key — only advance it when this
+            # message is genuinely the newest one we've seen for this
+            # conversation. Out-of-order syncs MUST NOT push older threads
+            # to the top of the inbox.
+            if not conversation.last_message_at or msg_ts > conversation.last_message_at:
+                conversation.last_message_at = msg_ts
+
+            if is_forward:
+                # Genuinely new message — mark unread
+                conversation.is_read = False
+            else:
+                # Out-of-order delivery — recompute unread from the read cursor
+                # rather than blindly marking unread
+                conversation.recompute_is_read()
             guest.last_contact = datetime.utcnow()
             db.session.commit()
 
@@ -159,8 +191,14 @@ class MessageRouter:
                 try:
                     self.memory_service.process_message_for_memory(message)
                     logger.info(f"Memory extraction completed for message {message.id}")
+                    if conversation.platform == 'playtest':
+                        playtest_log(conversation.id, 'memory_extraction',
+                                     f'Memory extraction completed for message #{message.id}')
                 except Exception as e:
                     logger.warning(f"Memory extraction failed: {e}")
+                    if conversation.platform == 'playtest':
+                        playtest_log(conversation.id, 'memory_extraction',
+                                     f'Memory extraction failed: {e}')
 
             # Step 7: Generate AI response if enabled
             # Master switch overrides everything — when OFF, no auto-responses anywhere
@@ -234,8 +272,18 @@ class MessageRouter:
             )
             result['message_id'] = message.id
 
-            # Update conversation timestamp
-            conversation.updated_at = datetime.utcnow()
+            if conversation.platform == 'playtest':
+                playtest_log(conversation.id, 'owner_message_stored',
+                             f'Owner message #{message.id}: "{content[:80]}"')
+
+            # Update conversation timestamps. updated_at = tripwire, bumped
+            # every time. last_message_at = sort key, set to this message's
+            # real sent_at.
+            now_ts = datetime.utcnow()
+            conversation.updated_at = now_ts
+            msg_sent_at = message.sent_at or now_ts
+            if not conversation.last_message_at or msg_sent_at > conversation.last_message_at:
+                conversation.last_message_at = msg_sent_at
             db.session.commit()
 
             # Extract memory from owner message (owners often mention guest details)
@@ -420,7 +468,25 @@ class MessageRouter:
             sent_via_app=sent_via_app
         )
         db.session.add(message)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            # Another concurrent path inserted the same platform_message_id first.
+            # Roll back, fetch the row that won the race, return it as the existing.
+            db.session.rollback()
+            if platform_message_id:
+                existing = Message.query.filter_by(
+                    conversation_id=conversation_id,
+                    platform_message_id=platform_message_id,
+                ).first()
+                if existing:
+                    logger.debug(
+                        "Concurrent insert detected for platform_message_id=%s, returning existing #%s",
+                        platform_message_id, existing.id,
+                    )
+                    return existing, False
+            # No platform_message_id (rare) — re-raise so the caller sees the error
+            raise
 
         return message, True
 
@@ -453,17 +519,39 @@ class MessageRouter:
         if self.ai_service.is_acknowledgment(trigger_message.content):
             logger.info(f"[AI SKIP] Acknowledgment detected in auto-respond: "
                         f"'{trigger_message.content[:50]}' — skipping AI response")
+            if conversation.platform == 'playtest':
+                playtest_log(conversation.id, 'acknowledgment_skipped',
+                             f'Acknowledgment detected: "{trigger_message.content[:50]}" — skipping AI')
             return None
 
-        # Delete any existing pending draft for this conversation
-        existing_pending = Message.query.filter_by(
-            conversation_id=conversation.id,
-            approval_status='pending'
-        ).first()
+        if conversation.platform == 'playtest':
+            playtest_log(conversation.id, 'ai_generation_start',
+                         f'Generating AI response for: "{trigger_message.content[:80]}"')
+
+        # Delete any existing pending draft for this conversation.
+        # with_for_update() is a no-op on SQLite but locks the row on Postgres
+        # to prevent two concurrent regen calls from both reading the same
+        # draft and both proceeding to create replacements.
+        try:
+            existing_pending = Message.query.filter_by(
+                conversation_id=conversation.id,
+                approval_status='pending'
+            ).with_for_update(skip_locked=True).first()
+        except Exception:
+            # SQLite (or older drivers) may not support with_for_update — fall back.
+            existing_pending = Message.query.filter_by(
+                conversation_id=conversation.id,
+                approval_status='pending'
+            ).first()
         if existing_pending:
-            db.session.delete(existing_pending)
-            db.session.commit()
-            logger.info(f"Replaced existing pending draft (message_id={existing_pending.id})")
+            try:
+                db.session.delete(existing_pending)
+                db.session.commit()
+                logger.info(f"Replaced existing pending draft (message_id={existing_pending.id})")
+            except Exception as e:
+                # Another worker may have already deleted it — that's fine.
+                db.session.rollback()
+                logger.info(f"Pending draft delete race (already gone): {e}")
 
         # Read AI settings from DB
         tone = AISettings.get('ai_response_tone', 'friendly_professional')
@@ -606,6 +694,10 @@ class MessageRouter:
         )
         logger.debug(f"[CONTEXT FILTER] auto-respond: {filtered.filter_log}")
 
+        if conversation.platform == 'playtest':
+            playtest_log(conversation.id, 'context_filter',
+                         f'Context filter: {filtered.filter_log}')
+
         # Generate response
         response_text = self.ai_service.generate_guest_response(
             guest_profile=filtered.guest_profile,
@@ -627,7 +719,14 @@ class MessageRouter:
         if not response_text:
             return None
 
-        # Store AI response
+        if conversation.platform == 'playtest':
+            playtest_log(conversation.id, 'ai_response_generated',
+                         f'AI response generated ({len(response_text)} chars): '
+                         f'"{response_text[:100]}"')
+
+        # Store AI response in a dedicated transaction so a commit failure
+        # surfaces explicitly (escalates the conversation) instead of being
+        # silently swallowed by the outer process_incoming_message handler.
         ai_message = Message(
             conversation_id=conversation.id,
             sender_type='ai',
@@ -637,8 +736,32 @@ class MessageRouter:
             sent_via_app=True
         )
         db.session.add(ai_message)
-        conversation.updated_at = datetime.utcnow()
-        db.session.commit()
+        now_ts = datetime.utcnow()
+        conversation.updated_at = now_ts
+        ai_sent_at = ai_message.sent_at or now_ts
+        if not conversation.last_message_at or ai_sent_at > conversation.last_message_at:
+            conversation.last_message_at = ai_sent_at
+        try:
+            db.session.commit()
+        except Exception as commit_err:
+            db.session.rollback()
+            logger.exception(
+                f"[AI PERSIST FAIL] Could not store AI draft for conversation "
+                f"{conversation.id}: {commit_err}"
+            )
+            # Escalate so the team sees the conversation needs attention
+            # rather than silently dropping the response.
+            try:
+                conversation.escalated = True
+                conversation.escalated_at = datetime.utcnow()
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                logger.exception("[AI PERSIST FAIL] Escalation flag write failed too")
+            if conversation.platform == 'playtest':
+                playtest_log(conversation.id, 'ai_persist_failed',
+                             f'AI response could not be saved: {commit_err}')
+            return None
 
         # Check if this should be a pending draft
         approval_queue_enabled = AISettings.get('approval_queue_enabled', 'true') == 'true'
@@ -648,6 +771,9 @@ class MessageRouter:
             ai_message.approval_status = 'pending'
             db.session.commit()
             logger.info(f"AI response saved as pending draft (message_id={ai_message.id})")
+            if conversation.platform == 'playtest':
+                playtest_log(conversation.id, 'approval_status',
+                             f'Saved as PENDING draft (message #{ai_message.id}) — approval queue active')
             return {
                 'content': response_text,
                 'message_id': ai_message.id,
@@ -655,6 +781,10 @@ class MessageRouter:
             }
         else:
             # Auto-approve path: send immediately (existing behavior)
+            if conversation.platform == 'playtest':
+                playtest_log(conversation.id, 'approval_status',
+                             f'Auto-approved (message #{ai_message.id}) — '
+                             f'platform delivery skipped (playtest mode)')
 
             # Send via Smoobu for smoobu conversations (auto-respond flow)
             smoobu_sent = False
@@ -703,6 +833,9 @@ class MessageRouter:
                 conversation.auto_respond = False
                 db.session.commit()
                 logger.info(f"[ESCALATION] Conversation {conversation.id} escalated — auto-respond paused")
+                if conversation.platform == 'playtest':
+                    playtest_log(conversation.id, 'escalation_check',
+                                 'Escalation TRIGGERED — auto-respond paused')
 
                 # Send escalation push notification
                 try:

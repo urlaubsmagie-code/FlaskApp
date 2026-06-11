@@ -594,6 +594,26 @@ a {
     gap: 8px;
 }
 
+.load-more-container {
+    display: flex;
+    justify-content: center;
+    padding: 16px 0;
+}
+
+.load-more-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 24px;
+    font-size: 0.875rem;
+    border-radius: var(--border-radius-lg);
+}
+
+.load-more-count {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
 /* Date Group Headers */
 .date-group-header {
     display: flex;
@@ -1152,6 +1172,7 @@ a {
 .message.ai {
     align-self: flex-end;
     flex-direction: row-reverse;
+    position: relative;
 }
 
 .message-avatar {
@@ -1254,6 +1275,41 @@ a {
 
 .btn-suggest-for-message .fa-spinner {
     color: white;
+}
+
+.btn-extract-knowledge {
+    background: var(--accent-color, #059669);
+    border: none;
+    color: white;
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    font-size: 0.8rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: opacity 0.2s, transform 0.2s;
+    opacity: 0.7;
+    position: absolute;
+    left: -36px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.btn-extract-knowledge:hover {
+    opacity: 1;
+    transform: translateY(-50%) scale(1.1);
+}
+
+.btn-extract-knowledge:disabled {
+    cursor: not-allowed;
+    opacity: 0.25;
 }
 
 .message-text {
@@ -2406,6 +2462,15 @@ a {
         right: -28px;
     }
 
+    .btn-extract-knowledge {
+        width: 22px;
+        height: 22px;
+        min-width: 22px;
+        min-height: 22px;
+        font-size: 0.65rem;
+        left: -28px;
+    }
+
     /* --- Overflow menu button visible styling --- */
     .mobile-overflow-btn {
         background: var(--bg-primary);
@@ -3359,12 +3424,42 @@ dialog.merge-modal {
     font-size: 0.65rem;
 }
 
+/* Cancellation badge — set when Smoobu fires a cancelReservation webhook.
+ * Informational only: the chat stays accessible, AI behaviour unchanged.
+ * Deliberately less attention-grabbing than .escalation-badge (which is
+ * actionable / urgent). Muted gray with subtle amber text. */
+.cancellation-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: #f1f5f9;
+    color: #92400e;
+    font-size: 0.7rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.cancellation-badge i {
+    font-size: 0.65rem;
+}
+
+:root[data-theme="dark"] .cancellation-badge {
+    background: #2a1f12;
+    color: #f3c777;
+}
+
 /* Pending Approval */
 .message.pending-approval .message-content {
     background: var(--pending-approval-bg, #fff3cd);
     border: 2px solid var(--pending-approval-border, #ffc107);
     border-radius: 12px;
     padding: 12px;
+    color: var(--text-primary, #1e293b);
+}
+.message.pending-approval .message-time {
+    color: var(--text-secondary, #64748b);
 }
 
 :root[data-theme="dark"] .message.pending-approval .message-content {
@@ -3718,4 +3813,36 @@ dialog.merge-modal {
 .tour-tooltip.arrow-none::before {
     display: none;
 }
+
+/* Playtest Bar (conversation page) */
+.playtest-bar { background: #fffbeb; border-bottom: 2px solid #f59e0b; padding: 0; }
+.playtest-bar-top { display: flex; align-items: center; gap: 8px; padding: 8px 14px; flex-wrap: wrap; }
+.playtest-badge { background: #f59e0b; color: #fff; font-weight: 700; font-size: 0.8em; padding: 4px 10px; border-radius: 4px; white-space: nowrap; }
+.playtest-guest-send { display: flex; gap: 6px; flex: 1; min-width: 200px; }
+.playtest-guest-send input { flex: 1; padding: 6px 10px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 0.85em; }
+.playtest-guest-send button { white-space: nowrap; background: #3b82f6; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.8em; cursor: pointer; }
+.playtest-guest-send button:hover { background: #2563eb; }
+.playtest-event-panel { border-top: 1px solid #fcd34d; max-height: 250px; display: flex; flex-direction: column; }
+.playtest-event-panel .playtest-events-header { padding: 6px 14px; border-bottom: 1px solid #fcd34d; display: flex; align-items: center; justify-content: space-between; background: #fef9c3; }
+.playtest-event-panel .playtest-events-header h3 { margin: 0; font-size: 0.85em; }
+.playtest-event-panel .playtest-event-list { flex: 1; overflow-y: auto; padding: 4px 8px; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.75em; max-height: 200px; }
+.playtest-event-panel .playtest-event { padding: 3px 6px; border-bottom: 1px solid #fef3c7; display: flex; gap: 6px; align-items: flex-start; }
+.playtest-event-panel .ev-time { color: #92400e; white-space: nowrap; min-width: 65px; }
+.playtest-event-panel .ev-type { font-weight: 700; white-space: nowrap; min-width: 130px; }
+.playtest-event-panel .ev-type.stored { color: #16a34a; }
+.playtest-event-panel .ev-type.ai { color: #4338ca; }
+.playtest-event-panel .ev-type.dedup { color: #d97706; }
+.playtest-event-panel .ev-type.escalation { color: #dc2626; }
+.playtest-event-panel .ev-type.filter { color: #0891b2; }
+.playtest-event-panel .ev-type.approval { color: #7c3aed; }
+.playtest-event-panel .ev-type.memory { color: #059669; }
+.playtest-event-panel .ev-type.info { color: #92400e; }
+.playtest-event-panel .ev-detail { word-break: break-word; color: #78350f; }
+
+[data-theme="dark"] .playtest-bar { background: #451a03; border-color: #b45309; }
+[data-theme="dark"] .playtest-event-panel { border-color: #92400e; }
+[data-theme="dark"] .playtest-event-panel .playtest-events-header { background: #451a03; border-color: #92400e; }
+[data-theme="dark"] .playtest-event-panel .ev-detail { color: #fbbf24; }
+[data-theme="dark"] .playtest-event-panel .ev-time { color: #fbbf24; }
+[data-theme="dark"] .playtest-guest-send input { background: #1a1a2e; border-color: #92400e; color: #e5e7eb; }
 

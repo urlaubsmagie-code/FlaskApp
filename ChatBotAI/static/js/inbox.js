@@ -90,6 +90,9 @@ function createConversationCard(conv) {
     const approvalLabel = conv.has_pending_approval
         ? `<span class="badge badge-approval"><i class="fas fa-clock"></i> ${i18n.t('inbox.badge.pendingApproval') || 'UMI-Freigabe'}</span>`
         : '';
+    const cancellationLabel = conv.cancelled_at
+        ? `<span class="cancellation-badge" title="${escapeHtml(conv.cancelled_at)}"><i class="fas fa-ban"></i> ${i18n.t('inbox.badge.cancelled') || 'Storniert'}</span>`
+        : '';
     const srText = !conv.is_read ? '<span class="sr-only">Unread</span>' : '';
 
     card.innerHTML = `
@@ -110,6 +113,7 @@ function createConversationCard(conv) {
             ${aiBadge}
             ${escalationLabel}
             ${approvalLabel}
+            ${cancellationLabel}
             <span class="status-badge ${conv.status}">${formatStatus(conv.status)}</span>
             ${conv.status !== 'closed' ? `<button class="btn-close-conv" onclick="closeConversation(event, ${conv.id})" title="${i18n.t('inbox.closeChat') || 'Gespräch beenden'}"><i class="fas fa-times"></i></button>` : ''}
         </div>
@@ -201,6 +205,21 @@ function updateConversationCard(card, conv) {
         existingApprovalBadge.remove();
     }
 
+    // Update cancellation badge (set by cancelReservation webhook).
+    // Once cancelled, the field stays set — we only need to ADD when it
+    // appears. (Un-cancellation is unusual but we still handle removal
+    // symmetrically for cleanliness.)
+    const existingCancelBadge = card.querySelector('.cancellation-badge');
+    if (conv.cancelled_at && !existingCancelBadge) {
+        const cancelBadge = document.createElement('span');
+        cancelBadge.className = 'cancellation-badge';
+        cancelBadge.title = conv.cancelled_at;
+        cancelBadge.innerHTML = `<i class="fas fa-ban"></i> ${i18n.t('inbox.badge.cancelled') || 'Storniert'}`;
+        metaEl.insertBefore(cancelBadge, statusEl);
+    } else if (!conv.cancelled_at && existingCancelBadge) {
+        existingCancelBadge.remove();
+    }
+
     // Update AI badge auto-respond state
     if (existingAiBadge) {
         existingAiBadge.classList.toggle('auto-respond-on', !!conv.auto_respond);
@@ -277,13 +296,18 @@ function updateInboxList(conversations) {
         }
     });
 
-    // Remove cards no longer in the conversation list
+    // Remove cards no longer in the conversation list (but keep "load more" cards)
     existingCards.forEach((card, id) => {
-        if (!newIds.has(id) && card.parentNode) card.remove();
+        if (!newIds.has(id) && card.parentNode && !card.dataset.loadedMore) card.remove();
     });
 
-    // Single DOM update — append all cards at once
-    container.appendChild(fragment);
+    // Single DOM update — insert cards before the load-more button (keep it at bottom)
+    const loadMoreEl = document.getElementById('loadMoreContainer');
+    if (loadMoreEl) {
+        container.insertBefore(fragment, loadMoreEl);
+    } else {
+        container.appendChild(fragment);
+    }
 
     filterState.applyFilters();
     insertDateGroupHeaders();
@@ -495,7 +519,10 @@ function renderSearchResults(data) {
             }
 
             if (result.first_snippet) {
-                snippetEl.innerHTML = result.first_snippet;
+                // Defense-in-depth: escape everything, re-allow <mark> only.
+                snippetEl.innerHTML = (typeof escapeHtmlAllowMark === 'function')
+                    ? escapeHtmlAllowMark(result.first_snippet)
+                    : escapeHtml(result.first_snippet);
             }
 
             let countEl = card.querySelector('.match-count');
@@ -534,7 +561,10 @@ function renderSearchResults(data) {
         const guestName = escapeHtml(result.guest_name || 'Unknown Guest');
         const subject = escapeHtml(result.property_name || result.subject || '');
         const matchLabel = result.match_count > 1 ? `<span class="match-count">(${result.match_count} matches)</span>` : '';
-        const snippet = result.first_snippet || '';  // Already sanitized server-side
+        // Defense-in-depth: escape everything, re-allow <mark> only.
+        const snippet = (typeof escapeHtmlAllowMark === 'function')
+            ? escapeHtmlAllowMark(result.first_snippet || '')
+            : escapeHtml(result.first_snippet || '');
 
         const card = document.createElement('a');
         card.href = `/chatbot/conversation/${result.conversation_id}`;
@@ -646,6 +676,79 @@ async function populateGuestDropdown() {
 }
 
 // =========================================================================
+// Load More
+// =========================================================================
+
+let loadMorePage = 1;  // Page 1 is already loaded on initial render
+
+function loadMoreConversations() {
+    const btn = document.getElementById('loadMoreBtn');
+    if (!btn || btn.disabled) return;
+
+    btn.disabled = true;
+    const icon = btn.querySelector('i');
+    if (icon) { icon.className = 'fas fa-spinner fa-spin'; }
+
+    loadMorePage++;
+
+    fetch(`/chatbot/api/conversations?page=${loadMorePage}&per_page=50`)
+    .then(r => r.json())
+    .then(data => {
+        const container = document.getElementById('conversationList');
+        const loadMoreContainer = document.getElementById('loadMoreContainer');
+
+        if (data.conversations && data.conversations.length > 0) {
+            // Build set of already-displayed conversation IDs
+            const existingIds = new Set();
+            container.querySelectorAll('.conversation-card').forEach(card => {
+                existingIds.add(card.dataset.conversationId);
+            });
+
+            // Append only new cards (skip duplicates)
+            data.conversations.forEach(conv => {
+                if (!existingIds.has(String(conv.id))) {
+                    const card = createConversationCard(conv);
+                    card.dataset.loadedMore = 'true';
+                    // Insert before the load-more button container
+                    if (loadMoreContainer) {
+                        container.insertBefore(card, loadMoreContainer);
+                    } else {
+                        container.appendChild(card);
+                    }
+                }
+            });
+
+            filterState.applyFilters();
+            insertDateGroupHeaders();
+            applyAvatarColors();
+
+            // Update count display
+            const loadedCount = container.querySelectorAll('.conversation-card').length;
+            const countEl = btn.querySelector('.load-more-count');
+            if (countEl) {
+                countEl.textContent = `(${loadedCount} / ${data.total})`;
+            }
+
+            // Hide button if all loaded
+            if (loadMorePage >= data.pages) {
+                if (loadMoreContainer) loadMoreContainer.style.display = 'none';
+            }
+        } else {
+            if (loadMoreContainer) loadMoreContainer.style.display = 'none';
+        }
+    })
+    .catch(err => {
+        console.error('Failed to load more conversations:', err);
+        loadMorePage--;  // Revert so user can retry
+    })
+    .finally(() => {
+        btn.disabled = false;
+        const ic = btn.querySelector('i');
+        if (ic) { ic.className = 'fas fa-angle-down'; }
+    });
+}
+
+// =========================================================================
 // Polling Setup
 // =========================================================================
 
@@ -679,7 +782,14 @@ const inboxPoller = new PollingManager({
         return null;
     },
     onUpdate: () => {},
-    interval: 3000,
+    // 10s tripwire — was 3s, but 3s × every open tab × all day was the single
+    // largest source of constant tunnel traffic, making the app feel "live" at
+    // the cost of being uniquely vulnerable to mobile-network hiccups. 10s
+    // still feels responsive (the average new-message wait drops by ~5s, not
+    // a noticeable degradation), and total inbox requests/day drop ~70%.
+    // PollingManager (polling.js) already pauses entirely when the tab is
+    // hidden, so background tabs cost zero.
+    interval: 10000,
     onError: (err) => {
         console.error('Inbox polling error:', err);
     }
@@ -843,39 +953,18 @@ function syncGmailNow() {
 let smoobuPoller = null;
 
 function initSmoobuAutoSync() {
+    // Reveal the manual Smoobu Sync button if Smoobu is connected.
+    // The 60s frontend auto-sync poller was removed: each /api/smoobu/sync
+    // call takes 2+ minutes for large accounts, so a 60s poll per open tab
+    // was holding Waitress threads continuously and causing remote users to
+    // see 2-3 minute page loads. The server-side daemon already syncs every
+    // 2 minutes, and the inbox's regular polling surfaces new messages.
     fetch('/chatbot/smoobu/status')
         .then(r => r.json())
         .then(status => {
             if (status.authenticated) {
                 const btn = document.getElementById('syncSmoobuBtn');
                 if (btn) btn.style.display = '';
-
-                smoobuPoller = new PollingManager({
-                    fetchFn: async (signal) => {
-                        const response = await fetch(
-                            '/chatbot/api/smoobu/sync',
-                            { method: 'POST', signal }
-                        );
-                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                        return response.json();
-                    },
-                    onUpdate: (data) => {
-                        if (data.imported > 0) {
-                            showNotification(
-                                (i18n.t('settings.integrations.smoobu.synced') || '{count} new message(s) synced')
-                                    .replace('{count}', data.imported),
-                                'success'
-                            );
-                            inboxPoller.stop();
-                            inboxPoller.start();
-                        }
-                    },
-                    interval: 60000,
-                    onError: (err) => {
-                        console.error('Smoobu sync error:', err);
-                    }
-                });
-                smoobuPoller.start();
             }
         })
         .catch(err => {
@@ -884,6 +973,10 @@ function initSmoobuAutoSync() {
 }
 
 function syncSmoobuNow() {
+    // Fire-and-forget: the server hands the sync to a daemon thread and
+    // returns immediately. New messages appear via the inbox's regular
+    // polling within ~30s. We do NOT block the button waiting for the full
+    // sync — that used to take 2+ minutes and trip Cloudflare's 100s timeout.
     const btn = document.getElementById('syncSmoobuBtn');
     const originalHtml = btn.innerHTML;
     btn.disabled = true;
@@ -892,20 +985,21 @@ function syncSmoobuNow() {
     fetch('/chatbot/api/smoobu/sync', { method: 'POST' })
         .then(r => r.json())
         .then(data => {
-            if (data.imported > 0) {
+            if (data.error) {
+                showNotification(data.error, 'error');
+            } else {
                 showNotification(
-                    (i18n.t('settings.integrations.smoobu.synced') || '{count} new message(s) synced')
-                        .replace('{count}', data.imported),
-                    'success'
+                    i18n.t('settings.integrations.smoobu.syncStarted') || 'Smoobu sync gestartet — neue Nachrichten erscheinen in Kürze',
+                    'info'
                 );
+                // Nudge the inbox poller so new messages surface ASAP once
+                // the daemon finishes.
                 inboxPoller.stop();
                 inboxPoller.start();
-            } else {
-                showNotification('No new Smoobu messages', 'info');
             }
         })
         .catch(err => {
-            console.error('Manual Smoobu sync failed:', err);
+            console.error('Manual Smoobu sync trigger failed:', err);
             showNotification('Smoobu sync failed', 'error');
         })
         .finally(() => {

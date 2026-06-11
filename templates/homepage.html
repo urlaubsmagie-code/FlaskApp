@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="googlebot" content="noindex, nofollow">
+    <title>Urlaubsmagie - Bewertungsportal</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='favicon.png') }}">
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #904E55 0%, #580f1b 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .main-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        .logo {
+            font-size: 3.5rem;
+            color: white;
+            margin-bottom: 10px;
+        }
+
+        .header h1 {
+            color: white;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .header p {
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 1.2rem;
+        }
+
+        .menu-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        .menu-card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .menu-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            background: linear-gradient(90deg, #904E55, #722F37);
+        }
+
+        .menu-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .menu-card:hover .card-icon {
+            transform: scale(1.1);
+            background: linear-gradient(135deg, #904E55, #722F37);
+            color: white;
+        }
+
+        .card-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .card-icon i {
+            font-size: 2rem;
+            color: #722F37;
+        }
+
+        .menu-card:hover .card-icon i {
+            color: white;
+        }
+
+        .card-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .card-description {
+            color: #666;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .card-badge {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #28a745;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .card-badge.tv {
+            background: #6f42c1;
+        }
+
+        .card-badge.team {
+            background: #fd7e14;
+        }
+
+        .card-badge.wip {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.9rem;
+        }
+
+        .footer a {
+            color: rgba(255, 255, 255, 0.9);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8rem;
+            }
+
+            .header p {
+                font-size: 1rem;
+            }
+
+            .logo {
+                font-size: 2.5rem;
+            }
+
+            .menu-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .menu-card {
+                padding: 25px;
+            }
+        }
+
+        /* Large screens (TV) */
+        @media (min-width: 1400px) {
+            .header h1 {
+                font-size: 3rem;
+            }
+
+            .menu-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+
+            .card-icon {
+                width: 100px;
+                height: 100px;
+            }
+
+            .card-icon i {
+                font-size: 2.5rem;
+            }
+
+            .card-title {
+                font-size: 1.6rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="main-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <i class="fas fa-mountain-sun"></i>
+            </div>
+            <h1>Urlaubsmagie Bewertungsportal</h1>
+            <p>Ferienwohnungen in der Sächsischen Schweiz</p>
+        </div>
+
+        <!-- Menu Grid -->
+        <div class="menu-grid">
+            <!-- Slideshow -->
+            <a href="/slideshow" class="menu-card">
+                <span class="card-badge tv">TV</span>
+                <div class="card-icon">
+                    <i class="fas fa-tv"></i>
+                </div>
+                <div class="card-title">Slideshow</div>
+                <div class="card-description">
+                    Automatische Anzeige der Gästebewertungen für TV-Bildschirme
+                </div>
+            </a>
+
+            <!-- Reviews -->
+            <a href="/reviews" class="menu-card">
+                <span class="card-badge">Aktuell</span>
+                <div class="card-icon">
+                    <i class="fas fa-star"></i>
+                </div>
+                <div class="card-title">Bewertungen</div>
+                <div class="card-description">
+                    Alle Gästebewertungen durchsuchen und filtern
+                </div>
+            </a>
+
+            <!-- Analytics -->
+            <a href="/analytics" class="menu-card">
+                <span class="card-badge wip">In Bearbeitung</span>
+                <div class="card-icon">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="card-title">Statistiken</div>
+                <div class="card-description">
+                    Analysen, Diagramme und Auswertungen der Bewertungen
+                </div>
+            </a>
+
+            <!-- Rankings -->
+            <a href="/rankings" class="menu-card">
+                <span class="card-badge wip">In Bearbeitung</span>
+                <div class="card-icon">
+                    <i class="fas fa-trophy"></i>
+                </div>
+                <div class="card-title">Rankings</div>
+                <div class="card-description">
+                    Wohnungsvergleiche und Bestenlisten
+                </div>
+            </a>
+
+            <!-- Apartment Issues -->
+            <a href="/apartment-issues" class="menu-card">
+                <div class="card-icon">
+                    <i class="fas fa-wrench"></i>
+                </div>
+                <div class="card-title">Wohnungsprobleme</div>
+                <div class="card-description">
+                    Aufgabenliste für gemeldete Probleme und Mängel
+                </div>
+            </a>
+
+            <!-- Digital Team -->
+            <a href="/reviews/digital-team" class="menu-card">
+                <span class="card-badge team">Team</span>
+                <div class="card-icon">
+                    <i class="fas fa-users-cog"></i>
+                </div>
+                <div class="card-title">Digital Team</div>
+                <div class="card-description">
+                    Internes Dashboard für das Team mit Export-Funktionen
+                </div>
+            </a>
+
+            <!-- AI Guest Messaging -->
+            <a href="/chatbot/" class="menu-card">
+                <span class="card-badge" style="background: #2563eb;">Neu</span>
+                <div class="card-icon">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <div class="card-title">KI Gästekommunikation</div>
+                <div class="card-description">
+                    Vereinheitlichtes Nachrichtensystem mit KI-gestützten Antworten
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        <p>Urlaubsmagie GmbH - Sebnitz, Sächsische Schweiz</p>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>

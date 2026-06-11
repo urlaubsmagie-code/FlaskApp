@@ -29,7 +29,7 @@ from sqlalchemy.orm import joinedload
 from . import chatbot_bp
 
 logger = logging.getLogger(__name__)
-from .models import db, User, UserSession, Guest, GuestDetail, Conversation, Message, Property, AISettings, ReplyTemplate, KnowledgeEntry, preload_last_messages, preload_unread_counts, preload_display_platforms
+from .models import db, User, UserSession, Guest, GuestDetail, Conversation, Message, Property, AISettings, ReplyTemplate, KnowledgeEntry, EmailBackfillCandidate, preload_last_messages, preload_unread_counts, preload_display_platforms
 from .services.ai_service import get_ai_service
 from .services.memory_service import get_memory_service
 
@@ -375,6 +375,20 @@ def knowledge_base():
     """Knowledge Base management page"""
     properties = Property.query.order_by(Property.name).all()
     return render_template('chatbot/knowledge.html', properties=properties)
+
+
+@chatbot_bp.route('/email-review')
+@login_required
+def email_review():
+    """Review tray for low-confidence email-backfill candidates."""
+    candidates = EmailBackfillCandidate.query.filter_by(status='pending').order_by(
+        EmailBackfillCandidate.created_at.desc()).all()
+    rows = []
+    for c in candidates:
+        conv = Conversation.query.get(c.guessed_conversation_id) if c.guessed_conversation_id else None
+        guest = Guest.query.get(conv.guest_id) if conv else None
+        rows.append({'candidate': c, 'conversation': conv, 'guest': guest})
+    return render_template('chatbot/email_review.html', rows=rows)
 
 
 @chatbot_bp.route('/help')
@@ -4418,6 +4432,47 @@ def api_delete_knowledge(entry_id):
     """Delete a knowledge entry"""
     entry = KnowledgeEntry.query.get_or_404(entry_id)
     db.session.delete(entry)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@chatbot_bp.route('/api/email-review/pending-count')
+@login_required
+def email_review_pending_count():
+    """Return the number of pending email-backfill candidates."""
+    count = EmailBackfillCandidate.query.filter_by(status='pending').count()
+    return jsonify({'count': count})
+
+
+@chatbot_bp.route('/api/email-review/<int:candidate_id>/confirm', methods=['POST'])
+@login_required
+def email_review_confirm(candidate_id):
+    """Confirm a candidate: insert a Message and mark the candidate as confirmed."""
+    from .services.message_router import get_message_router
+    cand = EmailBackfillCandidate.query.get_or_404(candidate_id)
+    if cand.status != 'pending':
+        return jsonify({'success': False, 'error': 'already handled'}), 400
+    payload = request.get_json(silent=True) or {}
+    conv_id = payload.get('conversation_id') or cand.guessed_conversation_id
+    if not conv_id:
+        return jsonify({'success': False, 'error': 'no conversation'}), 400
+    router = get_message_router()
+    router._store_message(
+        conversation_id=conv_id, sender_type='guest', content=cand.parsed_text,
+        platform_message_id=f"email:{cand.gmail_message_id}", sent_at=cand.parsed_timestamp,
+        sent_via_app=False,
+    )
+    cand.status = 'confirmed'
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@chatbot_bp.route('/api/email-review/<int:candidate_id>/reject', methods=['POST'])
+@login_required
+def email_review_reject(candidate_id):
+    """Reject a candidate without inserting a message."""
+    cand = EmailBackfillCandidate.query.get_or_404(candidate_id)
+    cand.status = 'rejected'
     db.session.commit()
     return jsonify({'success': True})
 

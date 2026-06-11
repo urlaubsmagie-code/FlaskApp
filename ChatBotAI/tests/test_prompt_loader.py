@@ -23,3 +23,25 @@ def test_tone_files_load():
 def test_list_available_tones_returns_four():
     tones = list_available_tones()
     assert set(tones) == {"friendly_professional", "formal", "casual", "concise"}
+
+
+def test_rich_guest_reply_renders():
+    out = load_prompt(
+        "guest_reply",
+        tier="rich",
+        tone_instruction="Be warm.",
+        now_str="06 May 2026",
+        guest_name="Max",
+        guest_language="German",
+        reservation_compact=None,
+        host_instructions=None,
+        knowledge_entries=None,
+        recent_host_replies=None,
+        unanswered_count=1,
+        task_text="Hallo!",
+        guest_profile={"name": "Max"},
+    )
+    assert "UMI" in out
+    assert "Du always" in out
+    assert "Sign-off rule" in out
+    assert "06 May 2026" in out
