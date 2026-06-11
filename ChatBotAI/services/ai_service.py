@@ -11,6 +11,8 @@ import threading
 from datetime import datetime, timezone
 import requests
 from typing import Optional, Dict, List, Any
+from .prompt_tier import detect_tier
+from .prompt_loader import load_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,22 @@ class AIService:
         self.generate_endpoint = f"{ollama_url}/api/generate"
         # Semaphore to serialize AI calls — prevents concurrent GPU crashes
         self._semaphore = threading.Semaphore(1)
+        # Cache for test_connection to avoid blocking Waitress threads
+        self._connection_cache: Optional[bool] = None
+        self._connection_cache_time: float = 0
+
+    @property
+    def reasoning_model(self) -> str:
+        """Get the model to use for reasoning tasks (extraction, summaries).
+        Returns the reasoning model if set, otherwise falls back to main model."""
+        try:
+            from ..models import AISettings
+            rm = AISettings.get('reasoning_model')
+            if rm and rm.strip():
+                return rm.strip()
+        except Exception:
+            pass
+        return self.model
 
     @staticmethod
     def is_acknowledgment(message: str) -> bool:
@@ -82,8 +100,17 @@ class AIService:
 
         return False
 
-    def test_connection(self) -> bool:
-        """Test if Ollama server is reachable and model is available"""
+    def test_connection(self, use_cache: bool = True) -> bool:
+        """Test if Ollama server is reachable and model is available.
+
+        Results are cached for 30 seconds to avoid blocking Waitress threads
+        with repeated HTTP calls (the debug page polls every 10s).
+        """
+        import time as _time
+        now = _time.monotonic()
+        if use_cache and self._connection_cache is not None and (now - self._connection_cache_time) < 30:
+            return self._connection_cache
+
         try:
             response = requests.get(f"{self.ollama_url}/api/tags", timeout=5)
             if response.status_code == 200:
@@ -91,12 +118,20 @@ class AIService:
                 model_names = [m.get('name', '') for m in models]
                 if any(self.model in name for name in model_names):
                     logger.info(f"Ollama connection successful. Model {self.model} available.")
+                    self._connection_cache = True
+                    self._connection_cache_time = now
                     return True
                 logger.warning(f"Model {self.model} not found. Available: {model_names}")
+                self._connection_cache = False
+                self._connection_cache_time = now
                 return False
+            self._connection_cache = False
+            self._connection_cache_time = now
             return False
         except requests.exceptions.RequestException as e:
             logger.error(f"Ollama connection failed: {e}")
+            self._connection_cache = False
+            self._connection_cache_time = now
             return False
 
     def get_installed_models(self) -> List[Dict[str, Any]]:
@@ -184,7 +219,7 @@ class AIService:
         except requests.exceptions.RequestException as e:
             return {'success': False, 'error': f'Request failed: {e}'}
 
-    def generate_response(self, prompt: str, system: Optional[str] = None, timeout: Optional[int] = None) -> Optional[str]:
+    def generate_response(self, prompt: str, system: Optional[str] = None, timeout: Optional[int] = None, model: Optional[str] = None) -> Optional[str]:
         """
         Generate a response from the AI model using the chat API.
 
@@ -192,6 +227,7 @@ class AIService:
             prompt: The user message to send to the model
             system: Optional system message for context
             timeout: Optional timeout override
+            model: Optional model override (defaults to self.model)
 
         Returns:
             Generated response text or None on failure
@@ -201,9 +237,9 @@ class AIService:
             messages.append({'role': 'system', 'content': system})
         messages.append({'role': 'user', 'content': prompt})
 
-        return self._call_chat_api(messages, timeout)
+        return self._call_chat_api(messages, timeout, model=model)
 
-    def _call_chat_api(self, messages: List[Dict[str, str]], timeout: Optional[int] = None) -> Optional[str]:
+    def _call_chat_api(self, messages: List[Dict[str, str]], timeout: Optional[int] = None, model: Optional[str] = None) -> Optional[str]:
         """
         Call the Ollama chat API with a full messages array.
         Uses a semaphore to serialize calls (prevents GPU crashes with concurrent users).
@@ -217,6 +253,7 @@ class AIService:
             Generated response text or None on failure
         """
         effective_timeout = timeout or self.timeout
+        effective_model = model or self.model
 
         # Read configurable temperature and max tokens from DB (with fallbacks)
         temperature = 0.5
@@ -232,8 +269,14 @@ class AIService:
         except Exception:
             pass  # Use defaults if DB not available
 
-        # Acquire semaphore — only one AI call at a time
-        acquired = self._semaphore.acquire(timeout=effective_timeout + 10)
+        # Deadline-aware semaphore + request timeout. Previous code used
+        # effective_timeout for the request AND effective_timeout+10 for
+        # the semaphore wait — meaning the total wall-clock could be ~2x
+        # effective_timeout, producing zombie threads. Track a single
+        # deadline and divide remaining time between semaphore and request.
+        deadline = time.monotonic() + effective_timeout
+        sem_budget = max(effective_timeout - 1, 1)
+        acquired = self._semaphore.acquire(timeout=sem_budget)
         if not acquired:
             logger.warning("Timed out waiting for AI semaphore — another request is in progress")
             return None
@@ -244,7 +287,17 @@ class AIService:
         try:
             for attempt in range(max_retries + 1):
                 try:
-                    logger.debug(f"Sending {len(messages)} messages to Ollama ({self.model})"
+                    remaining = deadline - time.monotonic()
+                    if remaining < 1:
+                        logger.warning(
+                            f"AI deadline exceeded before request could start "
+                            f"(model={effective_model}, attempt={attempt})"
+                        )
+                        return None
+                    # Clamp at least 5s so the HTTP layer has room to handshake.
+                    request_timeout = max(remaining, 5)
+
+                    logger.debug(f"Sending {len(messages)} messages to Ollama ({effective_model})"
                                  + (f" [retry {attempt}]" if attempt > 0 else ""))
 
                     t0 = time.monotonic()
@@ -252,7 +305,7 @@ class AIService:
                     response = requests.post(
                         self.chat_endpoint,
                         json={
-                            'model': self.model,
+                            'model': effective_model,
                             'messages': messages,
                             'stream': False,
                             'options': {
@@ -260,7 +313,7 @@ class AIService:
                                 'num_predict': num_predict,
                             }
                         },
-                        timeout=effective_timeout
+                        timeout=request_timeout
                     )
 
                     elapsed = time.monotonic() - t0
@@ -273,7 +326,7 @@ class AIService:
 
                         # Log timing and token info
                         eval_count = result.get('eval_count', '?')
-                        logger.info(f"[AI CALL] model={self.model} | {elapsed:.1f}s | {eval_count} tokens")
+                        logger.info(f"[AI CALL] model={effective_model} | {elapsed:.1f}s | {eval_count} tokens")
 
                         # Track in debug dashboard
                         self._track_api_call('chat', response.status_code, elapsed * 1000)
@@ -363,7 +416,7 @@ Message to analyze:
 Return ONLY the JSON object:"""
 
         try:
-            response = self.generate_response(prompt, system=system, timeout=self.timeout)
+            response = self.generate_response(prompt, system=system, timeout=self.timeout, model=self.reasoning_model)
 
             if not response:
                 logger.warning("No response from AI for extraction")
@@ -403,8 +456,16 @@ Return ONLY the JSON object:"""
                 logger.debug(f"Raw response: {response}")
                 return self._empty_extraction()
 
+        except (requests.exceptions.RequestException,) as e:
+            logger.error(f"Extraction HTTP error: {type(e).__name__}: {e}")
+            return self._empty_extraction()
+        except (KeyError, ValueError, TypeError) as e:
+            logger.error(f"Extraction parse error: {type(e).__name__}: {e}", exc_info=True)
+            return self._empty_extraction()
         except Exception as e:
-            logger.error(f"Extraction failed: {e}")
+            # Unexpected error path — capture stack trace so the actual cause
+            # surfaces in logs rather than a one-line generic message.
+            logger.exception(f"Extraction failed (unexpected): {type(e).__name__}: {e}")
             return self._empty_extraction()
 
     def generate_guest_response(
@@ -565,7 +626,7 @@ Return ONLY the JSON object:"""
             )
 
         try:
-            response = self.generate_response(prompt, system=system)
+            response = self.generate_response(prompt, system=system, model=self.reasoning_model)
             if response:
                 response = self._strip_think_tags(response).strip()
                 if len(response) < 10:
@@ -601,7 +662,7 @@ Return ONLY the JSON object:"""
             response = requests.post(
                 self.generate_endpoint,
                 json={
-                    'model': self.model,
+                    'model': self.reasoning_model,
                     'prompt': prompt,
                     'stream': False,
                     'options': {
@@ -624,6 +685,90 @@ Return ONLY the JSON object:"""
             logger.warning(f"Correction topic extraction failed: {e}")
             return None
 
+    def extract_knowledge_from_message(self, message_content: str) -> Optional[List[Dict[str, str]]]:
+        """Extract knowledge base entries from an owner/AI message.
+
+        Analyzes the message for useful facts (property rules, location info,
+        check-in procedures, FAQs, etc.) and returns structured entries ready
+        to be saved to the KnowledgeEntry table.
+
+        Returns:
+            List of dicts with keys: category, label, value.  Empty list if
+            nothing useful found.  None on AI failure.
+        """
+        system = ("You are a JSON extraction assistant for a vacation rental messaging system. "
+                  "Analyze host messages and extract useful knowledge that could help an AI assistant "
+                  "answer future guest questions. Respond with ONLY a valid JSON array, no other text.")
+
+        prompt = f"""Analyze this host message and extract any useful knowledge for answering future guest questions.
+
+Categories to use (pick the best fit):
+- "general" — general property info, amenities, WiFi, parking
+- "checkin_checkout" — check-in/check-out times, key handover, access codes
+- "nearby" — nearby places, restaurants, shops, transport, attractions
+- "house_rules" — rules, policies, dos and don'ts
+- "emergency" — emergency contacts, procedures
+- "faq" — frequently asked questions and their answers
+
+Rules:
+- Only extract FACTUAL information useful for future guests
+- Skip greetings, pleasantries, conversation-specific details
+- Each entry needs a short label (max 200 chars) and a detailed value
+- If the message contains NO useful knowledge, return an empty array []
+- Return 1-5 entries maximum
+
+Return ONLY a valid JSON array:
+[
+  {{"category": "string", "label": "short title", "value": "detailed information"}}
+]
+
+Message to analyze:
+"{message_content}"
+
+JSON array:"""
+
+        try:
+            response = self.generate_response(prompt, system=system, timeout=self.timeout, model=self.reasoning_model)
+            if not response:
+                logger.warning("No response from AI for knowledge extraction")
+                return None
+
+            clean = self._strip_think_tags(response).strip()
+            if clean.startswith('```json'):
+                clean = clean[7:]
+            if clean.startswith('```'):
+                clean = clean[3:]
+            if clean.endswith('```'):
+                clean = clean[:-3]
+            clean = clean.strip()
+
+            import json
+            entries = json.loads(clean)
+            if not isinstance(entries, list):
+                return []
+
+            valid_categories = {'general', 'checkin_checkout', 'nearby',
+                                'house_rules', 'emergency', 'faq'}
+            result = []
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                cat = entry.get('category', '').strip()
+                label = entry.get('label', '').strip()
+                value = entry.get('value', '').strip()
+                if cat not in valid_categories or not label or not value:
+                    continue
+                result.append({
+                    'category': cat,
+                    'label': label[:200],
+                    'value': value[:2000]
+                })
+            return result
+
+        except Exception as e:
+            logger.warning(f"Knowledge extraction failed: {e}")
+            return None
+
     # Tone mapping for AI prompt instructions
     TONE_INSTRUCTIONS = {
         'friendly_professional': "Be warm, helpful, and professional.",
@@ -632,7 +777,7 @@ Return ONLY the JSON object:"""
         'concise': "Be brief and to the point. Short sentences, no filler.",
     }
 
-    def _build_compact_prompt(
+    def _build_guest_reply_prompt(
             self,
             guest_profile: Dict[str, Any],
             conversation_history: List[Dict[str, str]],
@@ -643,79 +788,67 @@ Return ONLY the JSON object:"""
             reservation_info: Optional[Dict[str, Any]] = None,
             knowledge_entries: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
-        """Build a compact system prompt (~400-600 tokens) for KI-Vorschlag / KI-Antwort.
+        """Tier-aware guest reply prompt.
 
-        Keeps only what the 8B model needs to answer the latest guest message:
-        role, rules, guest name, reservation one-liner, host instructions,
-        top KB entries, short conversation log, and the task instruction.
-
-        Excludes: full guest profile, property details, conversation summary,
-        resolved topics, corrections, escalation entries.
+        Picks 'compact' or 'rich' based on self.model and renders the
+        corresponding Jinja2 template with the same context the legacy
+        _build_compact_prompt assembles.
         """
+        tier = detect_tier(self.model)
+        logger.info("Prompt tier: %s (model=%s)", tier, self.model)
+
         now = datetime.utcnow()
-        tone_instruction = self.TONE_INSTRUCTIONS.get(tone, self.TONE_INSTRUCTIONS['friendly_professional'])
+        now_str = now.strftime('%d %b %Y')
 
-        # 1. Role + rules + tone (compact)
-        parts = [
-            "You are UMI, the friendly AI assistant for Urlaubsmagie vacation rentals. You are warm, helpful, and casual — always treating guests like welcome visitors.",
-            tone_instruction,
-            f"Date: {now.strftime('%d %b %Y')}.",
-            "Rules: Reply in the guest's language. Never invent details — say you'll check. Don't re-ask answered questions.",
-        ]
+        tone_instruction = self.TONE_INSTRUCTIONS.get(
+            tone, self.TONE_INSTRUCTIONS['friendly_professional']
+        )
 
-        # 2. Guest name + language
         guest_name = guest_profile.get('name', 'the guest') if guest_profile else 'the guest'
         guest_language = guest_profile.get('language') if guest_profile else None
-        if guest_language:
-            parts.append(f"Guest: {guest_name} (speaks {guest_language})")
-        else:
-            parts.append(f"Guest: {guest_name}")
 
-        # 3. Reservation one-liner
-        if reservation_info:
-            res_compact = self._format_reservation_compact(reservation_info)
-            if res_compact:
-                parts.append(res_compact)
+        reservation_compact = (
+            self._format_reservation_compact(reservation_info) if reservation_info else None
+        )
 
-        # 4. Host instructions
-        if host_instructions and host_instructions.strip():
-            parts.append(f"Host instructions: {host_instructions.strip()}")
-
-        # 5. KB entries (top 3 only, no escalation)
+        # KB entries: top 3, exclude escalation, truncate value to 80 chars.
+        kb_for_template = None
         if knowledge_entries:
             regular = [e for e in knowledge_entries if not (e.get('category') or '').startswith('esc')][:3]
             if regular:
-                kb_lines = []
+                kb_for_template = []
                 for e in regular:
-                    label = e.get('label', '')
                     value = e.get('value', '')
                     val = value[:80] + ("..." if len(value) > 80 else "")
-                    kb_lines.append(f"- {label}: {val}")
-                parts.append("Info:\n" + "\n".join(kb_lines))
+                    kb_for_template.append({
+                        'label': e.get('label', ''),
+                        'value_truncated': val,
+                    })
 
-        # 6. Recent host replies only (exclude guest messages to prevent model fixating on old questions)
-        host_only_history = [m for m in conversation_history if m.get('sender_type') in ('owner', 'ai')]
-        if host_only_history:
-            conversation_log = self._format_conversation_log(host_only_history, max_history=2)
-            if conversation_log:
-                parts.append(f"Your recent replies:\n{conversation_log}")
+        # Recent host replies only — exclude guest messages.
+        host_only = [m for m in conversation_history if m.get('sender_type') in ('owner', 'ai')]
+        recent_host_replies = (
+            self._format_conversation_log(host_only, max_history=2) if host_only else None
+        )
 
-        # 7. YOUR TASK (at the end for model attention)
-        parts.append("")
-        if unanswered_count >= 2:
-            # Multi-message: texts are in the user turn as numbered list [1], [2], ...
-            parts.append(
-                f"TASK: The guest sent {unanswered_count} unanswered messages below. "
-                "Address ALL of them in one reply."
-            )
-        else:
-            task_text = clean_latest[:300] + ("..." if len(clean_latest) > 300 else "")
-            parts.append(
-                f'TASK: The guest\'s new message is: "{task_text}"\n'
-                "Reply to THIS message only."
-            )
+        task_text = clean_latest[:300] + ("..." if len(clean_latest) > 300 else "")
 
-        return "\n".join(parts)
+        return load_prompt(
+            'guest_reply',
+            tier=tier,
+            tone_instruction=tone_instruction,
+            now_str=now_str,
+            guest_name=guest_name,
+            guest_language=guest_language,
+            reservation_compact=reservation_compact,
+            host_instructions=(host_instructions.strip() if host_instructions else None),
+            knowledge_entries=kb_for_template,
+            recent_host_replies=recent_host_replies,
+            unanswered_count=unanswered_count,
+            task_text=task_text,
+            # Rich-tier-only extras (compact ignores them):
+            guest_profile=guest_profile,
+        )
 
     def _build_chat_messages(
             self,
@@ -752,6 +885,7 @@ Return ONLY the JSON object:"""
             closing_system = (
                 f"You are UMI, the friendly AI assistant for Urlaubsmagie. The guest ({guest_name}) is thanking you "
                 "for your help. Reply briefly and warmly in the SAME LANGUAGE as the guest's message. "
+                "Write natural, fluent German with correct grammar when replying in German. "
                 "Keep it to 1-2 sentences. Do NOT bring up any other topics."
             )
             messages.append({'role': 'system', 'content': closing_system})
@@ -776,7 +910,7 @@ Return ONLY the JSON object:"""
         # Per-message suggest (lightbulb): uses the full prompt with target_message_override
         # KI-Vorschlag / KI-Antwort: uses the compact prompt for 8B model focus
         if not target_message_override:
-            system_content = self._build_compact_prompt(
+            system_content = self._build_guest_reply_prompt(
                 guest_profile=guest_profile,
                 conversation_history=conversation_history,
                 clean_latest=clean_latest,
@@ -832,6 +966,7 @@ Return ONLY the JSON object:"""
             "- NEVER repeat information you already provided.",
             "- If you don't know specific details (WiFi password, door code, prices), say you'll check — NEVER invent details.",
             "- The CONVERSATION LOG below is for context only — do NOT re-answer old topics.",
+            "- German quality: Write as a native speaker would — natural, fluent, and grammatically correct. Use correct article and case agreement. Use idiomatic phrasing, not literal translations. Include possessive pronouns where natural. Prefer common, everyday vocabulary over stiff or formal constructions.",
         ]
 
         if guest_language:

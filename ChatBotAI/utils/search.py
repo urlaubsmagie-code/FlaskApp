@@ -123,7 +123,7 @@ def search_by_guest_name(name_query, limit=20):
         JOIN conversation c ON m.conversation_id = c.id
         JOIN guest g ON c.guest_id = g.id
         WHERE message_fts MATCH 'guest_name:' || :query
-        ORDER BY c.updated_at DESC
+        ORDER BY c.last_message_at DESC
         LIMIT :limit
     """)
 

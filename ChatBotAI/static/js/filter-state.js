@@ -11,7 +11,8 @@ class FilterState {
             platform: null,  // null = all, or 'email'|'whatsapp'|'airbnb'|'booking'
             status: null,    // null = all, or 'active'|'pending_owner'|'closed'
             guest: null,     // null = all, or guest ID string
-            search: null     // null = no search, or query string
+            search: null,    // null = no search, or query string
+            unread: false    // true = show only unread conversations
         };
 
         // Load initial state from URL
@@ -39,6 +40,7 @@ class FilterState {
         this.state.status = params.get('status') || null;
         this.state.guest = params.get('guest') || null;
         this.state.search = params.get('q') || null;
+        this.state.unread = params.get('unread') === 'true';
     }
 
     /**
@@ -74,6 +76,13 @@ class FilterState {
             url.searchParams.set('q', this.state.search);
         } else {
             url.searchParams.delete('q');
+        }
+
+        // Set or delete unread param
+        if (this.state.unread) {
+            url.searchParams.set('unread', 'true');
+        } else {
+            url.searchParams.delete('unread');
         }
 
         // Update URL without creating history entry
@@ -121,6 +130,16 @@ class FilterState {
     }
 
     /**
+     * Toggle unread filter
+     */
+    toggleUnread() {
+        this.state.unread = !this.state.unread;
+        this.saveToURL();
+        this.applyFilters();
+        this.updateUI();
+    }
+
+    /**
      * Set search query
      * @param {string|null} query - Search query, or null to clear
      */
@@ -145,6 +164,7 @@ class FilterState {
         this.state.status = null;
         this.state.guest = null;
         this.state.search = null;
+        this.state.unread = false;
         this.saveToURL();
         this.applyFilters();
         this.updateUI();
@@ -181,8 +201,9 @@ class FilterState {
                     : card.dataset.status === this.state.status);
             const matchesGuest = !this.state.guest || card.dataset.guestId === this.state.guest;
             const matchesSearch = !searchTerm || card.textContent.toLowerCase().includes(searchTerm);
+            const matchesUnread = !this.state.unread || card.dataset.isRead === 'false';
 
-            card.style.display = (matchesPlatform && matchesStatus && matchesGuest && matchesSearch) ? 'flex' : 'none';
+            card.style.display = (matchesPlatform && matchesStatus && matchesGuest && matchesSearch && matchesUnread) ? 'flex' : 'none';
         });
 
         // Hide date group headers that have no visible cards after them
@@ -222,6 +243,12 @@ class FilterState {
             btn.classList.toggle('active', isActive);
         });
 
+        // Update unread filter button
+        const unreadBtn = document.querySelector('[data-filter-unread]');
+        if (unreadBtn) {
+            unreadBtn.classList.toggle('active', this.state.unread);
+        }
+
         // Sync guest dropdown selection
         const guestDropdown = document.getElementById('guestFilter');
         if (guestDropdown) {
@@ -259,13 +286,18 @@ class FilterState {
             container.appendChild(this.createFilterBadge('guest', this.state.guest));
         }
 
+        // Add unread badge if filtered
+        if (this.state.unread) {
+            container.appendChild(this.createFilterBadge('unread', 'unread'));
+        }
+
         // Add search badge if searching
         if (this.state.search) {
             container.appendChild(this.createFilterBadge('search', this.state.search));
         }
 
         // Show/hide clear all button
-        const hasActiveFilters = this.state.platform || this.state.status || this.state.guest || this.state.search;
+        const hasActiveFilters = this.state.platform || this.state.status || this.state.guest || this.state.search || this.state.unread;
         if (clearBtn) {
             clearBtn.style.display = hasActiveFilters ? 'inline-flex' : 'none';
         }
@@ -303,6 +335,8 @@ class FilterState {
                 this.clearStatus();
             } else if (type === 'guest') {
                 this.clearGuest();
+            } else if (type === 'unread') {
+                this.toggleUnread();
             } else if (type === 'search') {
                 this.clearSearch();
                 const searchInput = document.getElementById('searchInput');
@@ -340,6 +374,8 @@ class FilterState {
                 }
             }
             return `Guest ${value}`;
+        } else if (type === 'unread') {
+            return 'Ungelesen';
         } else if (type === 'search') {
             // Show truncated search query
             return value.length > 20 ? value.substring(0, 20) + '...' : value;
@@ -360,7 +396,7 @@ class FilterState {
      * @returns {boolean} True if any filter is set
      */
     hasActiveFilters() {
-        return !!(this.state.platform || this.state.status || this.state.guest || this.state.search);
+        return !!(this.state.platform || this.state.status || this.state.guest || this.state.search || this.state.unread);
     }
 }
 

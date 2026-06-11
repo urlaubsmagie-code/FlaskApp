@@ -48,6 +48,11 @@
                     ({{ (conversation.check_out - conversation.check_in).days }}n)
                 </span>
                 {% endif %}
+                {% if conversation.cancelled_at %}
+                <span class="cancellation-badge" title="{{ conversation.cancelled_at|to_local }}">
+                    <i class="fas fa-ban"></i> <span data-i18n="inbox.badge.cancelled">Storniert</span>
+                </span>
+                {% endif %}
             </div>
         </div>
         <div class="conversation-actions">
@@ -131,6 +136,35 @@
         </div>
     </div>
 
+    {% if is_playtest %}
+    <!-- Playtest Mode Bar -->
+    <div class="playtest-bar">
+        <div class="playtest-bar-top">
+            <span class="playtest-badge"><i class="fas fa-flask"></i> PLAYTEST</span>
+            <div class="playtest-guest-send">
+                <input type="text" id="playtestGuestInput" placeholder="Als Gast schreiben..."
+                       onkeydown="if(event.key==='Enter')playtestSendAsGuest()">
+                <button class="btn btn-sm" onclick="playtestSendAsGuest()" id="playtestGuestSendBtn">
+                    <i class="fas fa-paper-plane"></i> Gast senden
+                </button>
+            </div>
+            <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="btn btn-sm btn-secondary">
+                <i class="fas fa-user-edit"></i> Gästeprofil
+            </a>
+            <button class="btn btn-sm btn-secondary" onclick="playtestToggleEventLog()" id="playtestEventLogToggle">
+                <i class="fas fa-stream"></i> Events
+            </button>
+        </div>
+        <div class="playtest-event-panel" id="playtestEventPanel" style="display:none;">
+            <div class="playtest-events-header">
+                <h3><i class="fas fa-stream"></i> Pipeline Events</h3>
+                <button class="btn btn-secondary" onclick="document.getElementById('playtestEventList').textContent=''" style="padding:2px 10px;font-size:0.8em;">Clear</button>
+            </div>
+            <div class="playtest-event-list" id="playtestEventList"></div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Messages Area -->
     <div class="messages-container" id="messagesContainer">
         {% if conversation.escalated %}
@@ -149,7 +183,7 @@
         </div>
         {% endif %}
         {% for message in messages %}
-        <div class="message {{ message.sender_type }}" data-message-id="{{ message.id }}" data-sent-at="{{ message.sent_at.isoformat() ~ 'Z' if message.sent_at else '' }}">
+        <div class="message {{ message.sender_type }}{% if message.approval_status == 'pending' %} pending-approval{% endif %}" data-message-id="{{ message.id }}" data-sent-at="{{ message.sent_at.isoformat() ~ 'Z' if message.sent_at else '' }}">
             <div class="message-avatar">
                 {% if message.sender_type == 'guest' %}
                     <i class="fas fa-user"></i>
@@ -169,6 +203,20 @@
                     <span class="message-time">{{ message.sent_at|to_local if message.sent_at else '' }}</span>
                 </div>
                 <div class="message-text">{{ message.content }}</div>
+                {% if message.approval_status == 'pending' %}
+                <div class="pending-approval-label" data-i18n="conversation.approval.waiting">Warte auf Freigabe...</div>
+                <div class="pending-approval-actions">
+                    <button class="btn btn-sm btn-success" onclick="approveMessage({{ message.id }})">
+                        <i class="fas fa-check"></i> <span data-i18n="conversation.approval.send">Senden</span>
+                    </button>
+                    <button class="btn btn-sm btn-secondary" onclick="editMessage({{ message.id }})">
+                        <i class="fas fa-edit"></i> <span data-i18n="conversation.approval.edit">Bearbeiten</span>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="rejectMessage({{ message.id }})">
+                        <i class="fas fa-times"></i> <span data-i18n="conversation.approval.reject">Ablehnen</span>
+                    </button>
+                </div>
+                {% endif %}
             </div>
             {% if message.sender_type == 'guest' %}
             <button class="btn-suggest-for-message" onclick="suggestForMessage({{ message.id }})"
@@ -176,6 +224,12 @@
                 title="UMI-Antwort für diese Nachricht"
                 {% if not conversation.ai_enabled %}disabled{% endif %}>
                 <i class="fas fa-lightbulb"></i>
+            </button>
+            {% elif message.sender_type in ('owner', 'ai') %}
+            <button class="btn-extract-knowledge" onclick="extractKnowledge({{ message.id }})"
+                data-i18n-title="conversation.knowledge.extract"
+                title="Wissen extrahieren">
+                <i class="fas fa-graduation-cap"></i>
             </button>
             {% endif %}
         </div>
@@ -252,8 +306,9 @@
         propertyName: {{ (conversation.property.name if conversation.property else "")|tojson }},
         checkInTime: {{ (conversation.property.check_in_time if conversation.property else "3:00 PM")|tojson }},
         approvalQueueEnabled: {{ 'true' if approval_queue_enabled else 'false' }},
-        autoApprove: {{ 'true' if conversation.auto_approve else 'false' }}
+        autoApprove: {{ 'true' if conversation.auto_approve else 'false' }},
+        isPlaytest: {{ 'true' if is_playtest else 'false' }}
     };
 </script>
-<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=20"></script>
+<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=23"></script>
 {% endblock %}

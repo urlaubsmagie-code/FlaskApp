@@ -46,6 +46,11 @@ def init_chatbot(app):
             from .models import User
             return User.query.get(int(user_id))
 
+    # Install file logger so daemon/webhook activity lands on disk in production
+    # (create_app() handles this for the dev server; blueprint path needs it too).
+    from .app import _install_file_logger
+    _install_file_logger(app)
+
     # Only init if not already done - check for sqlalchemy extension
     if 'sqlalchemy' not in app.extensions:
         db.init_app(app)
@@ -73,6 +78,25 @@ def init_chatbot(app):
                 ai_service.change_model(saved_model)
                 import logging
                 logging.getLogger(__name__).info(f"Loaded saved model preference: {saved_model}")
+
+    # Start the background Smoobu sync daemon AND expose app.smoobu_trigger_sync.
+    # Without this, the /api/smoobu/sync route falls back to running the sync
+    # synchronously (which Cloudflare kills at 100s) and no periodic sync runs.
+    # Previously this only ran in the standalone ChatBotAI/app.py:create_app()
+    # path, leaving production (FlaskApp/app.py + Waitress) without either.
+    import os as _os
+    is_reloader_child = _os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
+    is_production = not app.config.get('DEBUG')
+    print(f"[ChatBotAI] init_chatbot daemon guard: reloader_child={is_reloader_child}, production={is_production}", flush=True)
+    if is_reloader_child or is_production:
+        from .app import _start_background_sync
+        try:
+            _start_background_sync(app)
+        except Exception as e:
+            print(f"[ChatBotAI] ERROR starting background sync: {e!r}", flush=True)
+            raise
+    else:
+        print("[ChatBotAI] Background sync NOT started (debug + not reloader child)", flush=True)
 
 
 @chatbot_bp.record_once

@@ -62,6 +62,11 @@
             <button class="filter-btn" data-filter-status="pending_approval" data-i18n="inbox.filter.pendingApproval">UMI-Freigabe</button>
         </div>
 
+        <!-- Unread Toggle -->
+        <button class="filter-btn" data-filter-unread onclick="filterState.toggleUnread()">
+            <i class="fas fa-envelope"></i> <span data-i18n="inbox.filter.unread">Ungelesen</span>
+        </button>
+
         <div class="search-box">
             <i class="fas fa-search"></i>
             <input type="text" data-i18n-placeholder="inbox.search" placeholder="Konversationen durchsuchen..." id="searchInput">
@@ -119,6 +124,9 @@
                     {% if conv.ai_enabled %}
                         <span class="ai-badge"><i class="fas fa-robot"></i></span>
                     {% endif %}
+                    {% if conv.cancelled_at %}
+                        <span class="cancellation-badge" title="{{ conv.cancelled_at|to_local if conv.cancelled_at else '' }}"><i class="fas fa-ban"></i> <span data-i18n="inbox.badge.cancelled">Storniert</span></span>
+                    {% endif %}
                     <span class="status-badge {{ conv.status }}">{{ conv.status|replace('_', ' ')|title }}</span>
                     {% if conv.status != 'closed' %}
                         <button class="btn-close-conv" onclick="closeConversation(event, {{ conv.id }})" title="Gespräch beenden"><i class="fas fa-times"></i></button>
@@ -133,6 +141,16 @@
                 <p data-i18n="inbox.empty.hint">Wenn Gäste Ihnen schreiben, erscheinen ihre Konversationen hier.</p>
             </div>
         {% endif %}
+        {% if conversations|length < total_conversations %}
+        <div class="load-more-container" id="loadMoreContainer">
+            <button class="btn btn-secondary load-more-btn" id="loadMoreBtn" onclick="loadMoreConversations()">
+                <i class="fas fa-angle-down"></i>
+                <span data-i18n="inbox.loadMore">Mehr laden</span>
+                <span class="load-more-count">({{ conversations|length }} / {{ total_conversations }})</span>
+            </button>
+        </div>
+        {% endif %}
+
         <div class="empty-state search-empty" id="searchEmptyState" style="display: none;">
             <i class="fas fa-search"></i>
             <h3 data-i18n="inbox.search.noResults">Keine Ergebnisse gefunden</h3>
@@ -150,7 +168,13 @@
     </div>
 </div>
 
+<script>
+    window.inboxConfig = {
+        loadedCount: {{ conversations|length }},
+        totalCount: {{ total_conversations }}
+    };
+</script>
 <script src="{{ url_for('chatbot.static', filename='js/polling.js') }}?v=8"></script>
-<script src="{{ url_for('chatbot.static', filename='js/filter-state.js') }}?v=10"></script>
-<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=25"></script>
+<script src="{{ url_for('chatbot.static', filename='js/filter-state.js') }}?v=11"></script>
+<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=29"></script>
 {% endblock %}

@@ -66,6 +66,22 @@
     .auto-refresh { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 0.85em; }
     .auto-refresh label { cursor: pointer; }
     #refreshCountdown { color: var(--text-secondary, #888); min-width: 30px; }
+
+    /* Playtest Launcher */
+    .playtest-launcher { max-width: 600px; margin: 0 auto; }
+    .playtest-launcher h2 { font-size: 1.2em; margin: 0 0 16px; display: flex; align-items: center; gap: 8px; }
+    .playtest-form { display: flex; flex-direction: column; gap: 12px; }
+    .playtest-form .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .playtest-form label { font-size: 0.85em; font-weight: 600; color: var(--text-secondary, #666); }
+    .playtest-form input, .playtest-form textarea { padding: 8px 12px; border: 1px solid var(--border-color, #ddd); border-radius: 6px; font-size: 0.9em; background: var(--card-bg, #fff); color: var(--text-color, #333); }
+    .playtest-form textarea { resize: vertical; min-height: 60px; }
+    .playtest-form .btn-start { padding: 10px 20px; background: #22c55e; color: #fff; border: none; border-radius: 6px; font-size: 1em; font-weight: 600; cursor: pointer; margin-top: 8px; }
+    .playtest-form .btn-start:hover { background: #16a34a; }
+    .playtest-form .btn-start:disabled { opacity: 0.5; cursor: not-allowed; }
+    .playtest-history { margin-top: 24px; border-top: 1px solid var(--border-color, #ddd); padding-top: 16px; }
+    .playtest-history h3 { font-size: 1em; margin: 0 0 8px; color: var(--text-secondary, #666); }
+    .playtest-history a { display: block; padding: 6px 0; font-size: 0.9em; color: var(--primary-color, #7B2332); text-decoration: none; }
+    .playtest-history a:hover { text-decoration: underline; }
 </style>
 {% endblock %}
 
@@ -75,7 +91,7 @@
         <h1><i class="fas fa-bug"></i> Debug Dashboard</h1>
         <div class="auto-refresh">
             <label><input type="checkbox" id="autoRefreshToggle" checked> Auto-refresh</label>
-            <span id="refreshCountdown">5s</span>
+            <span id="refreshCountdown">15s</span>
             <button class="btn btn-secondary" onclick="refreshAll()" style="padding:4px 12px;font-size:0.85em;">
                 <i class="fas fa-sync-alt"></i>
             </button>
@@ -92,12 +108,27 @@
         <button class="debug-tab" onclick="switchTab('api')">
             <i class="fas fa-exchange-alt"></i> API Calls
         </button>
+        <button class="debug-tab" onclick="switchTab('playtest')">
+            <i class="fas fa-comments"></i> Chat Playtest
+        </button>
     </div>
 
     <!-- STATUS TAB -->
     <div id="tab-status" class="tab-content">
         <div class="status-grid" id="statusGrid">
             <div class="status-card"><h3><span class="status-dot gray"></span> Loading...</h3></div>
+        </div>
+        <div class="status-card" style="margin-top:16px;">
+            <h3><i class="fas fa-code"></i> Prompt Compare</h3>
+            <p style="font-size:0.9em; color:var(--text-secondary,#666); margin:8px 0;">
+                Render compact and rich guest-reply prompts side-by-side for a conversation:
+            </p>
+            <form onsubmit="event.preventDefault(); window.open('/chatbot/debug/prompt-compare?conversation_id=' + document.getElementById('promptCompareId').value, '_blank');"
+                  style="display:flex; gap:8px;">
+                <input type="number" id="promptCompareId" placeholder="conversation_id" required
+                       style="flex:1; padding:8px; border:1px solid var(--border-color,#ddd); border-radius:6px;">
+                <button type="submit" style="padding:8px 16px; background:var(--primary-color,#7B2332); color:#fff; border:none; border-radius:6px; cursor:pointer;">Compare</button>
+            </form>
         </div>
     </div>
 
@@ -140,13 +171,56 @@
             </table>
         </div>
     </div>
+
+    <!-- CHAT PLAYTEST TAB -->
+    <div id="tab-playtest" class="tab-content" style="display:none;">
+        <div class="playtest-launcher">
+            <h2><i class="fas fa-flask"></i> Chat Playtest</h2>
+            <p style="font-size:0.9em;color:var(--text-secondary,#888);margin:0 0 16px;">
+                Erstelle einen Test-Chat mit gefälschten Gästeinformationen, um die KI-Antworten zu testen.
+            </p>
+            <div class="playtest-form">
+                <div class="form-group">
+                    <label>Gastname</label>
+                    <input type="text" id="ptGuestName" value="Max Mustermann" placeholder="Name des Testgastes">
+                </div>
+                <div class="form-group">
+                    <label>Familie</label>
+                    <input type="text" id="ptFamily" placeholder="z.B. 2 Erwachsene, 1 Kind (3 Jahre)">
+                </div>
+                <div class="form-group">
+                    <label>Haustiere</label>
+                    <input type="text" id="ptPets" placeholder="z.B. 1 Hund, mittelgroß">
+                </div>
+                <div class="form-group">
+                    <label>Allergien</label>
+                    <input type="text" id="ptAllergies" placeholder="z.B. Glutenunverträglichkeit">
+                </div>
+                <div class="form-group">
+                    <label>Präferenzen</label>
+                    <input type="text" id="ptPreferences" placeholder="z.B. Spätes Check-in, ruhige Lage">
+                </div>
+                <div class="form-group">
+                    <label>Besondere Wünsche</label>
+                    <textarea id="ptSpecialRequests" placeholder="Freitext..."></textarea>
+                </div>
+                <button class="btn-start" id="ptStartBtn" onclick="playtestStartV2()">
+                    <i class="fas fa-play"></i> Playtest starten
+                </button>
+            </div>
+            <div class="playtest-history" id="ptHistory" style="display:none;">
+                <h3><i class="fas fa-history"></i> Letzte Playtests</h3>
+                <div id="ptHistoryList"></div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
 let currentTab = 'status';
 let autoRefresh = true;
 let refreshTimer = null;
-let countdown = 5;
+let countdown = 15;
 
 function switchTab(tab) {
     currentTab = tab;
@@ -154,14 +228,18 @@ function switchTab(tab) {
     document.getElementById('tab-' + tab).style.display = '';
     document.querySelectorAll('.debug-tab').forEach(el => el.classList.remove('active'));
     event.currentTarget.classList.add('active');
-    refreshAll();
+    if (tab === 'playtest') {
+        loadPlaytestHistory();
+    } else {
+        refreshAll();
+    }
 }
 
 function refreshAll() {
     if (currentTab === 'status') refreshStatus();
     if (currentTab === 'logs') refreshLogs();
     if (currentTab === 'api') refreshApiCalls();
-    countdown = 5;
+    countdown = 15;
 }
 
 function refreshStatus() {
@@ -556,6 +634,65 @@ setInterval(() => {
         refreshAll();
     }
 }, 1000);
+
+// ============================================================================
+// CHAT PLAYTEST LAUNCHER
+// ============================================================================
+
+function playtestStartV2() {
+    const btn = document.getElementById('ptStartBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Erstelle...';
+
+    const data = {
+        guest_name: document.getElementById('ptGuestName').value.trim() || 'Playtest Guest',
+        family: document.getElementById('ptFamily').value.trim(),
+        pets: document.getElementById('ptPets').value.trim(),
+        allergies: document.getElementById('ptAllergies').value.trim(),
+        preferences: document.getElementById('ptPreferences').value.trim(),
+        special_requests: document.getElementById('ptSpecialRequests').value.trim()
+    };
+
+    fetch('/chatbot/api/debug/playtest/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.conversation_id) {
+            window.location.href = `/chatbot/conversation/${result.conversation_id}`;
+        } else {
+            alert('Fehler: ' + (result.error || 'Unknown error'));
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-play"></i> Playtest starten';
+        }
+    })
+    .catch(err => {
+        alert('Fehler: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-play"></i> Playtest starten';
+    });
+}
+
+// Load recent playtest conversations
+function loadPlaytestHistory() {
+    fetch('/chatbot/api/debug/playtest/history')
+    .then(r => r.json())
+    .then(data => {
+        const container = document.getElementById('ptHistoryList');
+        const wrapper = document.getElementById('ptHistory');
+        if (data.conversations && data.conversations.length > 0) {
+            wrapper.style.display = '';
+            container.innerHTML = data.conversations.map(c =>
+                `<a href="/chatbot/conversation/${c.id}">
+                    <i class="fas fa-comments"></i> #${c.id} — ${c.guest_name} — ${c.created_at}
+                </a>`
+            ).join('');
+        }
+    })
+    .catch(() => {});
+}
 
 // Initial load
 refreshAll();

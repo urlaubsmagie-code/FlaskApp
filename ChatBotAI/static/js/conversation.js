@@ -336,8 +336,17 @@ document.addEventListener('click', function(e) {
 loadReplyTemplates();
 loadPropertySelector();
 
+let sendInProgress = false;
+
 function sendMessage(e) {
     e.preventDefault();
+    // Double-click guard: a ms-unique tempId is not enough on slow networks.
+    // Re-enabling the form happens in fetch().finally() in the per-platform
+    // sender, so we rely on this top-level flag to reject re-entry until
+    // the previous send fully resolves.
+    if (sendInProgress) {
+        return;
+    }
     const input = document.getElementById('messageInput');
     const content = input.value.trim();
 
@@ -345,6 +354,11 @@ function sendMessage(e) {
         pendingCorrectionOriginal = null;
         return;
     }
+
+    sendInProgress = true;
+    // Safety release in case a downstream sender forgets to clear it.
+    // The actual release also happens in each sender's .finally().
+    setTimeout(() => { sendInProgress = false; }, 30000);
 
     const tempId = Date.now();
     addMessageToUI({ id: tempId, content: content, sent_at: new Date().toISOString() }, 'owner');
@@ -391,7 +405,8 @@ function sendLocal(content, tempId, correctionOriginal) {
     .catch(err => {
         console.error('Failed to send message:', err);
         showNotification(i18n.t('conversation.sendFailed'), 'error');
-    });
+    })
+    .finally(() => { sendInProgress = false; });
 }
 
 function sendViaGmail(content, tempId, correctionOriginal) {
@@ -429,7 +444,8 @@ function sendViaGmail(content, tempId, correctionOriginal) {
     .catch(err => {
         console.error('Gmail send error, falling back to local:', err);
         sendLocal(content, tempId, correctionOriginal);
-    });
+    })
+    .finally(() => { sendInProgress = false; });
 }
 
 function sendViaSmoobu(content, tempId, correctionOriginal) {
@@ -447,6 +463,7 @@ function sendViaSmoobu(content, tempId, correctionOriginal) {
     .then(data => {
         if (data.error) {
             console.warn('Smoobu send failed, falling back to local:', data.error);
+            showNotification('Nachricht konnte nicht über Smoobu gesendet werden – nur lokal gespeichert', 'error', 5000);
             sendLocal(content, tempId, correctionOriginal);
             return;
         }
@@ -463,8 +480,10 @@ function sendViaSmoobu(content, tempId, correctionOriginal) {
     })
     .catch(err => {
         console.error('Smoobu send error, falling back to local:', err);
+        showNotification('Nachricht konnte nicht über Smoobu gesendet werden – nur lokal gespeichert', 'error', 5000);
         sendLocal(content, tempId, correctionOriginal);
-    });
+    })
+    .finally(() => { sendInProgress = false; });
 }
 
 // Active AbortControllers for AI requests
@@ -477,7 +496,12 @@ function showAiError(message) {
 
     const banner = document.createElement('div');
     banner.className = 'ai-error-banner';
-    banner.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${message}`;
+    // Build safely: icon as element, message as textContent so any HTML in
+    // the API error string is rendered as plain text (defense-in-depth XSS).
+    const icon = document.createElement('i');
+    icon.className = 'fas fa-exclamation-triangle';
+    banner.appendChild(icon);
+    banner.appendChild(document.createTextNode(' ' + (message == null ? '' : String(message))));
     banner.style.cssText = 'background:#991b1b;color:#fff;padding:8px 16px;border-radius:6px;margin-bottom:8px;font-size:0.9em;display:flex;align-items:center;gap:8px;';
     container.insertBefore(banner, container.firstChild);
     setTimeout(() => banner.remove(), 6000);
@@ -744,6 +768,41 @@ function toggleAutoRespond() {
     .catch(err => console.error('Failed to toggle auto-respond:', err));
 }
 
+function extractKnowledge(messageId) {
+    const msgDiv = document.querySelector(`[data-message-id="${messageId}"]`);
+    const btn = msgDiv ? msgDiv.querySelector('.btn-extract-knowledge') : null;
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    }
+
+    fetch(`/chatbot/api/messages/${messageId}/extract-knowledge`, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) {
+            showNotification(data.error, 'error', 4000);
+        } else if (data.saved === 0) {
+            showNotification(i18n.t('conversation.knowledge.nothingFound'), 'info', 3000);
+        } else {
+            showNotification(
+                i18n.t('conversation.knowledge.saved').replace('{count}', data.saved),
+                'success', 4000
+            );
+        }
+    })
+    .catch(err => {
+        console.error('Knowledge extraction failed:', err);
+        showNotification(i18n.t('conversation.knowledge.extractFailed'), 'error', 4000);
+    })
+    .finally(() => {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-graduation-cap"></i>';
+        }
+    });
+}
+
 function syncConversation() {
     const syncBtn = document.getElementById('syncBtn');
     const mobileSyncBtn = document.getElementById('mobileSyncBtn');
@@ -932,14 +991,21 @@ function addMessageToUI(message, senderType) {
         time = new Date().toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
 
-    const perMsgSuggestBtn = actualSenderType === 'guest' && message.id
-        ? `<button class="btn-suggest-for-message" onclick="suggestForMessage(${message.id})"
+    let perMsgActionBtn = '';
+    if (actualSenderType === 'guest' && message.id) {
+        perMsgActionBtn = `<button class="btn-suggest-for-message" onclick="suggestForMessage(${message.id})"
             data-i18n-title="conversation.ai.suggestForMessage"
             title="${i18n.t('conversation.ai.suggestForMessage')}"
             ${!aiEnabled ? 'disabled' : ''}>
             <i class="fas fa-lightbulb"></i>
-           </button>`
-        : '';
+           </button>`;
+    } else if ((actualSenderType === 'owner' || actualSenderType === 'ai') && message.id) {
+        perMsgActionBtn = `<button class="btn-extract-knowledge" onclick="extractKnowledge(${message.id})"
+            data-i18n-title="conversation.knowledge.extract"
+            title="${i18n.t('conversation.knowledge.extract')}">
+            <i class="fas fa-graduation-cap"></i>
+           </button>`;
+    }
     messageDiv.innerHTML = `
         <div class="message-avatar"><i class="fas ${icon}"></i></div>
         <div class="message-content">
@@ -949,7 +1015,7 @@ function addMessageToUI(message, senderType) {
             </div>
             <div class="message-text">${escapeHtml(message.content || '')}</div>
         </div>
-        ${perMsgSuggestBtn}
+        ${perMsgActionBtn}
     `;
 
     // Pending approval styling
@@ -1522,4 +1588,95 @@ function startGuidedTour() {
 
     // Small delay to let menu close
     setTimeout(() => GuidedTour.start(), 100);
+}
+
+// ============================================================================
+// PLAYTEST MODE
+// ============================================================================
+
+const isPlaytest = window.CONV_CONFIG?.isPlaytest || false;
+let playtestEventCursor = 0;
+let playtestEventPoller = null;
+
+if (isPlaytest) {
+    // Start polling events immediately
+    playtestEventPoller = setInterval(playtestPollEvents, 1000);
+}
+
+function playtestSendAsGuest() {
+    const input = document.getElementById('playtestGuestInput');
+    const content = input.value.trim();
+    if (!content) return;
+
+    const btn = document.getElementById('playtestGuestSendBtn');
+    btn.disabled = true;
+    input.value = '';
+
+    fetch(`/chatbot/api/debug/playtest/${conversationId}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: content, role: 'guest' })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            showNotification('Fehler: ' + (data.error || 'Unbekannt'), 'error');
+        }
+        // Message will appear via normal polling
+    })
+    .catch(err => {
+        showNotification('Fehler: ' + err.message, 'error');
+    })
+    .finally(() => {
+        btn.disabled = false;
+    });
+}
+
+function playtestToggleEventLog() {
+    const panel = document.getElementById('playtestEventPanel');
+    panel.style.display = panel.style.display === 'none' ? '' : 'none';
+}
+
+function playtestPollEvents() {
+    if (!isPlaytest) return;
+
+    fetch(`/chatbot/api/debug/playtest/${conversationId}/events?since=${playtestEventCursor}`)
+    .then(r => r.json())
+    .then(data => {
+        if (data.events && data.events.length > 0) {
+            const container = document.getElementById('playtestEventList');
+            if (!container) return;
+            data.events.forEach(ev => {
+                const div = document.createElement('div');
+                div.className = 'playtest-event';
+
+                let timeStr = '';
+                if (ev.timestamp) {
+                    const d = new Date(ev.timestamp * 1000);
+                    timeStr = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                }
+
+                let typeClass = 'info';
+                const et = ev.event_type;
+                if (et.includes('stored') || et === 'conversation_created') typeClass = 'stored';
+                else if (et.includes('ai') || et === 'acknowledgment_skipped') typeClass = 'ai';
+                else if (et.includes('dedup')) typeClass = 'dedup';
+                else if (et.includes('escalation')) typeClass = 'escalation';
+                else if (et.includes('filter') || et === 'context_filter') typeClass = 'filter';
+                else if (et.includes('approval')) typeClass = 'approval';
+                else if (et.includes('memory')) typeClass = 'memory';
+
+                const escape = str => { const d2 = document.createElement('div'); d2.textContent = str; return d2.innerHTML; };
+                div.innerHTML =
+                    `<span class="ev-time">${timeStr}</span>` +
+                    `<span class="ev-type ${typeClass}">${escape(et)}</span>` +
+                    `<span class="ev-detail">${escape(ev.detail)}</span>`;
+
+                container.appendChild(div);
+                container.scrollTop = container.scrollHeight;
+            });
+            playtestEventCursor = data.cursor;
+        }
+    })
+    .catch(() => {});
 }

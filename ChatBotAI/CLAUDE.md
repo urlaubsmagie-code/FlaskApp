@@ -92,3 +92,29 @@ Key environment variables:
 4. **Services use global instances** initialized at app startup, retrieved via `get_*_service()` functions
 
 5. **AI responses include full context**: guest profile, property info, and recent conversation history
+
+## Open Audits / Pending Triage
+
+### Deep Scan — 2026-05-21 (read-only, no code changed)
+Five parallel subagents audited security, backend, frontend, data layer, and dependencies. Findings logged for later triage; user reviews before any fix is applied.
+
+**Reports (in ChatBotAI/ root):**
+- `SCAN_2026-05-21_MASTER.md` — consolidated triage, severity rollup, suggested wave order
+- `SCAN_2026-05-21_security.md` — 15 findings (HIGH: missing @login_required on ~10 API routes, no CSRF, Smoobu webhook unverified, weak session cookies, SECRET_KEY fallback)
+- `SCAN_2026-05-21_backend.md` — 27 findings (CRITICAL: session leak in background daemon, guest-dedup race, unread reconciliation orders by id not sent_at, silent AI commit failures)
+- `SCAN_2026-05-21_frontend.md` — 17 findings (CRITICAL: 2 innerHTML XSS sinks in inbox.js:522 + conversation.js:482; HIGH: polling listener leaks, send double-click race)
+- `SCAN_2026-05-21_data.md` — 16 findings (CRITICAL: migration p16 cancelled_at not applied to prod DB, Conversation.updated_at missing onupdate)
+- `SCAN_2026-05-21_dependencies.md` — actionable CVEs in cryptography (<46), Werkzeug (<3.0.6), waitress (<3.0.2), requests (<2.32.4), Jinja2 unpinned
+
+**Totals:** ~84 findings — CRIT 8 / HIGH 21 / MED 35 / LOW 17 / INFO 3.
+
+**Suggested wave order (not yet executed):**
+- Wave A — prod-safety/data integrity (items 1–5, 7 in MASTER)
+- Wave B — auth decorators across routes.py (item 8)
+- Wave C — XSS sinks + CSP (item 6)
+- Wave D — CVE bumps (cryptography / Werkzeug / waitress / Jinja2)
+- Wave E — backend hardening (Smoobu retry parsing, AI semaphore deadline, webhook sig)
+- Wave F — CSRF + secure cookies (Flask-WTF integration)
+- Wave G — frontend polish (polling guard, listener delegation, send-flag)
+
+**Status:** awaiting user decision on which waves to execute. Do NOT auto-fix; user wants to drive selection from the MASTER log.

@@ -426,8 +426,30 @@ class MemoryService:
                     guest.booking_id = platform_id
 
             db.session.add(guest)
-            db.session.commit()
-            logger.info(f"Created new guest: {guest.id}")
+            try:
+                db.session.commit()
+                logger.info(f"Created new guest: {guest.id}")
+            except Exception as e:
+                # Concurrent insert race (e.g. partial unique on smoobu_guest_id,
+                # or email unique). Re-query and reuse the winning row.
+                from sqlalchemy.exc import IntegrityError
+                if not isinstance(e, IntegrityError):
+                    raise
+                db.session.rollback()
+                logger.info(f"Guest insert race on concurrent insert, re-querying: {e}")
+                if email:
+                    guest = Guest.query.filter_by(email=email).first()
+                if not guest and phone:
+                    guest = Guest.query.filter_by(phone=phone).first()
+                if not guest and platform and platform_id:
+                    if platform == 'whatsapp':
+                        guest = Guest.query.filter_by(whatsapp_id=platform_id).first()
+                    elif platform == 'airbnb':
+                        guest = Guest.query.filter_by(airbnb_id=platform_id).first()
+                    elif platform == 'booking':
+                        guest = Guest.query.filter_by(booking_id=platform_id).first()
+                if not guest:
+                    raise
 
         # Update contact info if we have new data
         else:

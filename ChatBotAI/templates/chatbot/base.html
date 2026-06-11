@@ -17,7 +17,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('chatbot.static', filename='css/style.css') }}?v=46">
+    <link rel="stylesheet" href="{{ url_for('chatbot.static', filename='css/style.css') }}?v=50">
 
     {% block extra_css %}{% endblock %}
 </head>
@@ -56,6 +56,13 @@
                     <a href="{{ url_for('chatbot.knowledge_base') }}" class="nav-link {% if request.endpoint == 'chatbot.knowledge_base' %}active{% endif %}">
                         <i class="fas fa-book"></i>
                         <span data-i18n="nav.knowledge">Wissensdatenbank</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('chatbot.email_review') }}" class="nav-link {% if request.endpoint == 'chatbot.email_review' %}active{% endif %}">
+                        <i class="fas fa-envelope-open-text"></i>
+                        <span data-i18n="nav.emailReview">E-Mail-Abgleich</span>
+                        <span id="emailReviewBadge" class="nav-badge" style="display:none"></span>
                     </a>
                 </li>
                 <li class="nav-item">
@@ -240,9 +247,23 @@
     </script>
 
     <!-- Scripts -->
-    <script src="{{ url_for('chatbot.static', filename='js/i18n.js') }}?v=21"></script>
+    <script src="{{ url_for('chatbot.static', filename='js/i18n.js') }}?v=26"></script>
     <script src="{{ url_for('chatbot.static', filename='js/app.js') }}?v=13"></script>
     {% block extra_js %}{% endblock %}
+
+    <script>
+    (function refreshEmailReviewBadge() {
+      fetch('/chatbot/api/email-review/pending-count')
+        .then(function(r) { return r.ok ? r.json() : {count: 0}; })
+        .then(function(d) {
+          var b = document.getElementById('emailReviewBadge');
+          if (!b) return;
+          if (d.count > 0) { b.textContent = d.count; b.style.display = ''; }
+          else { b.style.display = 'none'; }
+        }).catch(function() {});
+      setTimeout(refreshEmailReviewBadge, 60000);
+    })();
+    </script>
 
     <script>
         // Check AI status on page load

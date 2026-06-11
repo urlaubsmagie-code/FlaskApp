@@ -199,6 +199,17 @@
                     </select>
                 </div>
 
+                <!-- Reasoning Model Selector (optional) -->
+                <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 15px;">
+                    <div class="setting-info">
+                        <label for="reasoningModelSelect" data-i18n="settings.model.reasoning">Reasoning-Modell (optional)</label>
+                        <p class="setting-description" data-i18n="settings.model.reasoning.desc">Für Speicher-Extraktion, Zusammenfassungen und Wissens-Extraktion. Auf „Standard" lassen, um das Hauptmodell für alles zu verwenden.</p>
+                    </div>
+                    <select id="reasoningModelSelect" class="setting-select" style="width: 100%;">
+                        <option value="" data-i18n="settings.model.reasoning.default">Standard (wie Hauptmodell)</option>
+                    </select>
+                </div>
+
                 <!-- Resource Info for Selected Model -->
                 <div class="model-resource-info" id="modelResourceInfo" style="display: none;">
                     <div class="resource-grid">
@@ -434,6 +445,70 @@ confirmation</textarea>
                 </form>
             </div>
         </div>
+        <!-- Email Reconciliation -->
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i class="fas fa-envelope-open-text"></i> <span data-i18n="emailReview.title">E-Mail-Abgleich</span></h2>
+            </div>
+            <div class="card-body">
+                <p class="help-text" style="margin-bottom: 15px;" data-i18n="emailReview.subtitle">
+                    Nachrichten aus Airbnb-/Booking-E-Mails, die Smoobu evtl. verpasst hat.
+                </p>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="emailReconcileEnabled" data-i18n="settings.emailReconcile.enabled">E-Mail-Abgleich aktivieren</label>
+                        <p class="setting-description" data-i18n="settings.emailReconcile.enabled.desc">Eingehende Plattform-E-Mails auf fehlende Nachrichten prüfen und vorschlagen</p>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="emailReconcileEnabled" name="email_reconcile_enabled"
+                            onchange="saveToggleSetting('email_reconcile_enabled', this.checked)"
+                            {% if settings|selectattr('key', 'equalto', 'email_reconcile_enabled')|map(attribute='value')|first == 'true' %}checked{% endif %}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="emailAutoinsertBooking" data-i18n="settings.emailReconcile.autoinsertBooking">Booking.com-Treffer automatisch einfügen</label>
+                        <p class="setting-description" data-i18n="settings.emailReconcile.autoinsertBooking.desc">Gefundene Booking.com-Nachrichten ohne manuelle Bestätigung direkt einfügen</p>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="emailAutoinsertBooking" name="email_autoinsert_booking"
+                            onchange="saveToggleSetting('email_autoinsert_booking', this.checked)"
+                            {% if settings|selectattr('key', 'equalto', 'email_autoinsert_booking')|map(attribute='value')|first != 'false' %}checked{% endif %}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="emailAutoinsertAirbnb" data-i18n="settings.emailReconcile.autoinsertAirbnb">Airbnb-Treffer automatisch einfügen (sobald zuverlässig)</label>
+                        <p class="setting-description" data-i18n="settings.emailReconcile.autoinsertAirbnb.desc">Gefundene Airbnb-Nachrichten ohne manuelle Bestätigung direkt einfügen — erst aktivieren, wenn die Trefferquote gut ist</p>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="emailAutoinsertAirbnb" name="email_autoinsert_airbnb"
+                            onchange="saveToggleSetting('email_autoinsert_airbnb', this.checked)"
+                            {% if settings|selectattr('key', 'equalto', 'email_autoinsert_airbnb')|map(attribute='value')|first == 'true' %}checked{% endif %}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="emailConfidenceThreshold" data-i18n="settings.emailReconcile.confidenceThreshold">Mindest-Konfidenz</label>
+                        <p class="setting-description" data-i18n="settings.emailReconcile.confidenceThreshold.desc">Nur Treffer mit mindestens diesem Konfidenzscore vorschlagen (0.0–1.0, Standard 0.8)</p>
+                    </div>
+                    <div class="range-with-value">
+                        <input type="range" id="emailConfidenceThreshold" name="email_confidence_threshold"
+                            min="0" max="1" step="0.05"
+                            value="{{ settings|selectattr('key', 'equalto', 'email_confidence_threshold')|map(attribute='value')|first or '0.8' }}"
+                            oninput="document.getElementById('confidenceValue').textContent = parseFloat(this.value).toFixed(2); saveRangeSetting('email_confidence_threshold', this.value)">
+                        <span class="range-value" id="confidenceValue">{{ settings|selectattr('key', 'equalto', 'email_confidence_threshold')|map(attribute='value')|first or '0.8' }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
         {% endif %}
     </div>
 </div>
@@ -442,6 +517,26 @@ confirmation</textarea>
     // ============================================
     // Instant-save for global AI toggles
     // ============================================
+
+    function saveRangeSetting(key, value) {
+        const data = {};
+        data[key] = String(value);
+
+        fetch('/chatbot/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (!result.success) {
+                showNotification('Failed to save setting', 'error');
+            }
+        })
+        .catch(err => {
+            showNotification('Error: ' + err.message, 'error');
+        });
+    }
 
     function saveToggleSetting(key, checked) {
         const data = {};
@@ -569,6 +664,20 @@ confirmation</textarea>
                     select.appendChild(option);
                 });
 
+                // Populate reasoning model selector
+                const reasoningSelect = document.getElementById('reasoningModelSelect');
+                if (reasoningSelect) {
+                    const currentReasoning = data.reasoning_model || '';
+                    reasoningSelect.innerHTML = '<option value="">Standard (wie Hauptmodell)</option>';
+                    installedModels.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m.name;
+                        opt.textContent = m.name;
+                        if (m.name === currentReasoning) opt.selected = true;
+                        reasoningSelect.appendChild(opt);
+                    });
+                }
+
                 // Show resource info for current selection
                 updateModelInfo();
 
@@ -584,6 +693,25 @@ confirmation</textarea>
     }
 
     document.getElementById('modelSelect').addEventListener('change', updateModelInfo);
+
+    document.getElementById('reasoningModelSelect')?.addEventListener('change', function() {
+        const value = this.value;
+        fetch('/chatbot/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: 'reasoning_model', value: value })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const label = value || 'Standard';
+                showNotification('Reasoning-Modell: ' + label, 'success');
+            } else {
+                showNotification('Error: ' + (data.error || 'Failed'), 'error');
+            }
+        })
+        .catch(err => showNotification('Error: ' + err.message, 'error'));
+    });
 
     function updateModelInfo() {
         const select = document.getElementById('modelSelect');

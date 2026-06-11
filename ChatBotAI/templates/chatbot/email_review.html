@@ -1,0 +1,61 @@
+{% extends "chatbot/base.html" %}
+
+{% block title %}E-Mail-Abgleich{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1><i class="fas fa-envelope-open-text"></i> <span data-i18n="emailReview.title">E-Mail-Abgleich</span></h1>
+  <p class="page-subtitle" data-i18n="emailReview.subtitle">
+    Nachrichten aus Airbnb-/Booking-E-Mails, die Smoobu evtl. verpasst hat.
+  </p>
+</div>
+
+{% if not rows %}
+  <div class="empty-state" data-i18n="emailReview.empty">Nichts zu überprüfen.</div>
+{% else %}
+  <div class="email-review-list">
+    {% for row in rows %}
+    <div class="email-review-card" data-candidate-id="{{ row.candidate.id }}">
+      <div class="erc-head">
+        <span class="erc-platform erc-{{ row.candidate.platform }}">{{ row.candidate.platform }}</span>
+        <span class="erc-conf">{{ '%.0f' % (row.candidate.confidence * 100) }}%</span>
+        <span class="erc-time">{{ row.candidate.parsed_timestamp }}</span>
+      </div>
+      <div class="erc-name">{{ row.candidate.parsed_name }}</div>
+      <div class="erc-text">{{ row.candidate.parsed_text }}</div>
+      <div class="erc-match">
+        {% if row.conversation %}
+          &rarr; <a href="{{ url_for('chatbot.conversation_view', conversation_id=row.conversation.id) }}">
+              {{ row.guest.name if row.guest else 'Konversation' }} #{{ row.conversation.id }}</a>
+        {% else %}
+          <span class="erc-nomatch" data-i18n="emailReview.noMatch">keine Konversation gefunden</span>
+        {% endif %}
+      </div>
+      <div class="erc-actions">
+        <button class="btn btn-primary" onclick="confirmCandidate({{ row.candidate.id }})"
+                data-i18n="emailReview.confirm">Bestätigen</button>
+        <button class="btn btn-secondary" onclick="rejectCandidate({{ row.candidate.id }})"
+                data-i18n="emailReview.reject">Verwerfen</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<script>
+async function _post(url) {
+  const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}});
+  return r.ok;
+}
+async function confirmCandidate(id) {
+  if (await _post(`/chatbot/api/email-review/${id}/confirm`)) {
+    document.querySelector(`[data-candidate-id="${id}"]`)?.remove();
+  }
+}
+async function rejectCandidate(id) {
+  if (await _post(`/chatbot/api/email-review/${id}/reject`)) {
+    document.querySelector(`[data-candidate-id="${id}"]`)?.remove();
+  }
+}
+</script>
+{% endblock %}
