@@ -863,6 +863,30 @@ function resolveEscalation() {
     .catch(err => console.error('Failed to resolve escalation:', err));
 }
 
+// Inject the escalation banner live (no page refresh) when a conversation
+// becomes escalated mid-session — via polling or a playtest auto-reply.
+// Idempotent: does nothing if the banner is already present.
+function ensureEscalationBanner() {
+    if (document.getElementById('escalationBanner')) return;
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+    const bannerText = (window.i18n && i18n.t('conversation.escalation.banner'))
+        || 'Dieses Gespräch wurde eskaliert und benötigt Ihre Aufmerksamkeit.';
+    const resolveText = (window.i18n && i18n.t('conversation.escalation.resolve'))
+        || 'Als gelöst markieren';
+    const banner = document.createElement('div');
+    banner.className = 'escalation-banner';
+    banner.id = 'escalationBanner';
+    banner.innerHTML =
+        '<i class="fas fa-exclamation-triangle"></i>' +
+        '<span data-i18n="conversation.escalation.banner"></span>' +
+        '<button class="btn btn-sm btn-resolve" onclick="resolveEscalation()" data-i18n="conversation.escalation.resolve"></button>';
+    banner.querySelector('span').textContent = bannerText;
+    banner.querySelector('button').textContent = resolveText;
+    container.insertBefore(banner, container.firstChild);
+    showNotification(bannerText, 'warning');
+}
+
 // =========================================================================
 // Approval Queue Functions
 // =========================================================================
@@ -1106,6 +1130,7 @@ const messagePoller = new PollingManager({
     },
     onUpdate: (data) => {
         updateMessages(data.messages);
+        if (data.escalated) ensureEscalationBanner();
     },
     interval: 10000
 });
@@ -1612,17 +1637,29 @@ function playtestSendAsGuest() {
     btn.disabled = true;
     input.value = '';
 
+    const autoReply = document.getElementById('playtestAutoReply')?.checked || false;
+
     fetch(`/chatbot/api/debug/playtest/${conversationId}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: content, role: 'guest' })
+        body: JSON.stringify({ content: content, role: 'guest', auto_reply: autoReply })
     })
     .then(r => r.json())
     .then(data => {
         if (!data.success) {
             showNotification('Fehler: ' + (data.error || 'Unbekannt'), 'error');
+        } else if (autoReply && data.ai_success === false) {
+            showNotification('Auto-Antwort fehlgeschlagen: ' + (data.ai_error || 'Unbekannt'), 'error');
         }
-        // Message will appear via normal polling
+        // Pull the new guest + AI messages immediately instead of waiting for
+        // the next 10s poll. The poller renders messages first, THEN injects
+        // the escalation banner — so the order matches the backend (message
+        // saved first, escalation flag last) and never shows the banner before
+        // UMI's reply.
+        if (typeof messagePoller !== 'undefined') {
+            messagePoller.stop();
+            messagePoller.start();
+        }
     })
     .catch(err => {
         showNotification('Fehler: ' + err.message, 'error');
@@ -1630,6 +1667,40 @@ function playtestSendAsGuest() {
     .finally(() => {
         btn.disabled = false;
     });
+}
+
+function playtestSaveNote() {
+    const ta = document.getElementById('playtestNote');
+    if (!ta) return;
+    const btn = document.getElementById('playtestNoteSaveBtn');
+    btn.disabled = true;
+    fetch(`/chatbot/api/debug/playtest/${conversationId}/note`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: ta.value })
+    })
+    .then(r => r.json())
+    .then(data => {
+        showNotification(data.success ? 'Notiz gespeichert' : 'Fehler beim Speichern', data.success ? 'success' : 'error');
+    })
+    .catch(err => showNotification('Fehler: ' + err.message, 'error'))
+    .finally(() => { btn.disabled = false; });
+}
+
+function playtestExportLog() {
+    const btn = document.getElementById('playtestExportBtn');
+    btn.disabled = true;
+    fetch(`/chatbot/api/debug/playtest/export`, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(`Export OK: ${data.count} Chat(s) → PLAYTEST_LOG.md`, 'success');
+        } else {
+            showNotification('Export fehlgeschlagen', 'error');
+        }
+    })
+    .catch(err => showNotification('Fehler: ' + err.message, 'error'))
+    .finally(() => { btn.disabled = false; });
 }
 
 function playtestToggleEventLog() {

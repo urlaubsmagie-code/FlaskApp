@@ -3822,6 +3822,11 @@ dialog.merge-modal {
 .playtest-guest-send input { flex: 1; padding: 6px 10px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 0.85em; }
 .playtest-guest-send button { white-space: nowrap; background: #3b82f6; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.8em; cursor: pointer; }
 .playtest-guest-send button:hover { background: #2563eb; }
+.playtest-autoreply { display: inline-flex; align-items: center; gap: 5px; font-size: 0.8em; font-weight: 600; color: #92400e; white-space: nowrap; cursor: pointer; }
+.playtest-autoreply input { cursor: pointer; }
+.playtest-note-row { display: flex; gap: 6px; align-items: flex-start; padding: 0 14px 8px; }
+.playtest-note { flex: 1; padding: 6px 10px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 0.85em; resize: vertical; font-family: inherit; }
+.playtest-note-row button { white-space: nowrap; }
 .playtest-event-panel { border-top: 1px solid #fcd34d; max-height: 250px; display: flex; flex-direction: column; }
 .playtest-event-panel .playtest-events-header { padding: 6px 14px; border-bottom: 1px solid #fcd34d; display: flex; align-items: center; justify-content: space-between; background: #fef9c3; }
 .playtest-event-panel .playtest-events-header h3 { margin: 0; font-size: 0.85em; }
@@ -3845,4 +3850,6 @@ dialog.merge-modal {
 [data-theme="dark"] .playtest-event-panel .ev-detail { color: #fbbf24; }
 [data-theme="dark"] .playtest-event-panel .ev-time { color: #fbbf24; }
 [data-theme="dark"] .playtest-guest-send input { background: #1a1a2e; border-color: #92400e; color: #e5e7eb; }
+[data-theme="dark"] .playtest-note { background: #1a1a2e; border-color: #92400e; color: #e5e7eb; }
+[data-theme="dark"] .playtest-autoreply { color: #fbbf24; }
 

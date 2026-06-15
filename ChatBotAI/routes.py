@@ -305,6 +305,10 @@ def conversation_view(conversation_id):
 
     approval_queue_enabled = AISettings.get('approval_queue_enabled', 'true') != 'false'
     is_playtest = conversation.platform == 'playtest'
+    playtest_note = ''
+    if is_playtest:
+        from .services.playtest_export import load_notes
+        playtest_note = load_notes(current_app.instance_path).get(str(conversation.id), '')
 
     return render_template(
         'chatbot/conversation.html',
@@ -316,7 +320,8 @@ def conversation_view(conversation_id):
         has_older=has_older,
         total_messages=total_messages,
         approval_queue_enabled=approval_queue_enabled,
-        is_playtest=is_playtest
+        is_playtest=is_playtest,
+        playtest_note=playtest_note
     )
 
 
@@ -571,6 +576,12 @@ def api_playtest_message(conversation_id):
 
     content = data['content'].strip()
     role = data.get('role', 'guest')
+    # Playtest-only auto-reply: when the playtest "Auto-Antwort" toggle is on we
+    # generate an AI reply right after storing the guest message. This is an
+    # isolated world — it calls generate_ai_response_for_conversation() directly
+    # and never consults the global master_ai_enabled switch, so it cannot make
+    # real guest conversations auto-respond.
+    auto_reply = bool(data.get('auto_reply', False))
     router = get_message_router()
 
     if role == 'guest':
@@ -584,10 +595,30 @@ def api_playtest_message(conversation_id):
             auto_respond=False,
             skip_push=True
         )
-        return jsonify({
+        response = {
             'message_id': result.get('message_id'),
             'success': result.get('success', False)
-        })
+        }
+        if auto_reply and result.get('success'):
+            from .services.playtest_events import playtest_log
+            # Make THIS playtest conversation auto-send (skip the approval queue)
+            # so the full pipeline — including escalation — runs end to end. This
+            # is a per-conversation flag on a platform='playtest' chat only: it
+            # never changes the global UMI-Freigabe setting or any real chat.
+            if not conversation.auto_approve:
+                conversation.auto_approve = True
+                db.session.commit()
+            playtest_log(conversation.id, 'auto_reply',
+                         'Playtest auto-reply ON — auto-approve set, generating AI response')
+            ai_result = router.generate_ai_response_for_conversation(conversation.id)
+            response['ai_message_id'] = ai_result.get('message_id')
+            response['ai_success'] = ai_result.get('success', False)
+            if not ai_result.get('success'):
+                response['ai_error'] = ai_result.get('error')
+            # Surface escalation so the playtest UI can show the banner instantly.
+            db.session.refresh(conversation)
+            response['escalated'] = conversation.escalated
+        return jsonify(response)
     elif role == 'host':
         result = router.process_owner_message(
             conversation_id=conversation_id,
@@ -652,6 +683,32 @@ def api_playtest_messages(conversation_id):
     return jsonify({
         'messages': [m.to_dict() for m in messages]
     })
+
+
+@chatbot_bp.route('/api/debug/playtest/<int:conversation_id>/note', methods=['POST'])
+@admin_required
+def api_playtest_note(conversation_id):
+    """Save a free-text review note for a playtest conversation."""
+    from .services.playtest_export import save_note
+
+    conversation = Conversation.query.get_or_404(conversation_id)
+    if conversation.platform != 'playtest':
+        return jsonify({'error': 'Not a playtest conversation'}), 400
+
+    data = request.get_json() or {}
+    note = (data.get('note') or '').strip()
+    save_note(current_app.instance_path, conversation_id, note)
+    return jsonify({'success': True})
+
+
+@chatbot_bp.route('/api/debug/playtest/export', methods=['POST'])
+@admin_required
+def api_playtest_export():
+    """Export all playtest conversations to PLAYTEST_LOG.md for later review."""
+    from .services.playtest_export import export_playtest_log
+
+    result = export_playtest_log(current_app._get_current_object())
+    return jsonify(result)
 
 
 # ============================================================================
@@ -905,7 +962,8 @@ def api_get_messages(conversation_id):
         messages = query.order_by(Message.sent_at.asc()).all()
         return jsonify({
             'conversation_id': conversation_id,
-            'messages': [m.to_dict() for m in messages]
+            'messages': [m.to_dict() for m in messages],
+            'escalated': conversation.escalated
         })
 
     if before_id:
@@ -917,7 +975,8 @@ def api_get_messages(conversation_id):
         return jsonify({
             'conversation_id': conversation_id,
             'messages': [m.to_dict() for m in messages],
-            'has_more': has_more
+            'has_more': has_more,
+            'escalated': conversation.escalated
         })
 
     # Default: return last N messages
@@ -925,7 +984,8 @@ def api_get_messages(conversation_id):
     messages.reverse()
     return jsonify({
         'conversation_id': conversation_id,
-        'messages': [m.to_dict() for m in messages]
+        'messages': [m.to_dict() for m in messages],
+        'escalated': conversation.escalated
     })
 
 
@@ -1196,6 +1256,8 @@ def api_generate_ai_response(conversation_id):
             resolved_topics=filtered.resolved_topics,
             is_closing=filtered.is_closing,
         )
+        if ai_response:
+            ai_response, _ = ai_service.parse_escalation(ai_response)
 
         if not ai_response:
             return jsonify({'error': 'AI response timed out. The model may be loading - try again.'}), 504
@@ -1432,6 +1494,8 @@ def api_suggest_ai_response(conversation_id):
             resolved_topics=filtered.resolved_topics,
             is_closing=filtered.is_closing,
         )
+        if ai_response:
+            ai_response, _ = ai_service.parse_escalation(ai_response)
 
         if not ai_response:
             return jsonify({'error': 'AI response timed out. The model may be loading - try again.'}), 504
@@ -1515,25 +1579,88 @@ def api_suggest_for_message(conversation_id):
         # Clean target message content
         target_content = target_message.content or ''
 
-        # Generate with slimmed-down context: no KB, no reservation, no corrections,
-        # no summary, no resolved topics — just history + profile + property + instructions
-        ai_response = ai_service.generate_guest_response(
+        # Reservation details (Smoobu)
+        reservation_info = None
+        if conversation.platform == 'smoobu' and conversation.smoobu_reservation_id:
+            try:
+                from .services.smoobu_service import get_smoobu_service
+                smoobu = get_smoobu_service()
+                if smoobu and smoobu.is_configured():
+                    reservation_info = smoobu.get_reservation(conversation.smoobu_reservation_id)
+            except Exception as e:
+                logger.warning(f"Failed to fetch Smoobu reservation for per-message suggest: {e}")
+
+        # Knowledge base (exclude corrections)
+        knowledge_entries = []
+        try:
+            kb_query = KnowledgeEntry.query.filter(KnowledgeEntry.category != 'correction')
+            if conversation.property_id:
+                kb_query = kb_query.filter(db.or_(
+                    KnowledgeEntry.property_id.is_(None),
+                    KnowledgeEntry.property_id == conversation.property_id
+                ))
+            else:
+                kb_query = kb_query.filter_by(property_id=None)
+            knowledge_entries = [e.to_dict() for e in
+                                 kb_query.order_by(KnowledgeEntry.category, KnowledgeEntry.sort_order).all()]
+        except Exception as e:
+            logger.warning(f"Failed to load knowledge entries for per-message suggest: {e}")
+
+        # Past corrections
+        corrections = []
+        try:
+            correction_query = KnowledgeEntry.query.filter_by(category='correction')
+            if conversation.property_id:
+                property_corrections = correction_query.filter_by(
+                    property_id=conversation.property_id
+                ).order_by(KnowledgeEntry.created_at.desc()).limit(7).all()
+                global_corrections = KnowledgeEntry.query.filter_by(
+                    category='correction', property_id=None
+                ).order_by(KnowledgeEntry.created_at.desc()).limit(3).all()
+                corrections = [c.to_dict() for c in property_corrections + global_corrections]
+            else:
+                corrections = [c.to_dict() for c in
+                               correction_query.filter_by(property_id=None)
+                               .order_by(KnowledgeEntry.created_at.desc()).limit(10).all()]
+        except Exception as e:
+            logger.warning(f"Failed to load corrections for per-message suggest: {e}")
+
+        conversation_summary = conversation.ai_summary
+
+        # Context filter narrows KB/profile to what's relevant to the target message
+        from .services.context_filter import ContextFilter
+        filtered = ContextFilter.filter(
+            latest_message=target_content,
+            conversation_history=[m.to_dict() for m in messages],
+            knowledge_entries=knowledge_entries,
             guest_profile=profile,
+            property_info=property_info,
+            corrections=corrections,
+            reservation_info=reservation_info,
+        )
+
+        # Generate, still targeting THIS specific message, now with full context.
+        # resolved_topics is deliberately omitted: the host explicitly chose to
+        # answer this message, so we must NOT suppress it as "already resolved".
+        ai_response = ai_service.generate_guest_response(
+            guest_profile=filtered.guest_profile,
             conversation_history=[m.to_dict() for m in messages],
             latest_message=target_content,
-            property_info=property_info,
+            property_info=filtered.property_info,
             tone=tone,
             host_instructions=host_instructions,
             conversation_subject=conversation.subject,
             max_history=max_history,
-            reservation_info=None,
-            knowledge_entries=None,
-            conversation_summary=None,
-            corrections=None,
+            reservation_info=filtered.reservation_info,
+            knowledge_entries=filtered.knowledge_entries,
+            conversation_summary=conversation_summary,
+            corrections=filtered.corrections,
             resolved_topics=None,
             is_closing=False,
             target_message_override=target_content,
         )
+        if ai_response:
+            ai_response, _ = ai_service.parse_escalation(ai_response)
 
         if not ai_response:
             return jsonify({'error': 'AI response timed out. The model may be loading - try again.'}), 504

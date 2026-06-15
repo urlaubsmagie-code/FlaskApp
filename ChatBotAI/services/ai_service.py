@@ -787,6 +787,10 @@ JSON array:"""
             host_instructions: Optional[str] = None,
             reservation_info: Optional[Dict[str, Any]] = None,
             knowledge_entries: Optional[List[Dict[str, Any]]] = None,
+            conversation_summary: Optional[str] = None,
+            corrections: Optional[List[Dict[str, Any]]] = None,
+            resolved_topics: Optional[List[str]] = None,
+            target_message_override: Optional[str] = None,
     ) -> str:
         """Tier-aware guest reply prompt.
 
@@ -825,11 +829,46 @@ JSON array:"""
                         'value_truncated': val,
                     })
 
-        # Recent host replies only — exclude guest messages.
-        host_only = [m for m in conversation_history if m.get('sender_type') in ('owner', 'ai')]
-        recent_host_replies = (
-            self._format_conversation_log(host_only, max_history=2) if host_only else None
-        )
+        # History rendering differs by tier:
+        #  - rich (cloud / large models): full two-sided conversation log so the
+        #    model is aware of the whole recent thread (what the guest asked AND
+        #    what UMI/the host already replied). conversation_history is already
+        #    capped upstream (max_conversation_history, default 10).
+        #  - compact (small local models, e.g. gemma2:9b): stay slim — only the
+        #    last couple of host/AI replies — to keep the model focused on the
+        #    current message and avoid re-answering old turns.
+        conversation_log = None
+        recent_host_replies = None
+        if tier == 'rich':
+            if conversation_history:
+                conversation_log = self._format_conversation_log(
+                    conversation_history, max_history=len(conversation_history)
+                )
+        else:
+            host_only = [m for m in conversation_history if m.get('sender_type') in ('owner', 'ai')]
+            recent_host_replies = (
+                self._format_conversation_log(host_only, max_history=2) if host_only else None
+            )
+
+        # Restored context — RICH tier only (keep compact slim for small models).
+        corrections_text = None
+        resolved_topics_text = None
+        summary_for_template = None
+        if tier == 'rich':
+            if corrections:
+                corrections_text = self._format_corrections(corrections) or None
+            if resolved_topics:
+                resolved_topics_text = "\n".join(f"- {t}" for t in resolved_topics[:8])
+            if conversation_summary:
+                summary_for_template = conversation_summary
+
+        # Per-message suggest: render a "reply to THIS specific message" task.
+        target_message = None
+        if target_message_override:
+            ct = self._strip_html(target_message_override)
+            ct = self._strip_email_quotes(ct)
+            ct = ct.strip() or target_message_override.strip()
+            target_message = ct[:300]
 
         task_text = clean_latest[:300] + ("..." if len(clean_latest) > 300 else "")
 
@@ -844,10 +883,15 @@ JSON array:"""
             host_instructions=(host_instructions.strip() if host_instructions else None),
             knowledge_entries=kb_for_template,
             recent_host_replies=recent_host_replies,
+            conversation_log=conversation_log,
             unanswered_count=unanswered_count,
             task_text=task_text,
             # Rich-tier-only extras (compact ignores them):
             guest_profile=guest_profile,
+            conversation_summary=summary_for_template,
+            corrections_text=corrections_text,
+            resolved_topics_text=resolved_topics_text,
+            target_message=target_message,
         )
 
     def _build_chat_messages(
@@ -906,169 +950,29 @@ JSON array:"""
             max_history
         )
 
-        # --- Prompt mode selection ---
-        # Per-message suggest (lightbulb): uses the full prompt with target_message_override
-        # KI-Vorschlag / KI-Antwort: uses the compact prompt for 8B model focus
-        if not target_message_override:
-            system_content = self._build_guest_reply_prompt(
-                guest_profile=guest_profile,
-                conversation_history=conversation_history,
-                clean_latest=clean_latest,
-                unanswered_count=unanswered_count,
-                tone=tone,
-                host_instructions=host_instructions,
-                reservation_info=reservation_info,
-                knowledge_entries=knowledge_entries,
-            )
-            messages.append({'role': 'system', 'content': system_content})
+        # --- Build the system prompt (tier-aware template — unified for ALL paths) ---
+        # Per-message suggest (lightbulb) goes through the SAME hardened template:
+        # when target_message_override is set, the template renders a "reply to THIS
+        # message" task instead of the latest-message task. The single user turn
+        # below is selected the same way. This replaced a separate legacy builder
+        # that lacked the anti-hallucination hardening and the [[ESCALATE]] marker.
+        system_content = self._build_guest_reply_prompt(
+            guest_profile=guest_profile,
+            conversation_history=conversation_history,
+            clean_latest=clean_latest,
+            unanswered_count=unanswered_count,
+            tone=tone,
+            host_instructions=host_instructions,
+            reservation_info=reservation_info,
+            knowledge_entries=knowledge_entries,
+            conversation_summary=conversation_summary,
+            corrections=corrections,
+            resolved_topics=resolved_topics,
+            target_message_override=target_message_override,
+        )
+        messages.append({'role': 'system', 'content': system_content})
 
-            # User turn: latest guest message(s)
-            if unanswered_count >= 2:
-                trailing_messages = []
-                for msg in reversed(conversation_history):
-                    if msg.get('sender_type') == 'guest':
-                        content = self._strip_html(msg.get('content', ''))
-                        content = self._strip_email_quotes(content)
-                        if content.strip():
-                            trailing_messages.append(content.strip())
-                    else:
-                        break
-                trailing_messages.reverse()
-
-                if len(trailing_messages) >= 2:
-                    numbered = [f"[{i+1}] {text}" for i, text in enumerate(trailing_messages)]
-                    messages.append({'role': 'user', 'content': "\n".join(numbered)})
-                else:
-                    messages.append({'role': 'user', 'content': trailing_messages[0] if trailing_messages else clean_latest})
-            else:
-                messages.append({'role': 'user', 'content': clean_latest})
-
-            return messages
-
-        # --- Per-message suggest: full prompt path (unchanged) ---
-        # Get guest's preferred language if stored
-        guest_language = guest_profile.get('language', None) if guest_profile else None
-
-        # Resolve tone instruction
-        tone_instruction = self.TONE_INSTRUCTIONS.get(tone, self.TONE_INSTRUCTIONS['friendly_professional'])
-
-        # --- Build system prompt ---
-        now = datetime.utcnow()
-        system_parts = [
-            "You are UMI, the friendly AI assistant for Urlaubsmagie vacation rentals. You are warm, helpful, and casual — always treating guests like welcome visitors.",
-            f"{tone_instruction}",
-            f"Current date/time: {now.strftime('%A, %d %B %Y, %H:%M')} UTC.",
-            "",
-            "Rules:",
-            "- Reply ONLY in the SAME LANGUAGE as the guest's message below.",
-            "- Write ONLY the reply text. No subject lines, no 'Subject:', no signatures.",
-            "- NEVER re-ask questions the guest already answered.",
-            "- NEVER repeat information you already provided.",
-            "- If you don't know specific details (WiFi password, door code, prices), say you'll check — NEVER invent details.",
-            "- The CONVERSATION LOG below is for context only — do NOT re-answer old topics.",
-            "- German quality: Write as a native speaker would — natural, fluent, and grammatically correct. Use correct article and case agreement. Use idiomatic phrasing, not literal translations. Include possessive pronouns where natural. Prefer common, everyday vocabulary over stiff or formal constructions.",
-        ]
-
-        if guest_language:
-            system_parts.append(f"- The guest's preferred language is: {guest_language}.")
-
-        # Context sections (conditional) — task instruction comes LAST for model attention
-        if guest_profile:
-            profile_text = self._format_guest_profile(guest_profile)
-            if profile_text:
-                system_parts.append(f"\n=== GUEST PROFILE ===\n{profile_text}\n=== Do NOT ask for info already listed above. ===")
-
-        if property_info:
-            property_text = self._format_property_info(property_info)
-            if property_text:
-                system_parts.append(f"\nProperty details:\n{property_text}")
-
-        if conversation_subject:
-            system_parts.append(f"\nConversation topic: {conversation_subject}")
-
-        if reservation_info:
-            res_text = self._format_reservation_info(reservation_info)
-            if res_text:
-                system_parts.append(f"\n=== RESERVATION ===\n{res_text}\n===")
-
-        if knowledge_entries:
-            regular_entries = [e for e in knowledge_entries if not (e.get('category') or '').startswith('esc')]
-            escalation_entries = [e for e in knowledge_entries if (e.get('category') or '').startswith('esc')]
-
-            if regular_entries:
-                kb_text = self._format_knowledge_entries(regular_entries)
-                if kb_text:
-                    system_parts.append(
-                        f"\n=== HOST KNOWLEDGE BASE (use ONLY facts relevant to the guest's current question) ===\n"
-                        f"{kb_text}\n==="
-                    )
-
-            if escalation_entries:
-                restricted_text = self._format_restricted_topics(escalation_entries)
-                if restricted_text:
-                    system_parts.append(f"\n=== RESTRICTED TOPICS ===\n{restricted_text}\n===")
-
-        if host_instructions and host_instructions.strip():
-            system_parts.append(f"\n=== HOST INSTRUCTIONS ===\n{host_instructions.strip()}\n===")
-
-        if resolved_topics:
-            topics_text = "\n".join(f"- {topic}" for topic in resolved_topics[:8])
-            system_parts.append(
-                f"\n=== ALREADY RESOLVED (do NOT address these topics again) ===\n"
-                f"{topics_text}\n==="
-            )
-
-        if conversation_summary:
-            system_parts.append(
-                f"\n=== CONVERSATION SUMMARY (older messages, for background only) ===\n"
-                f"{conversation_summary}\n==="
-            )
-
-        if corrections:
-            corrections_text = self._format_corrections(corrections)
-            if corrections_text:
-                system_parts.append(f"\n=== PAST CORRECTIONS (you made these mistakes before — don't repeat them) ===\n{corrections_text}\n===")
-
-        # Conversation log — history as read-only text in the system prompt
-        conversation_log = self._format_conversation_log(conversation_history, max_history)
-        if conversation_log:
-            system_parts.append(
-                f"\n=== CONVERSATION LOG (read-only context — do NOT respond to these messages) ===\n"
-                f"{conversation_log}\n==="
-            )
-
-        # Task instruction at the END — models pay most attention to beginning + end
-        system_parts.append("")
-        if target_message_override:
-            clean_target = self._strip_html(target_message_override)
-            clean_target = self._strip_email_quotes(clean_target)
-            if not clean_target.strip():
-                clean_target = target_message_override.strip()
-            system_parts.extend([
-                "=== YOUR TASK ===",
-                "The guest sent the following message. Write a reply specifically to THIS message:",
-                f'"{clean_target[:300]}"',
-                "Focus ONLY on answering this message. Ignore everything else in the conversation.",
-                "===",
-            ])
-        elif unanswered_count >= 2:
-            system_parts.extend([
-                "=== YOUR TASK ===",
-                f"The guest has sent {unanswered_count} unanswered messages below.",
-                "Address ALL of them in a single reply.",
-                "===",
-            ])
-        else:
-            system_parts.extend([
-                "=== YOUR TASK ===",
-                f'The guest\'s NEW message is: "{clean_latest[:300]}"',
-                "Write a reply that answers THIS message. Ignore everything else.",
-                "===",
-            ])
-
-        messages.append({'role': 'system', 'content': "\n".join(system_parts)})
-
-        # --- Single user turn: only the latest guest message ---
+        # --- Single user turn: only the latest / targeted guest message ---
         if target_message_override:
             # Per-message suggest: always send only the targeted message
             clean_target = self._strip_html(target_message_override)
@@ -1276,6 +1180,32 @@ JSON array:"""
         # Strip unclosed think tag (model stopped mid-thought)
         text = re.sub(r'<think>.*', '', text, flags=re.DOTALL)
         return text.strip()
+
+    _ESCALATION_MARKER_RE = re.compile(
+        r'\[\[\s*ESCALATE\s*[:\s]\s*([a-zA-Z_]*)\s*\]\]', re.IGNORECASE
+    )
+
+    @staticmethod
+    def parse_escalation(text):
+        """Extract and strip the [[ESCALATE: reason]] control marker.
+
+        The model emits this marker on the final line when it decides a message
+        must be handled by a human. We remove it so the guest never sees it, and
+        return the reason for the router to act on.
+
+        Returns (clean_text, reason) where reason is a lowercase string
+        (one of ungrounded|complaint|dispute|money|safety|approval, or
+        'unspecified'), or (text, None) when no marker is present.
+        """
+        if not text:
+            return text, None
+        m = AIService._ESCALATION_MARKER_RE.search(text)
+        if not m:
+            return text, None
+        reason = (m.group(1) or '').strip().lower() or 'unspecified'
+        clean = AIService._ESCALATION_MARKER_RE.sub('', text)
+        clean = re.sub(r'\n{3,}', '\n\n', clean).strip()
+        return clean, reason
 
     def _clean_ai_response(self, text: str) -> Optional[str]:
         """Clean AI response: strip artifacts, enforce length guards.
