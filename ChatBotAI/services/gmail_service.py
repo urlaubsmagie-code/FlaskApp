@@ -414,7 +414,12 @@ class GmailService:
 
     def _parse_email(self, message: Dict) -> Dict[str, Any]:
         """Parse Gmail API message into a cleaner format"""
-        headers = {h['name'].lower(): h['value'] for h in message['payload'].get('headers', [])}
+        raw_headers = message['payload'].get('headers', [])
+        headers = {h['name'].lower(): h['value'] for h in raw_headers}
+        # All Authentication-Results headers (a dict would drop duplicates). The
+        # anti-spoof gate trusts only the one Gmail itself stamps on receipt.
+        auth_results = [h['value'] for h in raw_headers
+                        if h['name'].lower() == 'authentication-results']
 
         # Extract body
         body = self._get_email_body(message['payload'])
@@ -432,6 +437,7 @@ class GmailService:
             'sender_email': sender_email,
             'to': headers.get('to', ''),
             'reply_to': headers.get('reply-to', ''),
+            'authentication_results': auth_results,
             'date': headers.get('date', ''),
             'body': body,
             'snippet': message.get('snippet', ''),
