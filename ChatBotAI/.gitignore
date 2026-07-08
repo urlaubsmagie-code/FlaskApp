@@ -75,6 +75,9 @@ coverage.xml
 instance/
 .webassets-cache
 
+# Playtest export artifact (generated on demand for review)
+PLAYTEST_LOG.md
+
 # Temporary files
 *.tmp
 *.temp

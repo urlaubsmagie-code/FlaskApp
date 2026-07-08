@@ -11,31 +11,75 @@
 </div>
 
 {% if not rows %}
-  <div class="empty-state" data-i18n="emailReview.empty">Nichts zu überprüfen.</div>
+  <div class="empty-state erc-empty">
+    <i class="fas fa-circle-check"></i>
+    <p data-i18n="emailReview.empty">Nichts zu überprüfen.</p>
+  </div>
 {% else %}
-  <div class="email-review-list">
+  <div class="erc-toolbar">
+    <span class="erc-count"><strong id="erc-count">{{ rows|length }}</strong>
+      <span data-i18n="emailReview.pending">zu prüfen</span></span>
+    {% if current_user.is_admin %}
+    <button class="btn btn-primary btn-sm" id="erc-flush-btn" onclick="flushAllEmails()">
+      <i class="fas fa-inbox"></i> <span data-i18n="settings.emailReconcile.flushAll.btn">Alle einfügen</span>
+    </button>
+    {% endif %}
+  </div>
+
+  <div class="email-review-list" id="erc-list">
     {% for row in rows %}
-    <div class="email-review-card" data-candidate-id="{{ row.candidate.id }}">
+    {% set c = row.candidate %}
+    {% set conf = (c.confidence * 100) | round | int %}
+    <div class="email-review-card{% if row.name_mismatch %} erc-warn{% endif %}" data-candidate-id="{{ c.id }}">
       <div class="erc-head">
-        <span class="erc-platform erc-{{ row.candidate.platform }}">{{ row.candidate.platform }}</span>
-        <span class="erc-conf">{{ '%.0f' % (row.candidate.confidence * 100) }}%</span>
-        <span class="erc-time">{{ row.candidate.parsed_timestamp }}</span>
+        <span class="platform-badge {{ c.platform }}">
+          <i class="fas fa-{{ 'hotel' if c.platform == 'booking' else 'house' }}"></i> {{ c.platform | capitalize }}
+        </span>
+        <span class="erc-conf erc-conf-{{ 'high' if conf >= 80 else 'mid' if conf >= 30 else 'low' }}">
+          <i class="fas fa-{{ 'circle-check' if conf >= 80 else 'circle-question' if conf >= 30 else 'circle-exclamation' }}"></i>
+          {{ conf }}% ·
+          {% if conf >= 80 %}<span data-i18n="emailReview.confHigh">Sicher</span>
+          {% elif conf >= 30 %}<span data-i18n="emailReview.confMid">Prüfen</span>
+          {% else %}<span data-i18n="emailReview.confLow">Unsicher</span>{% endif %}
+        </span>
+        <span class="erc-time"><i class="far fa-clock"></i>
+          {{ c.parsed_timestamp.strftime('%d.%m.%Y %H:%M') if c.parsed_timestamp else '—' }}</span>
       </div>
-      <div class="erc-name">{{ row.candidate.parsed_name }}</div>
-      <div class="erc-text">{{ row.candidate.parsed_text }}</div>
+
+      <div class="erc-sender"><i class="fas fa-user"></i> {{ c.parsed_name or 'Unbekannt' }}</div>
+
+      <blockquote class="erc-text">{{ c.parsed_text }}</blockquote>
+
       <div class="erc-match">
         {% if row.conversation %}
-          &rarr; <a href="{{ url_for('chatbot.conversation_view', conversation_id=row.conversation.id) }}">
-              {{ row.guest.name if row.guest else 'Konversation' }} #{{ row.conversation.id }}</a>
+          <span class="erc-match-label" data-i18n="emailReview.target">Ziel-Konversation:</span>
+          <a class="erc-conv-link"
+             href="{{ url_for('chatbot.conversation_view', conversation_id=row.conversation.id) }}"
+             target="_blank" rel="noopener">
+            <i class="fas fa-comments"></i>
+            {{ row.guest.name if row.guest else 'Konversation' }} #{{ row.conversation.id }}
+            {% if row.property %}<span class="erc-prop">· {{ row.property.name }}</span>{% endif %}
+            <i class="fas fa-arrow-up-right-from-square erc-ext"></i>
+          </a>
+          {% if row.name_mismatch %}
+          <div class="erc-mismatch">
+            <i class="fas fa-triangle-exclamation"></i>
+            <span data-i18n="emailReview.nameMismatch">Name weicht ab – evtl. falsche Konversation. Bitte im Chat prüfen.</span>
+          </div>
+          {% endif %}
         {% else %}
-          <span class="erc-nomatch" data-i18n="emailReview.noMatch">keine Konversation gefunden</span>
+          <span class="erc-nomatch"><i class="fas fa-link-slash"></i>
+            <span data-i18n="emailReview.noMatch">keine Konversation gefunden</span></span>
         {% endif %}
       </div>
+
       <div class="erc-actions">
-        <button class="btn btn-primary" onclick="confirmCandidate({{ row.candidate.id }})"
-                data-i18n="emailReview.confirm">Bestätigen</button>
-        <button class="btn btn-secondary" onclick="rejectCandidate({{ row.candidate.id }})"
-                data-i18n="emailReview.reject">Verwerfen</button>
+        <button class="btn btn-primary" onclick="confirmCandidate({{ c.id }})">
+          <i class="fas fa-check"></i> <span data-i18n="emailReview.confirm">Bestätigen</span>
+        </button>
+        <button class="btn btn-secondary" onclick="rejectCandidate({{ c.id }})">
+          <i class="fas fa-xmark"></i> <span data-i18n="emailReview.reject">Verwerfen</span>
+        </button>
       </div>
     </div>
     {% endfor %}
@@ -47,14 +91,56 @@ async function _post(url) {
   const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}});
   return r.ok;
 }
-async function confirmCandidate(id) {
-  if (await _post(`/chatbot/api/email-review/${id}/confirm`)) {
-    document.querySelector(`[data-candidate-id="${id}"]`)?.remove();
-  }
+
+function _removeCard(id) {
+  const card = document.querySelector(`[data-candidate-id="${id}"]`);
+  if (!card) return;
+  card.classList.add('erc-removing');
+  setTimeout(() => {
+    card.remove();
+    // Update the counter; show empty state when the tray is cleared.
+    const list = document.getElementById('erc-list');
+    const left = list ? list.querySelectorAll('.email-review-card').length : 0;
+    const counter = document.getElementById('erc-count');
+    if (counter) counter.textContent = left;
+    if (left === 0 && list) {
+      list.outerHTML = '<div class="empty-state erc-empty"><i class="fas fa-circle-check"></i>'
+        + '<p>' + (window.t ? window.t('emailReview.empty') : 'Nichts zu überprüfen.') + '</p></div>';
+      document.querySelector('.erc-toolbar')?.remove();
+    }
+  }, 200);
 }
+
+async function confirmCandidate(id) {
+  const card = document.querySelector(`[data-candidate-id="${id}"]`);
+  card?.querySelectorAll('button').forEach(b => b.disabled = true);
+  if (await _post(`/chatbot/api/email-review/${id}/confirm`)) _removeCard(id);
+  else card?.querySelectorAll('button').forEach(b => b.disabled = false);
+}
+
 async function rejectCandidate(id) {
-  if (await _post(`/chatbot/api/email-review/${id}/reject`)) {
-    document.querySelector(`[data-candidate-id="${id}"]`)?.remove();
+  const card = document.querySelector(`[data-candidate-id="${id}"]`);
+  card?.querySelectorAll('button').forEach(b => b.disabled = true);
+  if (await _post(`/chatbot/api/email-review/${id}/reject`)) _removeCard(id);
+  else card?.querySelectorAll('button').forEach(b => b.disabled = false);
+}
+
+// File all matches >= configured floor (80%) into their chats at once, then refresh.
+async function flushAllEmails() {
+  const btn = document.getElementById('erc-flush-btn');
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  try {
+    const r = await fetch('/chatbot/api/email-reconcile/flush-all', {method: 'POST'});
+    const d = await r.json();
+    if (d.success) {
+      location.reload();
+    } else {
+      btn.disabled = false; btn.innerHTML = original;
+    }
+  } catch (e) {
+    btn.disabled = false; btn.innerHTML = original;
   }
 }
 </script>

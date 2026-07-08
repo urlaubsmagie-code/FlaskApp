@@ -461,9 +461,17 @@ function sendViaSmoobu(content, tempId, correctionOriginal) {
         return response.json();
     })
     .then(data => {
+        if (data.duplicate_skipped) {
+            // Server refused a repeat send: this exact text just went to the guest.
+            const el = document.querySelector(`[data-message-id="${tempId}"]`);
+            if (el) el.remove();
+            knownMessageIds.delete(tempId);
+            showNotification('Diese Nachricht wurde gerade eben schon gesendet – sie wurde nicht erneut verschickt.', 'info', 6000);
+            return;
+        }
         if (data.error) {
             console.warn('Smoobu send failed, falling back to local:', data.error);
-            showNotification('Nachricht konnte nicht über Smoobu gesendet werden – nur lokal gespeichert', 'error', 5000);
+            showNotification('Unsicherer Sendestatus – die Nachricht wurde möglicherweise schon zugestellt. Bitte prüfe den Chat, bevor du sie erneut sendest.', 'info', 7000);
             sendLocal(content, tempId, correctionOriginal);
             return;
         }
@@ -480,7 +488,7 @@ function sendViaSmoobu(content, tempId, correctionOriginal) {
     })
     .catch(err => {
         console.error('Smoobu send error, falling back to local:', err);
-        showNotification('Nachricht konnte nicht über Smoobu gesendet werden – nur lokal gespeichert', 'error', 5000);
+        showNotification('Unsicherer Sendestatus – die Nachricht wurde möglicherweise schon zugestellt. Bitte prüfe den Chat, bevor du sie erneut sendest.', 'info', 7000);
         sendLocal(content, tempId, correctionOriginal);
     })
     .finally(() => { sendInProgress = false; });
@@ -839,6 +847,68 @@ function syncConversation() {
     });
 }
 
+function recoverEmails() {
+    const btn = document.getElementById('recoverEmailsBtn');
+    if (btn) { btn.disabled = true; btn.classList.add('loading'); }
+    fetch(`/chatbot/api/conversation/${conversationId}/recover-emails`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success && data.inserted > 0) {
+            window.location.reload();   // inserted messages render in-thread
+        } else {
+            if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
+        }
+    })
+    .catch(() => { if (btn) { btn.disabled = false; btn.classList.remove('loading'); } });
+}
+
+const importEmailThreadBtn = document.getElementById('import-email-thread-btn');
+if (importEmailThreadBtn) {
+    importEmailThreadBtn.addEventListener('click', async () => {
+        importEmailThreadBtn.disabled = true;
+        importEmailThreadBtn.classList.add('loading');
+        try {
+            const r = await fetch(`/chatbot/api/conversation/${conversationId}/import-email-thread`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ allow_name_fallback: true }),
+            });
+            const data = await r.json();
+            if (!data.success) { alert(data.error || 'Fehler'); return; }
+            if (data.inserted > 0) { location.reload(); return; }
+            const box = document.getElementById('email-thread-candidates');
+            if (data.candidates && data.candidates.length) {
+                box.hidden = false;
+                box.innerHTML = data.candidates.map(c =>
+                    `<div class="cand"><span>${escapeHtml(c.participant)} — ${c.message_count} Nachrichten (${escapeHtml(c.date_range)})</span>` +
+                    `<button data-tid="${escapeHtml(c.thread_id)}">Übernehmen</button></div>`).join('');
+                box.querySelectorAll('button[data-tid]').forEach(b =>
+                    b.addEventListener('click', async () => {
+                        const rr = await fetch(`/chatbot/api/conversation/${conversationId}/import-email-thread`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ confirm_thread_id: b.dataset.tid }),
+                        });
+                        const rd = await rr.json();
+                        if (rd.success && rd.inserted > 0) {
+                            location.reload();
+                        } else {
+                            alert(rd.error || 'Keine neuen Nachrichten');
+                        }
+                    }));
+            } else {
+                alert('Keine passenden E-Mails gefunden.');
+            }
+        } finally {
+            importEmailThreadBtn.disabled = false;
+            importEmailThreadBtn.classList.remove('loading');
+        }
+    });
+}
+
 function resolveEscalation() {
     fetch(`/chatbot/api/conversations/${conversationId}/resolve`, {
         method: 'POST',
@@ -861,6 +931,30 @@ function resolveEscalation() {
         }
     })
     .catch(err => console.error('Failed to resolve escalation:', err));
+}
+
+// Inject the escalation banner live (no page refresh) when a conversation
+// becomes escalated mid-session — via polling or a playtest auto-reply.
+// Idempotent: does nothing if the banner is already present.
+function ensureEscalationBanner() {
+    if (document.getElementById('escalationBanner')) return;
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+    const bannerText = (window.i18n && i18n.t('conversation.escalation.banner'))
+        || 'Dieses Gespräch wurde eskaliert und benötigt Ihre Aufmerksamkeit.';
+    const resolveText = (window.i18n && i18n.t('conversation.escalation.resolve'))
+        || 'Als gelöst markieren';
+    const banner = document.createElement('div');
+    banner.className = 'escalation-banner';
+    banner.id = 'escalationBanner';
+    banner.innerHTML =
+        '<i class="fas fa-exclamation-triangle"></i>' +
+        '<span data-i18n="conversation.escalation.banner"></span>' +
+        '<button class="btn btn-sm btn-resolve" onclick="resolveEscalation()" data-i18n="conversation.escalation.resolve"></button>';
+    banner.querySelector('span').textContent = bannerText;
+    banner.querySelector('button').textContent = resolveText;
+    container.insertBefore(banner, container.firstChild);
+    showNotification(bannerText, 'warning');
 }
 
 // =========================================================================
@@ -1006,6 +1100,8 @@ function addMessageToUI(message, senderType) {
             <i class="fas fa-graduation-cap"></i>
            </button>`;
     }
+    const emailTag = (message.platform_message_id || '').startsWith('email:')
+        ? `<div class="email-source-tag">${i18n.t('conversation.emailSource')}</div>` : '';
     messageDiv.innerHTML = `
         <div class="message-avatar"><i class="fas ${icon}"></i></div>
         <div class="message-content">
@@ -1014,6 +1110,7 @@ function addMessageToUI(message, senderType) {
                 <span class="message-time">${time}</span>
             </div>
             <div class="message-text">${escapeHtml(message.content || '')}</div>
+            ${emailTag}
         </div>
         ${perMsgActionBtn}
     `;
@@ -1106,6 +1203,7 @@ const messagePoller = new PollingManager({
     },
     onUpdate: (data) => {
         updateMessages(data.messages);
+        if (data.escalated) ensureEscalationBanner();
     },
     interval: 10000
 });
@@ -1612,17 +1710,29 @@ function playtestSendAsGuest() {
     btn.disabled = true;
     input.value = '';
 
+    const autoReply = document.getElementById('playtestAutoReply')?.checked || false;
+
     fetch(`/chatbot/api/debug/playtest/${conversationId}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: content, role: 'guest' })
+        body: JSON.stringify({ content: content, role: 'guest', auto_reply: autoReply })
     })
     .then(r => r.json())
     .then(data => {
         if (!data.success) {
             showNotification('Fehler: ' + (data.error || 'Unbekannt'), 'error');
+        } else if (autoReply && data.ai_success === false) {
+            showNotification('Auto-Antwort fehlgeschlagen: ' + (data.ai_error || 'Unbekannt'), 'error');
         }
-        // Message will appear via normal polling
+        // Pull the new guest + AI messages immediately instead of waiting for
+        // the next 10s poll. The poller renders messages first, THEN injects
+        // the escalation banner — so the order matches the backend (message
+        // saved first, escalation flag last) and never shows the banner before
+        // UMI's reply.
+        if (typeof messagePoller !== 'undefined') {
+            messagePoller.stop();
+            messagePoller.start();
+        }
     })
     .catch(err => {
         showNotification('Fehler: ' + err.message, 'error');
@@ -1630,6 +1740,40 @@ function playtestSendAsGuest() {
     .finally(() => {
         btn.disabled = false;
     });
+}
+
+function playtestSaveNote() {
+    const ta = document.getElementById('playtestNote');
+    if (!ta) return;
+    const btn = document.getElementById('playtestNoteSaveBtn');
+    btn.disabled = true;
+    fetch(`/chatbot/api/debug/playtest/${conversationId}/note`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: ta.value })
+    })
+    .then(r => r.json())
+    .then(data => {
+        showNotification(data.success ? 'Notiz gespeichert' : 'Fehler beim Speichern', data.success ? 'success' : 'error');
+    })
+    .catch(err => showNotification('Fehler: ' + err.message, 'error'))
+    .finally(() => { btn.disabled = false; });
+}
+
+function playtestExportLog() {
+    const btn = document.getElementById('playtestExportBtn');
+    btn.disabled = true;
+    fetch(`/chatbot/api/debug/playtest/export`, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(`Export OK: ${data.count} Chat(s) → PLAYTEST_LOG.md`, 'success');
+        } else {
+            showNotification('Export fehlgeschlagen', 'error');
+        }
+    })
+    .catch(err => showNotification('Fehler: ' + err.message, 'error'))
+    .finally(() => { btn.disabled = false; });
 }
 
 function playtestToggleEventLog() {

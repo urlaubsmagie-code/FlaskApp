@@ -429,6 +429,13 @@ class MessageRouter:
             # Update conversation metadata (unread state set later after dedup check)
             if subject and not conversation.subject:
                 conversation.subject = subject
+            # Heal webhook-first conversations: the real-time webhook path
+            # creates the conversation without a property_id, so the inbox
+            # shows "Reservation <id>" instead of the apartment name. Backfill
+            # it when a later message supplies a resolved property. Never
+            # overwrite an existing link.
+            if property_id and not conversation.property_id:
+                conversation.property_id = property_id
             db.session.commit()
 
         return conversation
@@ -490,19 +497,67 @@ class MessageRouter:
 
         return message, True
 
+    # Deterministic safety net for escalation. The model is told to end an
+    # escalation with the [[ESCALATE: reason]] marker, but it sometimes writes
+    # the holding message and drops the marker. These phrases detect the
+    # holding / follow-up-promise pattern so we escalate anyway.
+    #
+    # Curated for HIGH specificity to avoid false positives:
+    #   * first-person promises only — "melde mich" (I'll get back) but NOT
+    #     "melde dich" (you reach out);
+    #   * "mit dem team" (coordinating) but NOT bare "team", which appears in
+    #     the "Team Urlaubsmagie" sign-off;
+    #   * a plain factual answer must contain none of these.
+    # The prompt's own canonical holding line — "Das kläre ich kurz mit dem
+    # Team und melde mich gleich" — is covered by 'mit dem team' + 'melde mich'.
+    _ESCALATION_PHRASES = (
+        # German
+        'kollegen', 'kollegin',
+        'melde mich', 'melden uns', 'mit dem team', 'darauf zurück',
+        # English
+        'colleague', 'get back to you', 'come back to you',
+        'check with the team', 'check with my',
+        # Spanish
+        'con el equipo', 'te aviso', 'vuelvo a',
+    )
+
     @staticmethod
     def _is_escalation_response(response_text: str) -> bool:
-        """Check if AI response contains escalation phrases.
+        """Backstop: did the AI write a holding / follow-up-promise reply?
 
-        Detects when the AI has used the escalation holding response
-        (e.g. "I'll check with my colleague"). Uses only high-specificity
-        phrases to avoid false positives.
+        Detects the escalation holding response (e.g. "melde mich gleich bei
+        dir", "I'll get back to you", "mit dem Team … melde mich") when the
+        model omitted the [[ESCALATE]] marker. Curated first-person phrases keep
+        false positives (sign-offs, guest invitations, plain answers) out — see
+        _ESCALATION_PHRASES.
         """
         if not response_text:
             return False
         text_lower = response_text.lower()
-        escalation_phrases = ['kollegen', 'kollegin', 'colleague']
-        return any(phrase in text_lower for phrase in escalation_phrases)
+        return any(phrase in text_lower for phrase in MessageRouter._ESCALATION_PHRASES)
+
+    def _apply_escalation(self, conversation, reason):
+        """Flag a conversation as needing a human: set escalated, pause
+        auto-respond, notify the team. Called once per reply when escalating."""
+        conversation.escalated = True
+        conversation.escalated_at = datetime.utcnow()
+        conversation.auto_respond = False
+        db.session.commit()
+        logger.info(
+            f"[ESCALATION] Conversation {conversation.id} escalated "
+            f"(reason={reason or 'phrase'}) — auto-respond paused"
+        )
+        if conversation.platform == 'playtest':
+            playtest_log(conversation.id, 'escalation_check',
+                         f'Escalation TRIGGERED (reason={reason or "phrase"}) — auto-respond paused')
+        try:
+            from .push_service import get_push_service
+            push = get_push_service()
+            if push:
+                guest = conversation.guest
+                push.notify_escalation(conversation, guest.name or guest.email or 'Guest')
+        except Exception as e:
+            logger.warning(f"Escalation push notification failed: {e}")
 
     def _generate_ai_response(
             self,
@@ -719,6 +774,12 @@ class MessageRouter:
         if not response_text:
             return None
 
+        # Strip the [[ESCALATE: reason]] control marker so it never reaches the
+        # guest, and capture the reason (None when the model did not escalate).
+        response_text, escalation_reason = self.ai_service.parse_escalation(response_text)
+        if not response_text:
+            return None
+
         if conversation.platform == 'playtest':
             playtest_log(conversation.id, 'ai_response_generated',
                          f'AI response generated ({len(response_text)} chars): '
@@ -825,30 +886,11 @@ class MessageRouter:
                 except Exception as e:
                     logger.error(f"Error sending auto-respond email: {e}")
 
-            # Check for escalation response — AFTER platform send, so the holding
-            # message reaches the guest before we pause auto-respond
-            if self._is_escalation_response(response_text):
-                conversation.escalated = True
-                conversation.escalated_at = datetime.utcnow()
-                conversation.auto_respond = False
-                db.session.commit()
-                logger.info(f"[ESCALATION] Conversation {conversation.id} escalated — auto-respond paused")
-                if conversation.platform == 'playtest':
-                    playtest_log(conversation.id, 'escalation_check',
-                                 'Escalation TRIGGERED — auto-respond paused')
-
-                # Send escalation push notification
-                try:
-                    from .push_service import get_push_service
-                    push = get_push_service()
-                    if push:
-                        guest = conversation.guest
-                        push.notify_escalation(
-                            conversation,
-                            guest.name or guest.email or 'Guest'
-                        )
-                except Exception as e:
-                    logger.warning(f"Escalation push notification failed: {e}")
+            # Escalation — AFTER platform send, so the holding message reaches the
+            # guest first. Driven by the model's [[ESCALATE]] marker (reason), with
+            # the legacy Kollegen/colleague phrase kept as a fallback.
+            if escalation_reason or self._is_escalation_response(response_text):
+                self._apply_escalation(conversation, escalation_reason)
 
             return {
                 'content': response_text,

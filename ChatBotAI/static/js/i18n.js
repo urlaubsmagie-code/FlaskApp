@@ -63,6 +63,7 @@ const translations = {
         'conversation.ai.on': 'AN',
         'conversation.ai.off': 'AUS',
         'conversation.guest.profile': 'Gästeprofil anzeigen',
+        'conversation.recoverEmails': 'E-Mails für diesen Chat suchen',
         'conversation.you': 'Sie',
         'conversation.guest': 'Gast',
         'conversation.ai': 'UMI-Assistent',
@@ -414,6 +415,7 @@ const translations = {
         'conversation.knowledge.saved': '{count} Einträge zur Wissensdatenbank hinzugefügt',
         'conversation.knowledge.nothingFound': 'Keine nützlichen Informationen in dieser Nachricht gefunden',
         'conversation.knowledge.extractFailed': 'Wissensextraktion fehlgeschlagen',
+        'conversation.emailSource': 'via E-Mail-Abgleich',
 
         // Approval Queue
         'conversation.approval.waiting': 'Wartet auf Freigabe',
@@ -476,6 +478,12 @@ const translations = {
         'emailReview.confirm': 'Bestätigen',
         'emailReview.reject': 'Verwerfen',
         'emailReview.noMatch': 'keine Konversation gefunden',
+        'emailReview.pending': 'zu prüfen',
+        'emailReview.target': 'Ziel-Konversation:',
+        'emailReview.confHigh': 'Sicher',
+        'emailReview.confMid': 'Prüfen',
+        'emailReview.confLow': 'Unsicher',
+        'emailReview.nameMismatch': 'Name weicht ab – evtl. falsche Konversation. Bitte im Chat prüfen.',
         'settings.emailReconcile.enabled': 'E-Mail-Abgleich aktivieren',
         'settings.emailReconcile.enabled.desc': 'Eingehende Plattform-E-Mails auf fehlende Nachrichten prüfen und vorschlagen',
         'settings.emailReconcile.autoinsertBooking': 'Booking.com-Treffer automatisch einfügen',
@@ -483,7 +491,36 @@ const translations = {
         'settings.emailReconcile.autoinsertAirbnb': 'Airbnb-Treffer automatisch einfügen (sobald zuverlässig)',
         'settings.emailReconcile.autoinsertAirbnb.desc': 'Gefundene Airbnb-Nachrichten ohne manuelle Bestätigung direkt einfügen — erst aktivieren, wenn die Trefferquote gut ist',
         'settings.emailReconcile.confidenceThreshold': 'Mindest-Konfidenz',
-        'settings.emailReconcile.confidenceThreshold.desc': 'Nur Treffer mit mindestens diesem Konfidenzscore vorschlagen (0.0–1.0, Standard 0.8)'
+        'settings.emailReconcile.confidenceThreshold.desc': 'Nur Treffer mit mindestens diesem Konfidenzscore vorschlagen (0.0–1.0, Standard 0.8)',
+        'settings.emailReconcile.autoinsertOnOpen': 'Treffer beim Öffnen eines Chats einfügen',
+        'settings.emailReconcile.autoinsertOnOpen.desc': 'Beim Öffnen einer Konversation werden sehr sichere E-Mail-Treffer automatisch eingefügt',
+        'settings.emailReconcile.onopenThreshold': 'Schwelle für Einfügen beim Öffnen',
+        'settings.emailReconcile.onopenThreshold.desc': 'Nur Treffer ab diesem Score beim Öffnen automatisch einfügen (Standard 0.95)',
+        'settings.emailReconcile.flushAll': 'Gesammelte E-Mails jetzt einfügen',
+        'settings.emailReconcile.flushAll.desc': 'Alle bereits erkannten E-Mail-Treffer (ab Mindest-Konfidenz) ohne Einzelbestätigung in die passenden Chats einfügen.',
+        'settings.emailReconcile.flushAll.btn': 'Alle einfügen',
+        'settings.emailReconcile.undo.btn': 'Rückgängig',
+
+        // Notion Knowledge Base Sync
+        'notion_title': 'Notion Wissensdatenbank',
+        'notion_enabled': 'Synchronisierung aktiviert',
+        'notion_token': 'Notion Integrations-Token',
+        'notion_root': 'Handbuch-Seiten-ID',
+        'notion_sync_now': 'Jetzt synchronisieren',
+
+        // Problem Report
+        'problem.report': 'Problem melden',
+        'problem.reports': 'Problem-Berichte',
+        'problem.categoryLabel': 'Kategorie',
+        'problem.messageLabel': 'Was ist passiert?',
+        'problem.placeholder': 'Beschreibe kurz, was du bemerkt hast…',
+        'problem.submit': 'Senden',
+        'problem.thanks': 'Danke, gemeldet!',
+        'problem.empty': 'Keine Berichte.',
+        'problem.category.missing_message': 'Nachricht fehlt',
+        'problem.category.bug': 'Fehler',
+        'problem.category.idea': 'Idee',
+        'problem.category.other': 'Sonstiges'
     },
 
     en: {
@@ -545,6 +582,7 @@ const translations = {
         'conversation.ai.on': 'ON',
         'conversation.ai.off': 'OFF',
         'conversation.guest.profile': 'View Guest Profile',
+        'conversation.recoverEmails': 'Find emails for this chat',
         'conversation.you': 'You',
         'conversation.guest': 'Guest',
         'conversation.ai': 'UMI Assistant',
@@ -896,6 +934,7 @@ const translations = {
         'conversation.knowledge.saved': '{count} entries added to Knowledge Base',
         'conversation.knowledge.nothingFound': 'No useful information found in this message',
         'conversation.knowledge.extractFailed': 'Knowledge extraction failed',
+        'conversation.emailSource': 'via email reconciliation',
 
         // Approval Queue
         'conversation.approval.waiting': 'Waiting for approval',
@@ -958,6 +997,12 @@ const translations = {
         'emailReview.confirm': 'Confirm',
         'emailReview.reject': 'Reject',
         'emailReview.noMatch': 'no conversation found',
+        'emailReview.pending': 'to review',
+        'emailReview.target': 'Target conversation:',
+        'emailReview.confHigh': 'Confident',
+        'emailReview.confMid': 'Review',
+        'emailReview.confLow': 'Uncertain',
+        'emailReview.nameMismatch': 'Name differs – possibly the wrong conversation. Please check in the chat.',
         'settings.emailReconcile.enabled': 'Enable Email Reconciliation',
         'settings.emailReconcile.enabled.desc': 'Check incoming platform emails for missing messages and suggest them',
         'settings.emailReconcile.autoinsertBooking': 'Auto-insert Booking.com matches',
@@ -965,7 +1010,36 @@ const translations = {
         'settings.emailReconcile.autoinsertAirbnb': 'Auto-insert Airbnb matches (once reliable)',
         'settings.emailReconcile.autoinsertAirbnb.desc': 'Insert found Airbnb messages directly without manual confirmation — enable only once match quality is good',
         'settings.emailReconcile.confidenceThreshold': 'Minimum Confidence',
-        'settings.emailReconcile.confidenceThreshold.desc': 'Only suggest matches with at least this confidence score (0.0–1.0, default 0.8)'
+        'settings.emailReconcile.confidenceThreshold.desc': 'Only suggest matches with at least this confidence score (0.0–1.0, default 0.8)',
+        'settings.emailReconcile.autoinsertOnOpen': 'Insert matches when opening a chat',
+        'settings.emailReconcile.autoinsertOnOpen.desc': 'On opening a conversation, very confident email matches are inserted automatically',
+        'settings.emailReconcile.onopenThreshold': 'On-open insert threshold',
+        'settings.emailReconcile.onopenThreshold.desc': 'Only insert matches at or above this score on open (default 0.95)',
+        'settings.emailReconcile.flushAll': 'Insert collected emails now',
+        'settings.emailReconcile.flushAll.desc': 'Insert all already-detected email matches (at or above minimum confidence) into the matching chats without individual confirmation.',
+        'settings.emailReconcile.flushAll.btn': 'Insert all',
+        'settings.emailReconcile.undo.btn': 'Undo',
+
+        // Notion Knowledge Base Sync
+        'notion_title': 'Notion Knowledge Base',
+        'notion_enabled': 'Sync enabled',
+        'notion_token': 'Notion integration token',
+        'notion_root': 'Handbook page ID',
+        'notion_sync_now': 'Sync now',
+
+        // Problem Report
+        'problem.report': 'Report a problem',
+        'problem.reports': 'Problem Reports',
+        'problem.categoryLabel': 'Category',
+        'problem.messageLabel': 'What happened?',
+        'problem.placeholder': 'Briefly describe what you noticed…',
+        'problem.submit': 'Send',
+        'problem.thanks': 'Thanks, reported!',
+        'problem.empty': 'No reports.',
+        'problem.category.missing_message': 'Missing message',
+        'problem.category.bug': 'Bug',
+        'problem.category.idea': 'Idea',
+        'problem.category.other': 'Other'
     }
 };
 

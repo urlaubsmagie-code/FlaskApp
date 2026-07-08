@@ -5,7 +5,9 @@ Defines all URL endpoints for the messaging system
 
 import difflib
 import logging
+import os
 import threading
+import time
 from functools import wraps
 
 from flask import render_template, request, jsonify, redirect, url_for, current_app
@@ -29,7 +31,7 @@ from sqlalchemy.orm import joinedload
 from . import chatbot_bp
 
 logger = logging.getLogger(__name__)
-from .models import db, User, UserSession, Guest, GuestDetail, Conversation, Message, Property, AISettings, ReplyTemplate, KnowledgeEntry, EmailBackfillCandidate, preload_last_messages, preload_unread_counts, preload_display_platforms
+from .models import db, User, UserSession, Guest, GuestDetail, Conversation, Message, Property, AISettings, ReplyTemplate, KnowledgeEntry, EmailBackfillCandidate, ProblemReport, preload_last_messages, preload_unread_counts, preload_display_platforms
 from .services.ai_service import get_ai_service
 from .services.memory_service import get_memory_service
 
@@ -270,6 +272,20 @@ def conversation_view(conversation_id):
         joinedload(Conversation.guest)
     ).get_or_404(conversation_id)
 
+    # Silently pull near-certain email candidates matched to this chat into the
+    # thread on open (toggleable). Idempotent; failures must never block the view.
+    if AISettings.get('email_autoinsert_on_open', 'true') != 'false':
+        try:
+            from .services.email_reconcile import promote_email_candidates
+            try:
+                onopen_threshold = float(AISettings.get('email_onopen_threshold', '0.95'))
+            except (TypeError, ValueError):
+                onopen_threshold = 0.95
+            promote_email_candidates(conversation_id, onopen_threshold)
+        except Exception:
+            current_app.logger.exception(
+                "on-open email promote failed for conv %s", conversation_id)
+
     # Exclude rejected drafts from all queries
     base_filter = Message.query.filter_by(conversation_id=conversation_id).filter(
         db.or_(Message.approval_status.is_(None), Message.approval_status != 'rejected')
@@ -305,6 +321,10 @@ def conversation_view(conversation_id):
 
     approval_queue_enabled = AISettings.get('approval_queue_enabled', 'true') != 'false'
     is_playtest = conversation.platform == 'playtest'
+    playtest_note = ''
+    if is_playtest:
+        from .services.playtest_export import load_notes
+        playtest_note = load_notes(current_app.instance_path).get(str(conversation.id), '')
 
     return render_template(
         'chatbot/conversation.html',
@@ -316,7 +336,8 @@ def conversation_view(conversation_id):
         has_older=has_older,
         total_messages=total_messages,
         approval_queue_enabled=approval_queue_enabled,
-        is_playtest=is_playtest
+        is_playtest=is_playtest,
+        playtest_note=playtest_note
     )
 
 
@@ -381,13 +402,27 @@ def knowledge_base():
 @login_required
 def email_review():
     """Review tray for low-confidence email-backfill candidates."""
+    from .services.guest_matching import normalize_name
+    # Highest-confidence first so the easy confirms are at the top and the
+    # uncertain / mismatched ones (which need scrutiny) sort to the bottom.
     candidates = EmailBackfillCandidate.query.filter_by(status='pending').order_by(
+        EmailBackfillCandidate.confidence.desc(),
         EmailBackfillCandidate.created_at.desc()).all()
     rows = []
     for c in candidates:
         conv = Conversation.query.get(c.guessed_conversation_id) if c.guessed_conversation_id else None
         guest = Guest.query.get(conv.guest_id) if conv else None
-        rows.append({'candidate': c, 'conversation': conv, 'guest': guest})
+        prop = Property.query.get(conv.property_id) if conv and conv.property_id else None
+        # Flag a likely-wrong match: the parsed sender shares NO name token with
+        # the target conversation's guest (e.g. "Michał Śliperski" matched into
+        # "Alexander Falenski"). Surfaced as a warning so it isn't blind-confirmed.
+        name_mismatch = False
+        if guest and c.parsed_name:
+            pn = set((normalize_name(c.parsed_name) or '').split())
+            gn = set((normalize_name(guest.name) or '').split())
+            name_mismatch = bool(pn and gn and not (pn & gn))
+        rows.append({'candidate': c, 'conversation': conv, 'guest': guest,
+                     'property': prop, 'name_mismatch': name_mismatch})
     return render_template('chatbot/email_review.html', rows=rows)
 
 
@@ -571,6 +606,12 @@ def api_playtest_message(conversation_id):
 
     content = data['content'].strip()
     role = data.get('role', 'guest')
+    # Playtest-only auto-reply: when the playtest "Auto-Antwort" toggle is on we
+    # generate an AI reply right after storing the guest message. This is an
+    # isolated world — it calls generate_ai_response_for_conversation() directly
+    # and never consults the global master_ai_enabled switch, so it cannot make
+    # real guest conversations auto-respond.
+    auto_reply = bool(data.get('auto_reply', False))
     router = get_message_router()
 
     if role == 'guest':
@@ -584,10 +625,30 @@ def api_playtest_message(conversation_id):
             auto_respond=False,
             skip_push=True
         )
-        return jsonify({
+        response = {
             'message_id': result.get('message_id'),
             'success': result.get('success', False)
-        })
+        }
+        if auto_reply and result.get('success'):
+            from .services.playtest_events import playtest_log
+            # Make THIS playtest conversation auto-send (skip the approval queue)
+            # so the full pipeline — including escalation — runs end to end. This
+            # is a per-conversation flag on a platform='playtest' chat only: it
+            # never changes the global UMI-Freigabe setting or any real chat.
+            if not conversation.auto_approve:
+                conversation.auto_approve = True
+                db.session.commit()
+            playtest_log(conversation.id, 'auto_reply',
+                         'Playtest auto-reply ON — auto-approve set, generating AI response')
+            ai_result = router.generate_ai_response_for_conversation(conversation.id)
+            response['ai_message_id'] = ai_result.get('message_id')
+            response['ai_success'] = ai_result.get('success', False)
+            if not ai_result.get('success'):
+                response['ai_error'] = ai_result.get('error')
+            # Surface escalation so the playtest UI can show the banner instantly.
+            db.session.refresh(conversation)
+            response['escalated'] = conversation.escalated
+        return jsonify(response)
     elif role == 'host':
         result = router.process_owner_message(
             conversation_id=conversation_id,
@@ -652,6 +713,32 @@ def api_playtest_messages(conversation_id):
     return jsonify({
         'messages': [m.to_dict() for m in messages]
     })
+
+
+@chatbot_bp.route('/api/debug/playtest/<int:conversation_id>/note', methods=['POST'])
+@admin_required
+def api_playtest_note(conversation_id):
+    """Save a free-text review note for a playtest conversation."""
+    from .services.playtest_export import save_note
+
+    conversation = Conversation.query.get_or_404(conversation_id)
+    if conversation.platform != 'playtest':
+        return jsonify({'error': 'Not a playtest conversation'}), 400
+
+    data = request.get_json() or {}
+    note = (data.get('note') or '').strip()
+    save_note(current_app.instance_path, conversation_id, note)
+    return jsonify({'success': True})
+
+
+@chatbot_bp.route('/api/debug/playtest/export', methods=['POST'])
+@admin_required
+def api_playtest_export():
+    """Export all playtest conversations to PLAYTEST_LOG.md for later review."""
+    from .services.playtest_export import export_playtest_log
+
+    result = export_playtest_log(current_app._get_current_object())
+    return jsonify(result)
 
 
 # ============================================================================
@@ -905,7 +992,8 @@ def api_get_messages(conversation_id):
         messages = query.order_by(Message.sent_at.asc()).all()
         return jsonify({
             'conversation_id': conversation_id,
-            'messages': [m.to_dict() for m in messages]
+            'messages': [m.to_dict() for m in messages],
+            'escalated': conversation.escalated
         })
 
     if before_id:
@@ -917,7 +1005,8 @@ def api_get_messages(conversation_id):
         return jsonify({
             'conversation_id': conversation_id,
             'messages': [m.to_dict() for m in messages],
-            'has_more': has_more
+            'has_more': has_more,
+            'escalated': conversation.escalated
         })
 
     # Default: return last N messages
@@ -925,7 +1014,8 @@ def api_get_messages(conversation_id):
     messages.reverse()
     return jsonify({
         'conversation_id': conversation_id,
-        'messages': [m.to_dict() for m in messages]
+        'messages': [m.to_dict() for m in messages],
+        'escalated': conversation.escalated
     })
 
 
@@ -1112,16 +1202,9 @@ def api_generate_ai_response(conversation_id):
         # Get property info if available
         property_info = conversation.property.to_dict() if conversation.property else None
 
-        # Fetch Smoobu reservation details if applicable
-        reservation_info = None
-        if conversation.platform == 'smoobu' and conversation.smoobu_reservation_id:
-            try:
-                from .services.smoobu_service import get_smoobu_service
-                smoobu = get_smoobu_service()
-                if smoobu and smoobu.is_configured():
-                    reservation_info = smoobu.get_reservation(conversation.smoobu_reservation_id)
-            except Exception as e:
-                logger.warning(f"Failed to fetch Smoobu reservation for AI response: {e}")
+        # Reservation context from locally-stored fields (no blocking live Smoobu
+        # call — see _local_reservation_info).
+        reservation_info = _local_reservation_info(conversation)
 
         # Load knowledge base entries for AI context
         knowledge_entries = []
@@ -1196,6 +1279,8 @@ def api_generate_ai_response(conversation_id):
             resolved_topics=filtered.resolved_topics,
             is_closing=filtered.is_closing,
         )
+        if ai_response:
+            ai_response, _ = ai_service.parse_escalation(ai_response)
 
         if not ai_response:
             return jsonify({'error': 'AI response timed out. The model may be loading - try again.'}), 504
@@ -1283,6 +1368,39 @@ def api_generate_ai_response(conversation_id):
         return jsonify({'error': f'AI generation failed: {str(e)}'}), 500
 
 
+def _local_reservation_info(conversation):
+    """Build reservation context for the AI prompt from locally-stored conversation
+    fields, avoiding a blocking live Smoobu get_reservation() call on the hot path
+    (that call added ~11s of prep — see [SUGGEST TIMING]). Guest counts are synced
+    onto the conversation by the Smoobu reservation sync + webhook. Returns None if
+    nothing is known."""
+    ci, co = conversation.check_in, conversation.check_out
+    adults, children = conversation.adults, conversation.children
+    if not (ci or co or adults or children):
+        return None
+    return {
+        'check_in': ci.isoformat() if ci else None,
+        'check_out': co.isoformat() if co else None,
+        'adults': adults,
+        'children': children,
+    }
+
+
+def _ai_timing_log(line: str):
+    """Append an AI-timing line to instance/ai_timing.log via a direct file
+    write. The Python logging file-handler isn't attached in the Waitress
+    production process (chatbot.log goes stale), so we reuse the same
+    direct-append channel that smoobu_webhooks.log uses — proven to write in
+    prod. ponytail: direct write; drop it if logger-to-disk ever gets fixed.
+    """
+    try:
+        log_path = os.path.join(current_app.instance_path, 'ai_timing.log')
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(f"{datetime.utcnow().isoformat()} {line}\n")
+    except Exception:
+        pass
+
+
 @chatbot_bp.route('/api/conversations/<int:conversation_id>/ai-suggest', methods=['POST'])
 def api_suggest_ai_response(conversation_id):
     """Generate an AI response suggestion without saving it"""
@@ -1305,6 +1423,7 @@ def api_suggest_ai_response(conversation_id):
     request_data = request.get_json(silent=True) or {}
     include_debug = request_data.get('debug', False)
 
+    _t_start = time.monotonic()
     try:
         # Read AI settings from DB
         tone = AISettings.get('ai_response_tone', 'friendly_professional')
@@ -1348,16 +1467,11 @@ def api_suggest_ai_response(conversation_id):
         # Get property info if available
         property_info = conversation.property.to_dict() if conversation.property else None
 
-        # Fetch Smoobu reservation details if applicable
-        reservation_info = None
-        if conversation.platform == 'smoobu' and conversation.smoobu_reservation_id:
-            try:
-                from .services.smoobu_service import get_smoobu_service
-                smoobu = get_smoobu_service()
-                if smoobu and smoobu.is_configured():
-                    reservation_info = smoobu.get_reservation(conversation.smoobu_reservation_id)
-            except Exception as e:
-                logger.warning(f"Failed to fetch Smoobu reservation for AI suggest: {e}")
+        # Build reservation context from locally-stored fields instead of a live
+        # Smoobu call — that call added ~11s of blocking prep on the suggest hot
+        # path (see [SUGGEST TIMING]). Guest counts are synced onto the
+        # conversation by the reservation sync/webhook.
+        reservation_info = _local_reservation_info(conversation)
 
         # Load knowledge base entries for AI context
         knowledge_entries = []
@@ -1416,6 +1530,7 @@ def api_suggest_ai_response(conversation_id):
         logger.debug(f"[CONTEXT FILTER] suggest: {filtered.filter_log}")
 
         # Generate AI response (but don't save it)
+        _t_prep_done = time.monotonic()
         ai_response = ai_service.generate_guest_response(
             guest_profile=filtered.guest_profile,
             conversation_history=[m.to_dict() for m in messages],
@@ -1431,6 +1546,18 @@ def api_suggest_ai_response(conversation_id):
             corrections=filtered.corrections,
             resolved_topics=filtered.resolved_topics,
             is_closing=filtered.is_closing,
+        )
+        _t_model_done = time.monotonic()
+        if ai_response:
+            ai_response, _ = ai_service.parse_escalation(ai_response)
+        # prep = our code + DB + Smoobu fetch; model = generate_guest_response
+        # (the Ollama round-trip, also logged as [AI CALL]); post = everything after.
+        _ai_timing_log(
+            f"[SUGGEST TIMING] conv={conversation_id} | "
+            f"prep={_t_prep_done - _t_start:.1f}s "
+            f"model={_t_model_done - _t_prep_done:.1f}s "
+            f"post={time.monotonic() - _t_model_done:.1f}s "
+            f"total={time.monotonic() - _t_start:.1f}s"
         )
 
         if not ai_response:
@@ -1497,6 +1624,7 @@ def api_suggest_for_message(conversation_id):
     if not ai_service.test_connection():
         return jsonify({'error': 'Cannot connect to Ollama. Is the server running?'}), 503
 
+    _t_start = time.monotonic()
     try:
         tone = AISettings.get('ai_response_tone', 'friendly_professional')
         host_instructions = AISettings.get('host_instructions', '')
@@ -1515,24 +1643,91 @@ def api_suggest_for_message(conversation_id):
         # Clean target message content
         target_content = target_message.content or ''
 
-        # Generate with slimmed-down context: no KB, no reservation, no corrections,
-        # no summary, no resolved topics — just history + profile + property + instructions
-        ai_response = ai_service.generate_guest_response(
+        # Reservation context from locally-stored fields (no blocking live Smoobu
+        # call — see _local_reservation_info).
+        reservation_info = _local_reservation_info(conversation)
+
+        # Knowledge base (exclude corrections)
+        knowledge_entries = []
+        try:
+            kb_query = KnowledgeEntry.query.filter(KnowledgeEntry.category != 'correction')
+            if conversation.property_id:
+                kb_query = kb_query.filter(db.or_(
+                    KnowledgeEntry.property_id.is_(None),
+                    KnowledgeEntry.property_id == conversation.property_id
+                ))
+            else:
+                kb_query = kb_query.filter_by(property_id=None)
+            knowledge_entries = [e.to_dict() for e in
+                                 kb_query.order_by(KnowledgeEntry.category, KnowledgeEntry.sort_order).all()]
+        except Exception as e:
+            logger.warning(f"Failed to load knowledge entries for per-message suggest: {e}")
+
+        # Past corrections
+        corrections = []
+        try:
+            correction_query = KnowledgeEntry.query.filter_by(category='correction')
+            if conversation.property_id:
+                property_corrections = correction_query.filter_by(
+                    property_id=conversation.property_id
+                ).order_by(KnowledgeEntry.created_at.desc()).limit(7).all()
+                global_corrections = KnowledgeEntry.query.filter_by(
+                    category='correction', property_id=None
+                ).order_by(KnowledgeEntry.created_at.desc()).limit(3).all()
+                corrections = [c.to_dict() for c in property_corrections + global_corrections]
+            else:
+                corrections = [c.to_dict() for c in
+                               correction_query.filter_by(property_id=None)
+                               .order_by(KnowledgeEntry.created_at.desc()).limit(10).all()]
+        except Exception as e:
+            logger.warning(f"Failed to load corrections for per-message suggest: {e}")
+
+        conversation_summary = conversation.ai_summary
+
+        # Context filter narrows KB/profile to what's relevant to the target message
+        from .services.context_filter import ContextFilter
+        filtered = ContextFilter.filter(
+            latest_message=target_content,
+            conversation_history=[m.to_dict() for m in messages],
+            knowledge_entries=knowledge_entries,
             guest_profile=profile,
+            property_info=property_info,
+            corrections=corrections,
+            reservation_info=reservation_info,
+        )
+
+        # Generate, still targeting THIS specific message, now with full context.
+        # resolved_topics is deliberately omitted: the host explicitly chose to
+        # answer this message, so we must NOT suppress it as "already resolved".
+        _t_prep_done = time.monotonic()
+        ai_response = ai_service.generate_guest_response(
+            guest_profile=filtered.guest_profile,
             conversation_history=[m.to_dict() for m in messages],
             latest_message=target_content,
-            property_info=property_info,
+            property_info=filtered.property_info,
             tone=tone,
             host_instructions=host_instructions,
             conversation_subject=conversation.subject,
             max_history=max_history,
-            reservation_info=None,
-            knowledge_entries=None,
-            conversation_summary=None,
-            corrections=None,
+            reservation_info=filtered.reservation_info,
+            knowledge_entries=filtered.knowledge_entries,
+            conversation_summary=conversation_summary,
+            corrections=filtered.corrections,
             resolved_topics=None,
             is_closing=False,
             target_message_override=target_content,
+        )
+        _t_model_done = time.monotonic()
+        if ai_response:
+            ai_response, _ = ai_service.parse_escalation(ai_response)
+        # prep = our code + DB + Smoobu fetch; model = generate_guest_response
+        # (the Ollama round-trip, also logged as [AI CALL]); post = everything after.
+        _ai_timing_log(
+            f"[SUGGEST TIMING] conv={conversation_id} msg={message_id} | "
+            f"prep={_t_prep_done - _t_start:.1f}s "
+            f"model={_t_model_done - _t_prep_done:.1f}s "
+            f"post={time.monotonic() - _t_model_done:.1f}s "
+            f"total={time.monotonic() - _t_start:.1f}s"
         )
 
         if not ai_response:
@@ -1934,6 +2129,61 @@ def api_update_email_filter():
     AISettings.set('email_filter_mode', gmail.filter_mode)
 
     return jsonify({'success': True})
+
+
+# ============================================================================
+# NOTION KNOWLEDGE-BASE SYNC
+# ============================================================================
+
+@chatbot_bp.route('/api/settings/notion', methods=['GET'])
+@admin_required
+def api_get_notion_settings():
+    """Return Notion sync config; the token VALUE is never returned."""
+    from .services.notion_service import get_notion_config
+    cfg = get_notion_config()
+    return jsonify({
+        'enabled': cfg['enabled'],
+        'token_set': bool(cfg['token']),
+        'root_page_id': cfg['root_page_id'],
+        'block_keywords': ','.join(cfg['block_keywords']),
+        'force_exclude_ids': ','.join(cfg['force_exclude_ids']),
+        'force_include_ids': ','.join(cfg['force_include_ids']),
+    })
+
+
+@chatbot_bp.route('/api/settings/notion', methods=['PUT'])
+@admin_required
+def api_update_notion_settings():
+    """Persist Notion sync settings. Token only overwritten if a value is sent."""
+    data = request.get_json() or {}
+    AISettings.set('notion_sync_enabled', str(data.get('notion_sync_enabled', 'false')))
+    if data.get('notion_integration_token'):
+        AISettings.set('notion_integration_token', data['notion_integration_token'])
+    if data.get('notion_root_page_id') is not None:
+        AISettings.set('notion_root_page_id', data['notion_root_page_id'])
+    for key in ('notion_block_keywords', 'notion_force_exclude_ids', 'notion_force_include_ids'):
+        if data.get(key) is not None:
+            AISettings.set(key, data[key])
+    return jsonify({'success': True})
+
+
+@chatbot_bp.route('/api/notion/sync', methods=['POST'])
+@admin_required
+def api_notion_sync():
+    """Run a Notion → knowledge-base sync and return the run stats."""
+    from .services.notion_service import get_notion_service, get_notion_config
+    cfg = get_notion_config()
+    if not cfg['enabled'] or not cfg['token'] or not cfg['root_page_id']:
+        return jsonify({'error': 'Notion sync is not enabled or not configured'}), 400
+    service = get_notion_service()
+    if service is None:
+        return jsonify({'error': 'Notion service not initialized'}), 500
+    try:
+        stats = service.sync()
+    except Exception:
+        logger.exception("notion-sync route failed")
+        return jsonify({'error': 'Sync failed; see server logs'}), 500
+    return jsonify({'success': True, 'stats': stats})
 
 
 # ============================================================================
@@ -3234,7 +3484,10 @@ def gmail_authorize():
     callback_url = _get_gmail_callback_url()
 
     try:
-        auth_url, state = gmail.get_authorization_url(callback_url)
+        auth_url, state, code_verifier = gmail.get_authorization_url(callback_url)
+        from flask import session
+        session['gmail_callback_url'] = callback_url
+        session['gmail_code_verifier'] = code_verifier
 
         return jsonify({
             'authorization_url': auth_url,
@@ -3259,10 +3512,12 @@ def gmail_authorize_redirect():
     callback_url = _get_gmail_callback_url()
 
     try:
-        auth_url, state = gmail.get_authorization_url(callback_url)
-        # Store the callback URL in session so the callback route uses the same one
+        auth_url, state, code_verifier = gmail.get_authorization_url(callback_url)
+        # Store the callback URL + PKCE verifier in session so the callback
+        # route uses the same redirect_uri and can complete the token exchange.
         from flask import session
         session['gmail_callback_url'] = callback_url
+        session['gmail_code_verifier'] = code_verifier
         return redirect(auth_url)
     except Exception as e:
         return render_template('chatbot/gmail_error.html', error=str(e))
@@ -3279,6 +3534,7 @@ def gmail_callback():
     from flask import session
     fallback_url = _get_gmail_callback_url()
     callback_url = session.pop('gmail_callback_url', fallback_url)
+    code_verifier = session.pop('gmail_code_verifier', None)
     authorization_response = request.url
 
     # If the callback came on a different host/port than expected, fix the authorization_response URL
@@ -3294,7 +3550,8 @@ def gmail_callback():
     try:
         gmail.handle_oauth_callback(
             authorization_response=authorization_response,
-            redirect_uri=callback_url
+            redirect_uri=callback_url,
+            code_verifier=code_verifier
         )
         # Redirect to settings with success message
         return redirect(url_for('chatbot.settings') + '?gmail=connected')
@@ -3435,6 +3692,23 @@ def api_send_email():
         return jsonify({'error': 'Failed to send email'}), 500
 
 
+# Airbnb/Booking send guest-message *notifications* from these domains (and
+# subdomains like reply.airbnb.com / guest.booking.com). Those conversations
+# already live in Smoobu, so importing the emails as standalone conversations
+# creates confusing duplicates. The reconciliation feature still reads these
+# emails separately (read-only) to backfill messages Smoobu dropped.
+PLATFORM_NOTIFICATION_DOMAINS = (
+    'airbnb.com', 'airbnb.de', 'airbnb.es', 'airbnb.fr', 'airbnb.it', 'airbnb.co.uk',
+    'booking.com',
+)
+
+
+def _is_platform_notification(sender_email: str) -> bool:
+    """True if the sender is an Airbnb/Booking platform notification address."""
+    domain = (sender_email or '').lower().rsplit('@', 1)[-1]
+    return any(domain == d or domain.endswith('.' + d) for d in PLATFORM_NOTIFICATION_DOMAINS)
+
+
 @chatbot_bp.route('/api/gmail/process', methods=['POST'])
 def api_process_gmail_emails():
     """
@@ -3446,6 +3720,15 @@ def api_process_gmail_emails():
 
     gmail = get_gmail_service()
     router = get_message_router()
+
+    # Gmail->inbox import is OFF by default. Airbnb/Booking guest messages
+    # already arrive via Smoobu (the real channel), and importing arbitrary
+    # Gmail creates noise (platform-notification duplicates, newsletters, vendor
+    # mail). Gmail stays connected for the reconciliation safety-net, which runs
+    # independently. Re-enable by setting AISettings 'email_import_enabled'=true.
+    if (AISettings.get('email_import_enabled', 'false') or 'false').lower() not in ('1', 'true', 'yes', 'on'):
+        return jsonify({'processed': 0, 'disabled': True,
+                        'message': 'Gmail inbox import is disabled (Smoobu is the message channel)'})
 
     if not gmail.is_authenticated():
         return jsonify({'error': 'Gmail not connected'}), 401
@@ -3464,6 +3747,19 @@ def api_process_gmail_emails():
         # Skip emails from ourselves
         if email['sender_email'].lower() == user_email.lower():
             gmail.mark_as_read(email['id'])
+            continue
+
+        # Skip Airbnb/Booking notification emails — they duplicate the Smoobu
+        # conversation for the same guest. Reconciliation handles dropped
+        # messages separately. Mark read so they aren't re-fetched each poll.
+        if _is_platform_notification(email['sender_email']):
+            gmail.mark_as_read(email['id'])
+            results.append({
+                'email_id': email['id'],
+                'from': email['sender_email'],
+                'subject': email['subject'],
+                'skipped': 'platform_notification'
+            })
             continue
 
         # Skip emails already imported (check by platform_message_id)
@@ -4201,6 +4497,26 @@ def api_smoobu_dedup_fix():
     return jsonify({'success': True, 'duplicates_removed': fixed})
 
 
+def _recent_duplicate_owner_reply(conversation_id, content, within_seconds=120):
+    """True if an identical outgoing message already went to this conversation in
+    the last `within_seconds`. Guards against double-send: Smoobu's send API
+    returns no message id, so a slow/timed-out or 429'd send can be re-issued
+    (by a retry or a staff re-click after a false 'failed' error) and deliver the
+    same text to the guest twice. Exact normalized-text match only — a genuinely
+    different reply is never blocked.
+    ponytail: 2-min window blocks identical rapid re-sends; a real repeat can wait."""
+    from datetime import timedelta
+    from .services.smoobu_service import _normalize_content
+    cutoff = datetime.utcnow() - timedelta(seconds=within_seconds)
+    target = _normalize_content(content)
+    recent = Message.query.filter(
+        Message.conversation_id == conversation_id,
+        Message.sender_type.in_(['owner', 'ai']),
+        Message.sent_at >= cutoff,
+    ).all()
+    return any(_normalize_content(m.content or '') == target for m in recent)
+
+
 @chatbot_bp.route('/api/smoobu/reply/<int:conversation_id>', methods=['POST'])
 def api_smoobu_reply(conversation_id):
     """Send a reply through Smoobu API"""
@@ -4223,6 +4539,15 @@ def api_smoobu_reply(conversation_id):
     smoobu = get_smoobu_service()
     if not smoobu or not smoobu.is_configured():
         return jsonify({'error': 'Smoobu not connected'}), 400
+
+    # Never deliver the same reply to the guest twice (see helper docstring).
+    if _recent_duplicate_owner_reply(conversation_id, message_content):
+        logger.info(f"Duplicate reply blocked for conversation {conversation_id}")
+        return jsonify({
+            'success': True,
+            'duplicate_skipped': True,
+            'content': message_content,
+        }), 200
 
     send_result = smoobu.send_message(conversation.smoobu_reservation_id, message_content)
 
@@ -4444,6 +4769,95 @@ def email_review_pending_count():
     return jsonify({'count': count})
 
 
+@chatbot_bp.route('/api/problem-reports', methods=['POST'])
+@login_required
+def api_create_problem_report():
+    data = request.get_json(silent=True) or {}
+    message = (data.get('message') or '').strip()
+    category = (data.get('category') or '').strip()
+    if not message:
+        return jsonify({'error': 'message required'}), 400
+    if category not in ProblemReport.CATEGORIES:
+        return jsonify({'error': 'invalid category'}), 400
+    conv_id = data.get('conversation_id')
+    report = ProblemReport(
+        user_id=current_user.id,
+        category=category,
+        message=message,
+        conversation_id=int(conv_id) if conv_id else None,
+        page_url=(data.get('page_url') or None),
+    )
+    db.session.add(report)
+    db.session.commit()
+    return jsonify({'id': report.id}), 201
+
+
+@chatbot_bp.route('/api/problem-reports/pending-count')
+@login_required
+def api_problem_report_pending_count():
+    count = ProblemReport.query.filter_by(status='open').count()
+    return jsonify({'count': count})
+
+
+@chatbot_bp.route('/problem-reports')
+@admin_required
+def problem_reports_page():
+    reports = ProblemReport.query.order_by(
+        ProblemReport.status.asc(),  # 'open' before 'resolved'
+        ProblemReport.created_at.desc()).all()
+    return render_template('chatbot/problem_reports.html', reports=reports)
+
+
+@chatbot_bp.route('/api/problem-reports/<int:report_id>/resolve', methods=['POST'])
+@admin_required
+def api_resolve_problem_report(report_id):
+    report = ProblemReport.query.get_or_404(report_id)
+    if report.status == 'open':
+        report.status = 'resolved'
+        report.resolved_at = datetime.utcnow()
+        report.resolved_by = current_user.id
+    else:
+        report.status = 'open'
+        report.resolved_at = None
+        report.resolved_by = None
+    db.session.commit()
+    return jsonify({'status': report.status})
+
+
+@chatbot_bp.route('/api/email-reconcile/flush-all', methods=['POST'])
+@admin_required
+def email_reconcile_flush_all():
+    """File all pending email candidates (>= configured floor) into their matched
+    chats at once, without manual confirmation."""
+    from .services.email_reconcile import promote_all_email_candidates, get_reconcile_config
+    threshold = get_reconcile_config()['threshold']
+    result = promote_all_email_candidates(threshold)
+    return jsonify({'success': True, **result})
+
+
+@chatbot_bp.route('/api/email-reconcile/undo-flush', methods=['POST'])
+@admin_required
+def email_reconcile_undo_flush():
+    """Remove the messages inserted by the last flush and restore their candidates."""
+    from .services.email_reconcile import undo_last_flush
+    removed = undo_last_flush()
+    return jsonify({'success': True, 'removed': removed})
+
+
+@chatbot_bp.route('/api/email-reconcile/pending-count')
+@login_required
+def email_reconcile_pending_count():
+    """Count pending candidates at/above the configured floor that have a chat to
+    file into (what the flush button would insert)."""
+    from .services.email_reconcile import get_reconcile_config
+    threshold = get_reconcile_config()['threshold']
+    count = EmailBackfillCandidate.query.filter_by(status='pending').filter(
+        EmailBackfillCandidate.confidence >= threshold,
+        EmailBackfillCandidate.guessed_conversation_id.isnot(None),
+    ).count()
+    return jsonify({'count': count})
+
+
 @chatbot_bp.route('/api/email-review/<int:candidate_id>/confirm', methods=['POST'])
 @login_required
 def email_review_confirm(candidate_id):
@@ -4475,6 +4889,40 @@ def email_review_reject(candidate_id):
     cand.status = 'rejected'
     db.session.commit()
     return jsonify({'success': True})
+
+
+@chatbot_bp.route('/api/conversation/<int:conversation_id>/recover-emails', methods=['POST'])
+@login_required
+def conversation_recover_emails(conversation_id):
+    """Pull already-detected email candidates for this chat (>= standard match
+    threshold) into the thread on demand. Returns the number inserted."""
+    from .services.email_reconcile import promote_email_candidates, get_reconcile_config
+    Conversation.query.get_or_404(conversation_id)
+    threshold = get_reconcile_config()['threshold']
+    inserted = len(promote_email_candidates(conversation_id, threshold))
+    return jsonify({'success': True, 'inserted': inserted})
+
+
+@chatbot_bp.route('/api/conversation/<int:conversation_id>/import-email-thread', methods=['POST'])
+@login_required
+def conversation_import_email_thread(conversation_id: int):
+    """Backfill an existing conversation from the guest's two-sided Gmail thread."""
+    from .services.email_thread_backfill import backfill_conversation_from_email
+    from .services.gmail_service import get_gmail_service
+    Conversation.query.get_or_404(conversation_id)
+    gmail = get_gmail_service()
+    if not gmail or not gmail.is_authenticated():
+        return jsonify({'success': False, 'error': 'Gmail not connected'}), 503
+    payload = request.get_json(silent=True) or {}
+    res = backfill_conversation_from_email(
+        gmail, conversation_id,
+        allow_name_fallback=bool(payload.get('allow_name_fallback')),
+        confirm_thread_id=payload.get('confirm_thread_id'),
+    )
+    return jsonify({'success': True, 'inserted': res['inserted'],
+                    'skipped_dupes': res['skipped_dupes'],
+                    'skipped_unauth': res['skipped_unauth'],
+                    'candidates': res['candidates']})
 
 
 @chatbot_bp.route('/debug/prompt-compare')
