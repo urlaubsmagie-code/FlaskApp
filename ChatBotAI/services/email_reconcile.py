@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 from ..models import db
 from .guest_matching import normalize_name  # DRY: reuse existing normalizer
+from .apartment_names import code_from_smoobu_id, codes_from_property_text
 
 # --- Relay domains: these subdomains are used ONLY for two-way guest
 # messaging, never for confirmations/payouts/reviews. They are the funnel. ---
@@ -395,8 +396,19 @@ def score_conversation_match(notif, conv: dict) -> float:
             if c_name.split()[0] == n_name.split()[0]:
                 score += 0.3
 
-    if _property_overlap(notif.property_name, conv.get('property_name')):
-        score += 0.3
+    # Property signal. For Booking, prefer exact apartment-code matching: the
+    # email's Unterkunftsname carries the concept name ("Biberburg" = B7) while our
+    # Property stores the code, so the loose token overlap is always 0 for Booking.
+    # Match boosts; mismatch soft-vetoes (queues for review, blocks auto-insert).
+    email_codes = codes_from_property_text(notif.property_name) if notif.platform == 'booking' else set()
+    conv_code = conv.get('apartment_code')
+    if email_codes and conv_code:
+        if conv_code.upper() in email_codes:
+            score += 0.30
+        else:
+            score = max(0.0, score - 0.50)
+    elif _property_overlap(notif.property_name, conv.get('property_name')):
+        score += 0.30
 
     # Exact reservation dates are strong corroboration. Compare as ISO strings:
     # the notif carries datetime.date but Conversation stores check_in as a
@@ -420,9 +432,16 @@ def pick_best_match(notif, convs):
 
 
 def has_equivalent_message(conversation_id: int, notif, window_minutes: int = 10) -> bool:
-    """True if the conversation already has a guest message within ±window_minutes
-    of notif.sent_at. Direction-aware (guest->host), time-fuzzy, NOT text-exact
-    (Airbnb auto-translates so text differs between Smoobu and email)."""
+    """True if the conversation already has a *Smoobu-origin* guest message within
+    ±window_minutes of notif.sent_at. Direction-aware (guest->host), time-fuzzy,
+    NOT text-exact (Airbnb auto-translates so text differs between Smoobu and email).
+
+    Prior 'email:' inserts are excluded on purpose: this window only guards against
+    re-inserting an email copy of a message that already arrived via Smoobu. Two
+    distinct email candidates in the same burst sit seconds apart, so a time-only
+    match against other email inserts would wrongly swallow the whole burst after
+    the first. Email-vs-email true duplicates are caught exactly by
+    _store_message's platform_message_id check, not here."""
     from ..models import Message
     if not notif.sent_at:
         return False
@@ -433,6 +452,8 @@ def has_equivalent_message(conversation_id: int, notif, window_minutes: int = 10
         Message.sender_type == 'guest',
         Message.sent_at >= lo,
         Message.sent_at <= hi,
+        db.or_(Message.platform_message_id.is_(None),
+               ~Message.platform_message_id.like('email:%')),
     ).first() is not None
 
 
@@ -459,7 +480,113 @@ def get_reconcile_config() -> dict:
         'autoinsert_booking': _as_bool(AISettings.get('email_autoinsert_booking', 'true'), True),
         'autoinsert_airbnb': _as_bool(AISettings.get('email_autoinsert_airbnb', 'false'), False),
         'window_minutes': int(AISettings.get('email_dedup_window_minutes', '10') or 10),
+        # Gmail date window: only notifications newer than this many days are
+        # scanned. Default 30 so stale (e.g. May) emails don't get matched.
+        'days': int(AISettings.get('email_reconcile_days', '30') or 30),
     }
+
+
+def promote_email_candidates(conversation_id: int, min_confidence: float) -> list:
+    """Insert pending EmailBackfillCandidate rows matched to `conversation_id`
+    whose confidence >= min_confidence, oldest first. Dedup-guarded and
+    idempotent (confirmed rows are never reconsidered). Returns the ids of NEW
+    messages actually inserted — a candidate whose message already exists is
+    still marked confirmed but not counted.
+
+    Note: MessageRouter._store_message commits per insert; the trailing commit
+    here flushes the final candidate's status change."""
+    from types import SimpleNamespace
+    from ..models import EmailBackfillCandidate
+    from .message_router import get_message_router
+
+    cands = EmailBackfillCandidate.query.filter_by(
+        guessed_conversation_id=conversation_id, status='pending'
+    ).filter(
+        EmailBackfillCandidate.confidence >= min_confidence
+    ).order_by(EmailBackfillCandidate.parsed_timestamp.asc()).all()
+    if not cands:
+        return []
+
+    window = get_reconcile_config()['window_minutes']
+    router = get_message_router()
+    inserted_ids = []
+    for cand in cands:
+        shim = SimpleNamespace(sent_at=cand.parsed_timestamp)
+        if has_equivalent_message(conversation_id, shim, window):
+            continue  # leave pending; an equivalent message already exists
+        msg, is_new = router._store_message(
+            conversation_id=conversation_id, sender_type='guest',
+            content=cand.parsed_text,
+            platform_message_id=f"email:{cand.gmail_message_id}",
+            sent_at=cand.parsed_timestamp, sent_via_app=False,
+        )
+        cand.status = 'confirmed'
+        if is_new:
+            inserted_ids.append(msg.id)
+    db.session.commit()
+    return inserted_ids
+
+
+def promote_all_email_candidates(min_confidence: float) -> dict:
+    """Flush every pending EmailBackfillCandidate with confidence >= min_confidence
+    into its guessed conversation, reusing promote_email_candidates per conversation.
+    Records the inserted message ids in AISettings['email_last_flush_message_ids']
+    (JSON) so undo_last_flush() can remove exactly those rows.
+
+    Returns {'inserted': N, 'conversations': M, 'skipped_no_conv': K} where
+    skipped_no_conv counts pending >= floor candidates that had no conversation to
+    file into (they stay in the review tray)."""
+    import json
+    from ..models import EmailBackfillCandidate, AISettings
+
+    pending = EmailBackfillCandidate.query.filter_by(status='pending').filter(
+        EmailBackfillCandidate.confidence >= min_confidence
+    ).all()
+    conv_ids = sorted({c.guessed_conversation_id for c in pending
+                       if c.guessed_conversation_id is not None})
+    skipped_no_conv = sum(1 for c in pending if c.guessed_conversation_id is None)
+
+    all_ids = []
+    for conv_id in conv_ids:
+        all_ids.extend(promote_email_candidates(conv_id, min_confidence))
+
+    # Only overwrite the undo record when this flush actually inserted something.
+    # A second click that finds nothing pending must NOT clobber the previous
+    # flush's recorded ids, or its inserts become unrecoverable via "Rückgängig".
+    if all_ids:
+        AISettings.set('email_last_flush_message_ids', json.dumps(all_ids),
+                       'Message ids inserted by the last email flush (for undo)')
+    return {'inserted': len(all_ids),
+            'conversations': len(conv_ids),
+            'skipped_no_conv': skipped_no_conv}
+
+
+def undo_last_flush() -> int:
+    """Delete the messages recorded by the last flush and reset their candidates to
+    'pending' so they can be re-reviewed or re-flushed. Precise to the recorded batch
+    even if the daemon inserted other email messages in the meantime. No-op if there
+    is no recorded batch."""
+    import json
+    from ..models import EmailBackfillCandidate, AISettings, Message
+
+    ids = json.loads(AISettings.get('email_last_flush_message_ids', '[]'))
+    if not ids:
+        return 0
+
+    removed = 0
+    for msg in Message.query.filter(Message.id.in_(ids)).all():
+        pmid = msg.platform_message_id or ''
+        if pmid.startswith('email:'):
+            gmail_id = pmid.split('email:', 1)[1]
+            cand = EmailBackfillCandidate.query.filter_by(
+                gmail_message_id=gmail_id).first()
+            if cand:
+                cand.status = 'pending'
+        db.session.delete(msg)
+        removed += 1
+
+    AISettings.set('email_last_flush_message_ids', '[]')  # commits internally
+    return removed
 
 
 def resolve_channel(conv):
@@ -487,11 +614,16 @@ def resolve_channel(conv):
 # Task 8: Orchestrator
 # ---------------------------------------------------------------------------
 
-# Gmail search queries — relay-domain funnel + 90-day window (matches Smoobu sync).
-PLATFORM_QUERIES = {
-    'booking': 'from:guest.booking.com newer_than:90d',
-    'airbnb': 'from:airbnb.com newer_than:90d',
+# Gmail search — relay-domain funnel. Date window (newer_than) is configurable
+# via email_reconcile_days so only recent notifications get matched.
+_PLATFORM_SENDER = {
+    'booking': 'from:guest.booking.com',
+    'airbnb': 'from:airbnb.com',
 }
+
+
+def platform_queries(days: int) -> dict:
+    return {p: f'{sender} newer_than:{days}d' for p, sender in _PLATFORM_SENDER.items()}
 
 
 def _candidate_views(channel: str):
@@ -510,6 +642,7 @@ def _candidate_views(channel: str):
             # Smoobu conversation subjects are generic ("Reservation 12345"), which
             # would never overlap a real property name — fall back to None instead.
             'property_name': prop.name if prop else None,
+            'apartment_code': code_from_smoobu_id(prop.smoobu_apartment_id) if prop else None,
             'check_in': conv.check_in,
             'check_out': conv.check_out,
         })
@@ -534,7 +667,7 @@ def reconcile_from_email(gmail_service, max_per_platform: int = 50) -> dict:
 
     router = get_message_router()
 
-    for platform, query in PLATFORM_QUERIES.items():
+    for platform, query in platform_queries(cfg['days']).items():
         try:
             emails = gmail_service.get_recent_emails(
                 max_results=max_per_platform, query=query, apply_filter=False)

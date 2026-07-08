@@ -218,7 +218,7 @@ class GmailService:
             with open(self.token_file, 'w') as f:
                 f.write(self.credentials.to_json())
 
-    def get_authorization_url(self, redirect_uri: str) -> Tuple[str, str]:
+    def get_authorization_url(self, redirect_uri: str) -> Tuple[str, str, str]:
         """
         Get the OAuth authorization URL.
 
@@ -226,7 +226,11 @@ class GmailService:
             redirect_uri: The callback URL after authorization
 
         Returns:
-            Tuple of (authorization_url, state)
+            Tuple of (authorization_url, state, code_verifier). The
+            code_verifier is the PKCE secret generated for this flow; it MUST
+            be persisted (e.g. in the session) and passed back to
+            handle_oauth_callback, otherwise the token exchange fails with
+            "invalid_grant: Missing code verifier".
         """
         if not self.is_configured():
             raise ValueError("Gmail credentials file not found. Please configure OAuth credentials.")
@@ -243,9 +247,10 @@ class GmailService:
             prompt='consent'
         )
 
-        return authorization_url, state
+        return authorization_url, state, flow.code_verifier
 
-    def handle_oauth_callback(self, authorization_response: str, redirect_uri: str, state: str = None) -> bool:
+    def handle_oauth_callback(self, authorization_response: str, redirect_uri: str,
+                              state: str = None, code_verifier: str = None) -> bool:
         """
         Handle the OAuth callback and store credentials.
 
@@ -253,6 +258,8 @@ class GmailService:
             authorization_response: The full callback URL with code
             redirect_uri: The redirect URI used in authorization
             state: The state parameter (optional)
+            code_verifier: The PKCE code_verifier from get_authorization_url
+                (required, or the exchange fails with "Missing code verifier")
 
         Returns:
             True if successful
@@ -264,6 +271,10 @@ class GmailService:
                 redirect_uri=redirect_uri,
                 state=state
             )
+            # Restore the PKCE secret generated during the authorize step.
+            # A fresh Flow has none, so the token exchange would otherwise fail.
+            if code_verifier:
+                flow.code_verifier = code_verifier
 
             flow.fetch_token(authorization_response=authorization_response)
             self.credentials = flow.credentials

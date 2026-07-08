@@ -265,6 +265,11 @@ class Conversation(db.Model):
     # Reservation stay dates (from Smoobu)
     check_in = db.Column(db.Date, nullable=True)
     check_out = db.Column(db.Date, nullable=True)
+    # Guest counts from the Smoobu reservation, stored locally so the AI suggest
+    # path doesn't have to make a blocking live Smoobu call (auto-added on startup
+    # by _auto_upgrade_schema; populated by the reservation sync/webhook).
+    adults = db.Column(db.Integer, nullable=True)
+    children = db.Column(db.Integer, nullable=True)
 
     # Property association (optional)
     property_id = db.Column(db.Integer, db.ForeignKey('property.id', ondelete='SET NULL'), nullable=True)
@@ -513,6 +518,8 @@ class ReplyTemplate(db.Model):
     name = db.Column(db.String(200), nullable=False)
     content = db.Column(db.Text, nullable=False)
     category = db.Column(db.String(100), default='general')
+    source = db.Column(db.String(20), nullable=False, default='manual', server_default='manual')
+    notion_page_id = db.Column(db.String(64), nullable=True, index=True)
 
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -528,6 +535,7 @@ class ReplyTemplate(db.Model):
             'name': self.name,
             'content': self.content,
             'category': self.category,
+            'source': self.source,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -645,6 +653,10 @@ class KnowledgeEntry(db.Model):
     label = db.Column(db.String(200), nullable=False)
     value = db.Column(db.Text, nullable=False)
     sort_order = db.Column(db.Integer, default=0)
+    # Provenance: 'manual' (default), 'ai' (extracted), 'notion' (synced).
+    source = db.Column(db.String(20), nullable=False, default='manual', server_default='manual')
+    notion_page_id = db.Column(db.String(64), nullable=True, index=True)
+    synced_at = db.Column(db.DateTime, nullable=True)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -670,8 +682,50 @@ class KnowledgeEntry(db.Model):
             'label': self.label,
             'value': self.value,
             'sort_order': self.sort_order,
+            'source': self.source,
+            'notion_page_id': self.notion_page_id,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class ProblemReport(db.Model):
+    """Team-reported problems/ideas noticed while using the app.
+    Collected on an admin-only review page for triage."""
+    __tablename__ = 'problem_report'
+
+    CATEGORIES = ['missing_message', 'bug', 'idea', 'other']
+
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey('conversation.id'), nullable=True, index=True)
+    category = db.Column(db.String(30), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    page_url = db.Column(db.String(500), nullable=True)
+    status = db.Column(db.String(20), nullable=False, default='open', server_default='open', index=True)
+    resolved_at = db.Column(db.DateTime, nullable=True)
+    resolved_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+
+    reporter = db.relationship('User', foreign_keys=[user_id])
+    resolver = db.relationship('User', foreign_keys=[resolved_by])
+    conversation = db.relationship('Conversation')
+
+    def __repr__(self):
+        return f'<ProblemReport {self.id}: [{self.category}] {self.status}>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'user_id': self.user_id,
+            'reporter_name': self.reporter.display_name if self.reporter else None,
+            'conversation_id': self.conversation_id,
+            'category': self.category,
+            'message': self.message,
+            'page_url': self.page_url,
+            'status': self.status,
+            'resolved_at': self.resolved_at.isoformat() if self.resolved_at else None,
         }
 
 

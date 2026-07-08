@@ -1,0 +1,46 @@
+{% extends "chatbot/base.html" %}
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-exclamation-triangle"></i> <span data-i18n="problem.reports">Problem-Berichte</span></h1>
+</div>
+
+{% if not reports %}
+<p class="erc-count" data-i18n="problem.empty">Keine Berichte.</p>
+{% else %}
+<div class="email-review-list">
+    {% for r in reports %}
+    <div class="email-review-card {% if r.status == 'resolved' %}erc-removing-none{% endif %}" id="pr-{{ r.id }}"
+         style="{% if r.status == 'resolved' %}opacity:.6;{% endif %}">
+        <div class="erc-head">
+            <span class="erc-conf {% if r.status == 'open' %}erc-conf-mid{% else %}erc-conf-high{% endif %}">
+                {{ 'OFFEN' if r.status == 'open' else 'GELÖST' }}
+            </span>
+            <span class="erc-sender"><i class="fas fa-user"></i> {{ r.reporter.display_name if r.reporter else '—' }}</span>
+            <span class="erc-time"><i class="fas fa-clock"></i> {{ r.created_at.strftime('%d.%m.%Y %H:%M') if r.created_at else '' }}</span>
+        </div>
+        <div class="erc-match">
+            <span class="erc-conf erc-conf-low">{{ r.category }}</span>
+            {% if r.conversation_id %}
+            · <a class="erc-conv-link" href="{{ url_for('chatbot.conversation_view', conversation_id=r.conversation_id) }}">Chat #{{ r.conversation_id }}</a>
+            {% endif %}
+        </div>
+        <p class="erc-text">{{ r.message }}</p>
+        <div class="erc-actions">
+            <button class="btn btn-secondary" onclick="toggleProblemReport({{ r.id }})">
+                {{ 'Als gelöst markieren' if r.status == 'open' else 'Wieder öffnen' }}
+            </button>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<script>
+function toggleProblemReport(id) {
+    fetch('/chatbot/api/problem-reports/' + id + '/resolve', {method: 'POST'})
+        .then(function (r) { return r.json(); })
+        .then(function () { location.reload(); })
+        .catch(function () {});
+}
+</script>
+{% endblock %}

@@ -429,6 +429,13 @@ class MessageRouter:
             # Update conversation metadata (unread state set later after dedup check)
             if subject and not conversation.subject:
                 conversation.subject = subject
+            # Heal webhook-first conversations: the real-time webhook path
+            # creates the conversation without a property_id, so the inbox
+            # shows "Reservation <id>" instead of the apartment name. Backfill
+            # it when a later message supplies a resolved property. Never
+            # overwrite an existing link.
+            if property_id and not conversation.property_id:
+                conversation.property_id = property_id
             db.session.commit()
 
         return conversation

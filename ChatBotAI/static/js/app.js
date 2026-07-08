@@ -923,25 +923,6 @@ document.addEventListener('DOMContentLoaded', function() {
         document.head.appendChild(style);
     }
 
-    // --- Mobile: Account panel toggle ---
-    const accountNavItem = document.getElementById('accountNavItem');
-    const accountPanel = document.getElementById('accountPanel');
-    if (accountNavItem && accountPanel) {
-        accountNavItem.addEventListener('click', function(e) {
-            e.preventDefault();
-            accountPanel.classList.toggle('open');
-        });
-
-        // Close account panel on click outside
-        document.addEventListener('click', function(e) {
-            if (accountPanel.classList.contains('open') &&
-                !accountPanel.contains(e.target) &&
-                !accountNavItem.contains(e.target)) {
-                accountPanel.classList.remove('open');
-            }
-        });
-    }
-
     // --- Mobile: sync language selector with sidebar ---
     const mobileLangSelector = document.getElementById('mobileLanguageSelector');
     const desktopLangSelector = document.getElementById('languageSelector');
