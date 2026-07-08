@@ -1071,7 +1071,11 @@ function addMessageToUI(message, senderType) {
         messageDiv.dataset.messageId = message.id;
     }
 
-    const sentAt = message.sent_at || new Date().toISOString();
+    // Normalize to UTC (Z). to_dict() emits naive isoformat (no Z); the server
+    // template and toISOString() emit Z. Without this, cross-source comparisons
+    // are off by the local offset and break sent_at ordering.
+    const rawSentAt = message.sent_at || new Date().toISOString();
+    const sentAt = rawSentAt.endsWith('Z') ? rawSentAt : rawSentAt + 'Z';
     messageDiv.dataset.sentAt = sentAt;
 
     const icon = actualSenderType === 'guest' ? 'fa-user' : (actualSenderType === 'owner' ? 'fa-home' : 'fa-robot');
@@ -1139,14 +1143,27 @@ function addMessageToUI(message, senderType) {
         messageDiv.querySelector('.message-content').appendChild(actions);
     }
 
-    const dateKey = getDateKey(sentAt);
-    if (dateKey && !knownDateDividers.has(dateKey)) {
-        container.appendChild(createDateDivider(sentAt));
-        knownDateDividers.add(dateKey);
-    }
-
     messageDiv.classList.add('message-slide-in');
-    container.appendChild(messageDiv);
+
+    // Insert in sent_at order rather than blindly appending. Polled messages
+    // arrive in id order, but Smoobu syncs owner auto-confirmations after the
+    // guest reply — so they have a higher id but an EARLIER sent_at and would
+    // otherwise show at the bottom (looks like the guest wrote first) until a
+    // reload re-renders server-side by sent_at.
+    const newT = new Date(sentAt).getTime();
+    const siblings = container.querySelectorAll('.message[data-sent-at]');
+    let inserted = false;
+    for (const sib of siblings) {
+        if (new Date(sib.dataset.sentAt).getTime() > newT) {
+            container.insertBefore(messageDiv, sib);
+            inserted = true;
+            break;
+        }
+    }
+    if (!inserted) container.appendChild(messageDiv);
+
+    // Rebuild date dividers from the now-correctly-ordered message list.
+    insertInitialDateDividers();
 }
 
 /**
@@ -1382,17 +1399,9 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ============================================================================
-// Guided Tour
+// Guided Tour — chat page steps (engine lives in guided-tour.js)
 // ============================================================================
-const GuidedTour = {
-    currentStep: -1,
-    steps: [],
-    overlay: null,
-    tooltip: null,
-    previousElement: null,
-
-    /** Build visible steps dynamically based on what's on screen */
-    buildSteps() {
+GuidedTour.buildSteps = function () {
         const isMobile = window.innerWidth <= 768;
         const steps = [];
 
@@ -1432,6 +1441,24 @@ const GuidedTour = {
                     prepare: () => this._openMobileMenu()
                 });
             }
+            steps.push({
+                selector: '#mobileRecoverEmailsBtn',
+                titleKey: 'tour.recoverEmails',
+                textKey: 'tour.recoverEmails.desc',
+                prepare: () => this._openMobileMenu()
+            });
+            steps.push({
+                selector: '#mobileImportEmailBtn',
+                titleKey: 'tour.importEmail',
+                textKey: 'tour.importEmail.desc',
+                prepare: () => this._openMobileMenu()
+            });
+            steps.push({
+                selector: '#mobileProblemBtn',
+                titleKey: 'tour.problemReport',
+                textKey: 'tour.problemReport.desc',
+                prepare: () => this._openMobileMenu()
+            });
         } else {
             // Desktop buttons
             steps.push({
@@ -1449,6 +1476,15 @@ const GuidedTour = {
                 titleKey: 'tour.autoRespond',
                 textKey: 'tour.autoRespond.desc'
             });
+            // Auto-approve toggle is hidden unless the approval queue is on.
+            const autoApproveBtn = document.getElementById('autoApproveToggle');
+            if (autoApproveBtn && autoApproveBtn.offsetParent !== null) {
+                steps.push({
+                    selector: '#autoApproveToggle',
+                    titleKey: 'tour.autoApprove',
+                    textKey: 'tour.autoApprove.desc'
+                });
+            }
             if (document.getElementById('syncBtn')) {
                 steps.push({
                     selector: '#syncBtn',
@@ -1456,6 +1492,21 @@ const GuidedTour = {
                     textKey: 'tour.sync.desc'
                 });
             }
+            steps.push({
+                selector: '#recoverEmailsBtn',
+                titleKey: 'tour.recoverEmails',
+                textKey: 'tour.recoverEmails.desc'
+            });
+            steps.push({
+                selector: '#import-email-thread-btn',
+                titleKey: 'tour.importEmail',
+                textKey: 'tour.importEmail.desc'
+            });
+            steps.push({
+                selector: '#problemReportBtn',
+                titleKey: 'tour.problemReport',
+                textKey: 'tour.problemReport.desc'
+            });
         }
 
         // Input area buttons (same on mobile and desktop)
@@ -1475,6 +1526,15 @@ const GuidedTour = {
             titleKey: 'tour.generate',
             textKey: 'tour.generate.desc'
         });
+        // Per-message "save to knowledge" — only if one of our messages is on screen.
+        if (document.querySelector('.btn-extract-knowledge')) {
+            steps.push({
+                selector: '.btn-extract-knowledge',
+                titleKey: 'tour.extractKnowledge',
+                textKey: 'tour.extractKnowledge.desc',
+                prepare: () => this._closeMobileMenu()
+            });
+        }
         steps.push({
             selector: '#messageForm button[type="submit"]',
             titleKey: 'tour.send',
@@ -1482,211 +1542,7 @@ const GuidedTour = {
         });
 
         return steps;
-    },
-
-    start() {
-        this.steps = this.buildSteps();
-        if (!this.steps.length) return;
-
-        // Close mobile menu first if open
-        this._closeMobileMenu();
-
-        // Create overlay
-        this.overlay = document.createElement('div');
-        this.overlay.className = 'tour-overlay';
-        this.overlay.addEventListener('click', (e) => {
-            if (e.target === this.overlay) this.end();
-        });
-        document.body.appendChild(this.overlay);
-
-        // Create tooltip
-        this.tooltip = document.createElement('div');
-        this.tooltip.className = 'tour-tooltip arrow-top';
-        document.body.appendChild(this.tooltip);
-
-        // Handle escape key
-        this._escHandler = (e) => { if (e.key === 'Escape') this.end(); };
-        document.addEventListener('keydown', this._escHandler);
-
-        // Handle resize
-        this._resizeHandler = () => {
-            if (this.currentStep >= 0) this._positionTooltip();
-        };
-        window.addEventListener('resize', this._resizeHandler);
-
-        this.currentStep = -1;
-        this.next();
-    },
-
-    next() {
-        this.currentStep++;
-        if (this.currentStep >= this.steps.length) {
-            this.end();
-            return;
-        }
-        this._showStep();
-    },
-
-    prev() {
-        if (this.currentStep <= 0) return;
-        this.currentStep--;
-        this._showStep();
-    },
-
-    end() {
-        // Remove spotlight from current element
-        if (this.previousElement) {
-            this.previousElement.classList.remove('tour-spotlight');
-            this.previousElement.style.position = '';
-        }
-        if (this.overlay) this.overlay.remove();
-        if (this.tooltip) this.tooltip.remove();
-        this.overlay = null;
-        this.tooltip = null;
-        this.previousElement = null;
-        this.currentStep = -1;
-        this._closeMobileMenu();
-        document.removeEventListener('keydown', this._escHandler);
-        window.removeEventListener('resize', this._resizeHandler);
-    },
-
-    _showStep() {
-        const step = this.steps[this.currentStep];
-        if (!step) return;
-
-        // Run prepare function (e.g. open mobile menu)
-        if (step.prepare) step.prepare();
-
-        // Small delay to allow menu to open/DOM to settle
-        setTimeout(() => {
-            // Remove spotlight from previous element
-            if (this.previousElement) {
-                this.previousElement.classList.remove('tour-spotlight');
-                this.previousElement.style.position = '';
-            }
-
-            let el = document.querySelector(step.selector);
-            if (!el) {
-                // Skip this step if element not found
-                this.next();
-                return;
-            }
-
-            // Optionally spotlight the parent container instead
-            const spotlightEl = step.spotlightParent && el.closest('.overflow-menu-item') ? el.closest('.overflow-menu-item') : el;
-
-            // Add spotlight to current element
-            const computedPos = window.getComputedStyle(spotlightEl).position;
-            if (computedPos === 'static') spotlightEl.style.position = 'relative';
-            spotlightEl.classList.add('tour-spotlight');
-            this.previousElement = spotlightEl;
-
-            // Scroll element into view if needed
-            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
-            // Render tooltip content
-            const t = (key) => typeof i18n !== 'undefined' ? i18n.t(key) : key;
-            const total = this.steps.length;
-            const cur = this.currentStep + 1;
-            const isLast = this.currentStep === total - 1;
-            const isFirst = this.currentStep === 0;
-
-            this.tooltip.innerHTML = `
-                <div class="tour-tooltip-title">
-                    <i class="fas fa-info-circle"></i>
-                    ${t(step.titleKey)}
-                </div>
-                <div class="tour-tooltip-text">${t(step.textKey)}</div>
-                <div class="tour-tooltip-footer">
-                    <span class="tour-step-counter">${cur} / ${total}</span>
-                    <div class="tour-tooltip-actions">
-                        <button class="tour-btn tour-btn-skip" onclick="GuidedTour.end()">${t('tour.skip')}</button>
-                        ${!isFirst ? `<button class="tour-btn tour-btn-prev" onclick="GuidedTour.prev()"><i class="fas fa-chevron-left"></i></button>` : ''}
-                        <button class="tour-btn tour-btn-next" onclick="${isLast ? 'GuidedTour.end()' : 'GuidedTour.next()'}">
-                            ${isLast ? t('tour.done') : t('tour.next')}
-                        </button>
-                    </div>
-                </div>
-            `;
-
-            this._positionTooltip();
-        }, 80);
-    },
-
-    _positionTooltip() {
-        const step = this.steps[this.currentStep];
-        if (!step) return;
-        const el = document.querySelector(step.selector);
-        if (!el || !this.tooltip) return;
-
-        const rect = el.getBoundingClientRect();
-        const tipW = this.tooltip.offsetWidth;
-        const tipH = this.tooltip.offsetHeight;
-        const margin = 12;
-
-        // Decide: show below or above the element
-        const spaceBelow = window.innerHeight - rect.bottom;
-        const showBelow = spaceBelow > tipH + margin + 10;
-
-        let top, left;
-        if (showBelow) {
-            top = rect.bottom + margin;
-            this.tooltip.className = 'tour-tooltip arrow-top';
-        } else {
-            top = rect.top - tipH - margin;
-            this.tooltip.className = 'tour-tooltip arrow-bottom';
-        }
-
-        // Horizontal: align with element's left edge, but clamp to viewport
-        left = rect.left;
-        left = Math.max(12, Math.min(left, window.innerWidth - tipW - 12));
-
-        // If there's not enough space vertically, center the tooltip
-        if (top < 8) {
-            top = 8;
-            this.tooltip.className = 'tour-tooltip arrow-none';
-        }
-        if (top + tipH > window.innerHeight - 8) {
-            top = window.innerHeight - tipH - 8;
-            this.tooltip.className = 'tour-tooltip arrow-none';
-        }
-
-        // Position arrow relative to element center
-        const arrowLeft = Math.max(16, Math.min(rect.left + rect.width / 2 - left, tipW - 16));
-
-        this.tooltip.style.position = 'fixed';
-        this.tooltip.style.zIndex = '10000';
-        this.tooltip.style.top = top + 'px';
-        this.tooltip.style.left = left + 'px';
-        this.tooltip.style.setProperty('--tour-arrow-left', arrowLeft + 'px');
-    },
-
-    _openMobileMenu() {
-        const menu = document.getElementById('mobileOverflowMenu');
-        if (menu && !menu.classList.contains('open')) {
-            menu.classList.add('open');
-        }
-        // Elevate menu above tour overlay so spotlighted items are visible
-        if (menu) menu.style.zIndex = '9999';
-    },
-
-    _closeMobileMenu() {
-        const menu = document.getElementById('mobileOverflowMenu');
-        if (menu) {
-            menu.classList.remove('open');
-            menu.style.zIndex = '';
-        }
-    }
 };
-
-function startGuidedTour() {
-    // Close mobile overflow menu first (the tour button is inside it on mobile)
-    const menu = document.getElementById('mobileOverflowMenu');
-    if (menu) menu.classList.remove('open');
-
-    // Small delay to let menu close
-    setTimeout(() => GuidedTour.start(), 100);
-}
 
 // ============================================================================
 // PLAYTEST MODE

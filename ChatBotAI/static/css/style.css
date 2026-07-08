@@ -776,6 +776,81 @@ a {
     color: #f87171;
 }
 
+/* ── Inbox card ⋮ quick-actions menu ───────────────────────────────── */
+.card-menu-btn {
+    background: none;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 4px;
+    color: var(--text-light, #94a3b8);
+    cursor: pointer;
+    padding: 3px 8px;
+    font-size: 0.9rem;
+    line-height: 1;
+    transition: all 0.15s;
+}
+.card-menu-btn:hover {
+    background: rgba(123, 35, 50, 0.08);
+    color: var(--primary-color, #7B2332);
+    border-color: var(--primary-color, #7B2332);
+}
+
+.card-menu {
+    position: fixed;
+    z-index: 1200;
+    min-width: 230px;
+    max-width: 320px;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+    padding: 6px;
+    display: none;
+}
+.card-menu.open { display: block; }
+
+.card-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    background: none;
+    border: none;
+    text-align: left;
+    padding: 9px 12px;
+    border-radius: 7px;
+    font-size: 0.88rem;
+    color: var(--text-primary, #1e293b);
+    cursor: pointer;
+}
+.card-menu-item i { width: 16px; text-align: center; color: var(--text-light, #94a3b8); }
+.card-menu-item:hover { background: rgba(123, 35, 50, 0.08); }
+.card-menu-item:disabled { opacity: 0.5; cursor: default; }
+.card-menu-item.card-menu-danger,
+.card-menu-item.card-menu-danger i { color: var(--danger-color, #ef4444); }
+.card-menu-item.card-menu-danger:hover { background: rgba(239, 68, 68, 0.10); }
+
+.card-menu-sep { height: 1px; background: var(--border-color, #e2e8f0); margin: 5px 4px; }
+
+.card-menu-spinner { padding: 18px; text-align: center; color: var(--text-light, #94a3b8); }
+
+.card-menu-preview { padding: 10px 12px; }
+.card-menu-preview .cm-draft {
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-primary, #1e293b);
+    max-height: 180px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    background: var(--bg-secondary, #f8fafc);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 7px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+}
+.card-menu-preview .cm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+:root[data-theme="dark"] .card-menu { box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5); }
+
 /* Unread Conversation Indicators */
 .conversation-card.unread {
     position: relative;

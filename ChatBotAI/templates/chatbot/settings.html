@@ -71,6 +71,19 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
+                            <label for="inboxInstantSend" data-i18n="settings.ai.inboxInstantSend">UMI-Antwort aus dem Posteingang sofort senden</label>
+                            <p class="setting-description" data-i18n="settings.ai.inboxInstantSend.desc">Achtung: Über das ⋮-Menü im Posteingang erstellte UMI-Antworten gehen ohne Vorschau direkt an den Gast.</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="inboxInstantSend" name="inbox_umi_instant_send"
+                                onchange="saveToggleSetting('inbox_umi_instant_send', this.checked)"
+                                {% if settings|selectattr('key', 'equalto', 'inbox_umi_instant_send')|map(attribute='value')|first == 'true' %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
                             <label data-i18n="settings.ai.bulkAutoApprove">Auto-Freigabe für alle Chats</label>
                             <p class="setting-description" data-i18n="settings.ai.bulkAutoApprove.desc">Auto-Freigabe für alle aktiven Konversationen ein- oder ausschalten</p>
                         </div>
@@ -507,6 +520,111 @@ confirmation</textarea>
                         <span class="range-value" id="confidenceValue">{{ settings|selectattr('key', 'equalto', 'email_confidence_threshold')|map(attribute='value')|first or '0.8' }}</span>
                     </div>
                 </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="emailAutoinsertOnOpen" data-i18n="settings.emailReconcile.autoinsertOnOpen">Treffer beim Öffnen eines Chats einfügen</label>
+                        <p class="setting-description" data-i18n="settings.emailReconcile.autoinsertOnOpen.desc">Beim Öffnen einer Konversation werden sehr sichere E-Mail-Treffer automatisch eingefügt</p>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="emailAutoinsertOnOpen" name="email_autoinsert_on_open"
+                            onchange="saveToggleSetting('email_autoinsert_on_open', this.checked)"
+                            {% if settings|selectattr('key', 'equalto', 'email_autoinsert_on_open')|map(attribute='value')|first != 'false' %}checked{% endif %}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="emailOnopenThreshold" data-i18n="settings.emailReconcile.onopenThreshold">Schwelle für Einfügen beim Öffnen</label>
+                        <p class="setting-description" data-i18n="settings.emailReconcile.onopenThreshold.desc">Nur Treffer ab diesem Score beim Öffnen automatisch einfügen (Standard 0.95)</p>
+                    </div>
+                    <div class="range-with-value">
+                        <input type="range" id="emailOnopenThreshold" name="email_onopen_threshold"
+                            min="0" max="1" step="0.05"
+                            value="{{ settings|selectattr('key', 'equalto', 'email_onopen_threshold')|map(attribute='value')|first or '0.95' }}"
+                            oninput="document.getElementById('onopenThresholdValue').textContent = parseFloat(this.value).toFixed(2); saveRangeSetting('email_onopen_threshold', this.value)">
+                        <span class="range-value" id="onopenThresholdValue">{{ settings|selectattr('key', 'equalto', 'email_onopen_threshold')|map(attribute='value')|first or '0.95' }}</span>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label data-i18n="settings.emailReconcile.flushAll">Gesammelte E-Mails jetzt einfügen</label>
+                        <p class="setting-description" data-i18n="settings.emailReconcile.flushAll.desc">
+                            Alle bereits erkannten E-Mail-Treffer (ab Mindest-Konfidenz) ohne Einzelbestätigung in die passenden Chats einfügen.
+                        </p>
+                        <p class="setting-description"><span id="emailFlushPendingCount"></span></p>
+                    </div>
+                    <div class="setting-actions">
+                        <button class="btn btn-primary btn-sm" onclick="flushAllEmails()">
+                            <i class="fas fa-inbox"></i> <span data-i18n="settings.emailReconcile.flushAll.btn">Alle einfügen</span>
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="undoEmailFlush()">
+                            <i class="fas fa-rotate-left"></i> <span data-i18n="settings.emailReconcile.undo.btn">Rückgängig</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Notion Knowledge Base Sync -->
+        <div class="settings-card" id="notion-settings-card">
+            <div class="card-header">
+                <h2><i class="fas fa-book"></i> <span data-i18n="notion_title">Notion Wissensdatenbank</span></h2>
+            </div>
+            <div class="card-body">
+                <p class="help-text" style="margin-bottom: 15px;">
+                    Seiten aus einem Notion-Handbuch in die UMI-Wissensdatenbank synchronisieren.
+                </p>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="notion-enabled" data-i18n="notion_enabled">Synchronisierung aktiviert</label>
+                        <p class="setting-description">Regelmäßige Synchronisierung von Notion-Seiten aktivieren</p>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="notion-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                    <div class="setting-info" style="margin-bottom: 10px;">
+                        <label for="notion-token" data-i18n="notion_token">Notion Integrations-Token</label>
+                        <p class="setting-description">Interner Integrations-Token aus notion.com/my-integrations (wird nicht angezeigt)</p>
+                    </div>
+                    <input type="password" id="notion-token" autocomplete="off"
+                           class="setting-input" style="width: 100%;"
+                           placeholder="secret_… (leer lassen um gesetzten Token zu behalten)">
+                </div>
+
+                <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                    <div class="setting-info" style="margin-bottom: 10px;">
+                        <label for="notion-root" data-i18n="notion_root">Handbuch-Seiten-ID</label>
+                        <p class="setting-description">Notion-Seiten-ID der Handbuch-Startseite (32-stellige UUID oder URL)</p>
+                    </div>
+                    <input type="text" id="notion-root" class="setting-input" style="width: 100%;"
+                           placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+                </div>
+
+                <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                    <div class="setting-info" style="margin-bottom: 10px;">
+                        <label for="notion-blocklist">Gesperrte Stichwörter</label>
+                        <p class="setting-description">Seiten mit diesen Wörtern im Titel ausschließen (kommagetrennt)</p>
+                    </div>
+                    <textarea id="notion-blocklist" class="setting-textarea" rows="2"
+                              placeholder="intern, privat, passwort"></textarea>
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-primary" id="notion-save-btn" onclick="saveNotionSettings()">
+                        <i class="fas fa-save"></i> <span>Einstellungen speichern</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="notion-sync-btn" onclick="notionSyncNow()">
+                        <i class="fas fa-sync-alt"></i> <span data-i18n="notion_sync_now">Jetzt synchronisieren</span>
+                    </button>
+                </div>
+                <div id="notion-sync-result" style="margin-top: 12px;"></div>
             </div>
         </div>
         {% endif %}
@@ -1507,6 +1625,106 @@ confirmation</textarea>
     }
 
     // =========================================================================
+    // Notion Knowledge Base Settings
+    // =========================================================================
+
+    function loadNotionSettings() {
+        fetch('/chatbot/api/settings/notion')
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) return; // not admin or not configured — silently skip
+                document.getElementById('notion-enabled').checked = !!data.enabled;
+                // Never pre-fill the token; show placeholder indicating whether one is set
+                const tokenInput = document.getElementById('notion-token');
+                if (data.token_set) {
+                    tokenInput.placeholder = '•••• (gesetzt — leer lassen um zu behalten)';
+                } else {
+                    tokenInput.placeholder = 'secret_… (noch nicht gesetzt)';
+                }
+                if (data.root_page_id) {
+                    document.getElementById('notion-root').value = data.root_page_id;
+                }
+                if (data.block_keywords) {
+                    document.getElementById('notion-blocklist').value = data.block_keywords;
+                }
+            })
+            .catch(err => {
+                console.log('Could not load Notion settings:', err);
+            });
+    }
+
+    function saveNotionSettings() {
+        const tokenVal = document.getElementById('notion-token').value.trim();
+        const payload = {
+            notion_sync_enabled: document.getElementById('notion-enabled').checked,
+            notion_root_page_id: document.getElementById('notion-root').value.trim(),
+            notion_block_keywords: document.getElementById('notion-blocklist').value.trim()
+        };
+        // Only send token if operator actually typed something (empty = keep existing)
+        if (tokenVal) {
+            payload.notion_integration_token = tokenVal;
+        }
+
+        fetch('/chatbot/api/settings/notion', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification('Notion-Einstellungen gespeichert', 'success');
+                // Clear the token field and reload to update placeholder
+                document.getElementById('notion-token').value = '';
+                loadNotionSettings();
+            } else {
+                showNotification('Fehler beim Speichern: ' + (data.error || 'Unbekannter Fehler'), 'error');
+            }
+        })
+        .catch(err => {
+            showNotification('Fehler beim Speichern: ' + err.message, 'error');
+        });
+    }
+
+    function notionSyncNow() {
+        const btn = document.getElementById('notion-sync-btn');
+        const resultDiv = document.getElementById('notion-sync-result');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Synchronisiere…';
+        resultDiv.innerHTML = '';
+
+        fetch('/chatbot/api/notion/sync', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    resultDiv.innerHTML = '<p style="color: var(--color-error, #dc2626);">⚠ ' + data.error + '</p>';
+                } else {
+                    const s = data.stats || {};
+                    const blockedList = (s.blocked_titles && s.blocked_titles.length > 0)
+                        ? '<ul style="margin: 4px 0 0 16px; font-size: 0.85em;">'
+                          + s.blocked_titles.map(t => '<li>' + t + '</li>').join('')
+                          + '</ul>'
+                        : '';
+                    resultDiv.innerHTML =
+                        '<div style="background: var(--bg-secondary, #f0fdf4); border: 1px solid var(--color-success-border, #86efac); border-radius: 6px; padding: 10px 14px; font-size: 0.9em;">'
+                        + '<strong>✓ Synchronisierung abgeschlossen</strong><br>'
+                        + '<span>Einträge hinzugefügt/aktualisiert: <b>' + (s.kb_upserted || 0) + '</b></span> &nbsp;|&nbsp; '
+                        + '<span>Gelöscht: <b>' + (s.kb_deleted || 0) + '</b></span> &nbsp;|&nbsp; '
+                        + '<span>Gesperrte Seiten: <b>' + (s.pages_blocked || 0) + '</b></span>'
+                        + (blockedList ? '<br><em>Gesperrte Seitentitel:</em>' + blockedList : '')
+                        + '</div>';
+                }
+            })
+            .catch(err => {
+                resultDiv.innerHTML = '<p style="color: var(--color-error, #dc2626);">⚠ ' + err.message + '</p>';
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-sync-alt"></i> <span data-i18n="notion_sync_now">Jetzt synchronisieren</span>';
+            });
+    }
+
+    // =========================================================================
     // Smoobu Integration
     // =========================================================================
 
@@ -1574,6 +1792,55 @@ confirmation</textarea>
             })
             .catch(err => console.error('Smoobu disconnect failed:', err));
     }
+
+    function refreshEmailFlushCount() {
+        fetch('/chatbot/api/email-reconcile/pending-count')
+            .then(r => r.json())
+            .then(d => {
+                const el = document.getElementById('emailFlushPendingCount');
+                if (el) el.textContent = (d.count || 0) + ' bereit.';
+            })
+            .catch(() => {});
+    }
+
+    function flushAllEmails() {
+        const btn = event.target.closest('button');
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        fetch('/chatbot/api/email-reconcile/flush-all', { method: 'POST' })
+            .then(r => r.json())
+            .then(d => {
+                if (d.success) {
+                    let msg = `${d.inserted} Nachricht(en) in ${d.conversations} Chat(s) eingefügt`;
+                    if (d.skipped_no_conv) msg += ` (${d.skipped_no_conv} ohne Chat übersprungen)`;
+                    showNotification(msg, 'success');
+                    refreshEmailFlushCount();
+                } else {
+                    showNotification('Einfügen fehlgeschlagen', 'error');
+                }
+            })
+            .catch(() => showNotification('Einfügen fehlgeschlagen', 'error'))
+            .finally(() => { btn.disabled = false; btn.innerHTML = originalHtml; });
+    }
+
+    function undoEmailFlush() {
+        if (!confirm('Letzten Abgleich rückgängig machen?')) return;
+        const btn = event.target.closest('button');
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        fetch('/chatbot/api/email-reconcile/undo-flush', { method: 'POST' })
+            .then(r => r.json())
+            .then(d => {
+                showNotification(`${d.removed || 0} Nachricht(en) entfernt`, 'success');
+                refreshEmailFlushCount();
+            })
+            .catch(() => showNotification('Rückgängig fehlgeschlagen', 'error'))
+            .finally(() => { btn.disabled = false; btn.innerHTML = originalHtml; });
+    }
+
+    document.addEventListener('DOMContentLoaded', refreshEmailFlushCount);
 
     function syncSmoobuMessages() {
         const btn = event.target.closest('button');
@@ -1675,6 +1942,7 @@ confirmation</textarea>
         loadTemplates();
         {% if current_user.is_admin %}
         loadEmailFilterSettings();
+        loadNotionSettings();
         loadUsers();
         {% endif %}
     });

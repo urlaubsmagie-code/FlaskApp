@@ -259,8 +259,10 @@ def index():
     preload_last_messages(conversations)
     preload_unread_counts(conversations)
     preload_display_platforms(conversations)
+    instant_send = AISettings.get('inbox_umi_instant_send', 'false') == 'true'
     return render_template('chatbot/inbox.html', conversations=conversations,
-                           total_conversations=total_conversations)
+                           total_conversations=total_conversations,
+                           inbox_instant_send=instant_send)
 
 
 @chatbot_bp.route('/conversation/<int:conversation_id>')
@@ -1078,6 +1080,22 @@ def api_mark_conversation_read(conversation_id):
     return jsonify({'success': True, 'is_read': conversation.is_read, 'last_read_message_id': conversation.last_read_message_id})
 
 
+@chatbot_bp.route('/api/conversations/<int:conversation_id>/unread', methods=['POST'])
+@login_required
+def api_mark_conversation_unread(conversation_id):
+    """Mark a conversation as unread: rewind the read cursor and recompute is_read.
+
+    Counterpart to /read (which only advances the cursor forward). Used by the
+    inbox ⋮ menu to re-flag a chat. Unread only takes effect if a guest message
+    exists — recompute_is_read derives is_read from the (now-cleared) cursor.
+    """
+    conversation = Conversation.query.get_or_404(conversation_id)
+    conversation.last_read_message_id = None
+    conversation.recompute_is_read()
+    db.session.commit()
+    return jsonify({'success': True, 'is_read': conversation.is_read})
+
+
 @chatbot_bp.route('/api/conversations/<int:conversation_id>/messages', methods=['POST'])
 def api_send_message(conversation_id):
     """Send a new message in a conversation (owner message)"""
@@ -1142,6 +1160,11 @@ def api_send_message(conversation_id):
 def api_generate_ai_response(conversation_id):
     """Generate an AI response for a conversation"""
     conversation = Conversation.query.get_or_404(conversation_id)
+
+    # When set, always save the reply as a pending draft (never auto-send),
+    # regardless of the conversation's auto_approve. The inbox ⋮ menu uses this
+    # so it can preview-then-approve (or approve instantly) uniformly.
+    draft_only = bool((request.get_json(silent=True) or {}).get('draft_only'))
 
     if not conversation.ai_enabled:
         return jsonify({'error': 'AI is disabled for this conversation'}), 400
@@ -1303,7 +1326,7 @@ def api_generate_ai_response(conversation_id):
         # Check if approval queue is enabled (respects per-conversation auto-approve)
         approval_queue_enabled = AISettings.get('approval_queue_enabled', 'true') == 'true'
 
-        if approval_queue_enabled and not conversation.auto_approve:
+        if draft_only or (approval_queue_enabled and not conversation.auto_approve):
             ai_message.approval_status = 'pending'
             db.session.commit()
             return jsonify({

@@ -76,6 +76,9 @@
         <button class="knowledge-tab" onclick="switchHelpTab('weiteres', this)">
             <i class="fas fa-ellipsis-h"></i> Weiteres
         </button>
+        <button class="knowledge-tab" onclick="switchHelpTab('warum', this)">
+            <i class="fas fa-question-circle"></i> Warum?
+        </button>
     </div>
 
     <!-- ==================== POSTEINGANG ==================== -->
@@ -144,8 +147,20 @@
         </div>
 
         <div class="help-card">
-            <h3><i class="fas fa-times-circle"></i> Konversation beenden</h3>
-            <p>Du kannst eine aktive Konversation über das <strong>X</strong>-Symbol auf der Karte beenden. Geschlossene Konversationen erscheinen weiterhin im Posteingang und können über den Filter angezeigt werden.</p>
+            <h3><i class="fas fa-ellipsis-v"></i> Das ⋮-Menü (Chat verwalten ohne Öffnen)</h3>
+            <p>Über das <strong>Drei-Punkte-Symbol</strong> (⋮) auf jeder Karte kannst du einen Chat direkt aus dem Posteingang verwalten, ohne ihn zu öffnen:</p>
+            <ul>
+                <li><strong>Als gelesen / ungelesen markieren</strong> — schnell den Lese-Status umschalten.</li>
+                <li><strong>Auto-Antwort AN/AUS</strong> — die automatische UMI-Antwort für genau diesen Chat ein- oder ausschalten.</li>
+                <li><strong>UMI-Antwort</strong> — UMI erstellt eine Antwort; du siehst sie direkt im Menü und kannst sie mit <strong>Senden</strong> abschicken oder mit <strong>Abbrechen</strong> verwerfen. So beantwortest du einen Chat, ohne ihn zu öffnen.</li>
+                <li><strong>Chat schließen</strong> — beendet die Konversation (früher das X-Symbol). Geschlossene Chats bleiben über den Filter sichtbar.</li>
+            </ul>
+            <div class="help-tip">
+                <strong>UMI-Antwort erscheint nur</strong>, wenn UMI für den Chat aktiv ist, der Chat nicht eskaliert ist und die <strong>letzte Nachricht vom Gast</strong> kam — damit nicht versehentlich doppelt geantwortet wird.
+            </div>
+            <div class="help-tip">
+                <strong>Sofort senden:</strong> In den Einstellungen (Admin) kann „UMI-Antwort aus dem Posteingang sofort senden" aktiviert werden. Dann sendet <strong>UMI-Antwort senden</strong> mit einem Klick ohne Vorschau — nutze das erst, wenn du UMI voll vertraust.
+            </div>
         </div>
     </div>
 
@@ -230,6 +245,60 @@
                 <strong>Tipp:</strong> Du kannst die Freigabe-Pflicht für einzelne Konversationen deaktivieren ("Auto-Freigabe"), wenn du UMI bei einem bestimmten Gast vertraust.
             </div>
         </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-check-double" style="color:#22c55e;"></i> Auto-Freigabe (pro Chat)</h3>
+            <p>Neben den UMI-Schaltern kann ein <strong>Auto-Freigabe</strong>-Symbol (Doppel-Häkchen) erscheinen. Dieses siehst du nur, wenn die Freigabe-Warteschlange aktiv ist.</p>
+            <ul>
+                <li><strong>AUS</strong> (Standard) — UMI-Antworten warten auf deine Freigabe, bevor sie an den Gast gehen.</li>
+                <li><strong>AN</strong> — UMI-Antworten in <strong>diesem</strong> Chat werden sofort gesendet, ohne Freigabe. Nutze das nur bei Gästen/Themen, denen du UMI voll vertraust.</li>
+            </ul>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-graduation-cap" style="color:#059669;"></i> Wissen speichern (🎓 pro Nachricht)</h3>
+            <p>Neben jeder <strong>eigenen</strong> Nachricht (von dir oder UMI) siehst du ein kleines <strong>Doktorhut-Symbol</strong> 🎓. Damit übernimmst du die Info aus dieser Nachricht direkt in die Wissensdatenbank.</p>
+            <ul>
+                <li>UMI liest die Nachricht und speichert die nützlichen Fakten automatisch als Wissenseinträge.</li>
+                <li>Beim nächsten Mal nutzt UMI dieses Wissen für ihre Antworten — du musst es nicht abtippen.</li>
+                <li>Nichts Brauchbares gefunden? Dann meldet die App das kurz und speichert nichts.</li>
+            </ul>
+            <div class="help-tip">
+                <strong>Beispiel:</strong> Du hast dem Gast geschrieben "Der Müll wird dienstags abgeholt". Ein Klick auf 🎓 — und UMI kennt diese Info ab sofort für alle.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-exclamation-triangle" style="color:#dc2626;"></i> Problem melden</h3>
+            <p>Über das <strong>Warndreieck</strong> im Chat-Header (mobil im Menü <i class="fas fa-ellipsis-v"></i>) meldest du ein Problem mit genau diesem Chat an das Team.</p>
+            <ul>
+                <li>Nutze es z. B. bei einer <strong>falschen UMI-Antwort</strong>, einer fehlenden Information oder etwas, das jemand prüfen sollte.</li>
+                <li>Die Meldung landet in der Problem-Übersicht und kann als <strong>gelöst</strong> markiert werden.</li>
+            </ul>
+            <div class="help-tip">
+                <strong>Tipp:</strong> Lieber einmal zu viel melden als zu wenig — so verbessern wir UMI und finden Lücken im Wissen schneller.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-envelope-open-text"></i> E-Mails zum Chat finden &amp; übernehmen</h3>
+            <p>Manche Gäste schreiben (auch) per E-Mail. Zwei Werkzeuge im Chat-Header holen diese Nachrichten in den Chat:</p>
+            <ul>
+                <li><span class="help-icon-label"><i class="fas fa-envelope-open-text"></i> <strong>E-Mails suchen</strong></span> — durchsucht das Gmail-Postfach nach E-Mails, die zu diesem Gast/Chat gehören, und fügt sie ein.</li>
+                <li><span class="help-icon-label"><i class="fas fa-mail-bulk"></i> <strong>E-Mail-Verlauf übernehmen</strong></span> — holt den <strong>kompletten</strong> Verlauf (Nachrichten des Gastes <em>und</em> unsere Antworten) in den Chat, damit alles an einem Ort steht.</li>
+            </ul>
+            <div class="help-tip">
+                <strong>Gut zu wissen:</strong> So siehst du das ganze Gespräch zusammen, auch wenn es über verschiedene Kanäle (Plattform-Chat + E-Mail) lief.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-question-circle"></i> Geführte Tour</h3>
+            <p>Über das <strong>Fragezeichen-Symbol</strong> im Chat-Header startest du eine kurze <strong>geführte Tour</strong>. Sie zeigt dir Schritt für Schritt, was jeder Knopf im Chat macht — direkt am echten Chat, mit Hervorhebung.</p>
+            <div class="help-tip">
+                <strong>Tipp:</strong> Ideal zum Einarbeiten. Die Tour passt sich an — am Handy erklärt sie die Knöpfe im Menü <i class="fas fa-ellipsis-v"></i>.
+            </div>
+        </div>
     </div>
 
     <!-- ==================== KI ==================== -->
@@ -244,6 +313,21 @@
                 UMI lernt aus euren Korrekturen und wird mit der Zeit immer besser.
                 Sie ersetzt euch nicht, sondern hilft euch, schneller und einheitlicher zu antworten.
             </p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-heart" style="color:#ec4899;"></i> UMIs Persönlichkeit</h3>
+            <p>UMI ist bewusst so gestaltet, dass sie klingt wie ein Mensch aus unserem Team — nicht wie ein Roboter:</p>
+            <ul>
+                <li><strong>Freundlich &amp; locker</strong> — sie duzt die Gäste (Du/tú), bleibt aber immer höflich und respektvoll.</li>
+                <li><strong>Warm, aber knapp</strong> — sie kommt auf den Punkt und schreibt keine langen Romane. Kurze, hilfreiche Antworten.</li>
+                <li><strong>Sie spiegelt die Sprache des Gastes</strong> — schreibt der Gast Englisch, antwortet UMI Englisch; auf Deutsch bleibt sie beim Du.</li>
+                <li><strong>Sie klingt wie das Team</strong> — der Ton ist an unsere echten Antworten angelehnt, damit Gäste keinen Bruch merken.</li>
+                <li><strong>Ehrlich statt erfinderisch</strong> — was sie nicht sicher weiß, erfindet sie <em>nicht</em>. Dann verweist sie lieber auf das Team (Eskalation).</li>
+            </ul>
+            <div class="help-tip">
+                <strong>Wichtig:</strong> UMI ist eine <strong>Assistentin</strong>, kein Ersatz. Sie hilft euch, schneller und einheitlicher zu antworten — die Kontrolle bleibt immer bei euch.
+            </div>
         </div>
 
         <div class="help-section">
@@ -415,6 +499,77 @@
         <div class="help-card">
             <h3><i class="fas fa-volume-up"></i> Ton-Benachrichtigungen</h3>
             <p>Bei neuen Nachrichten kann ein Benachrichtigungston abgespielt werden. Aktiviere oder deaktiviere ihn über das <i class="fas fa-volume-up"></i> Lautsprecher-Symbol in der Leiste.</p>
+        </div>
+    </div>
+
+    <!-- ==================== WARUM? ==================== -->
+    <div id="tab-warum" class="tab-content" style="display:none;">
+        <div class="help-section">
+            <h2><i class="fas fa-question-circle"></i> Warum passiert das?</h2>
+            <p>Hier erklären wir die Dinge, die im Alltag oft für Verwirrung sorgen — warum manche Sachen passieren und warum manche <em>immer</em> so sind.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-robot"></i> Warum steht in manchen Chats eine Nachricht von „uns", die niemand geschrieben hat?</h3>
+            <p>Airbnb und Booking.com verschicken <strong>automatische Nachrichten</strong> im Namen des Gastgebers — z. B. <strong>Buchungsbestätigungen</strong> oder <strong>Preis-Angebote</strong>. Diese erscheinen im Chat als unsere Nachricht, obwohl sie niemand aus dem Team getippt hat.</p>
+            <ul>
+                <li>Das ist normal und kommt direkt von der Plattform.</li>
+                <li><strong>UMI ignoriert</strong> solche automatischen Nachrichten bewusst und antwortet nur auf das, was der Gast wirklich schreibt.</li>
+            </ul>
+            <div class="help-tip">
+                <strong>Kurz gesagt:</strong> So eine automatische Nachricht bedeutet <strong>nicht</strong>, dass ihr schon mit dem Gast gesprochen habt.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-sort-amount-down"></i> Warum taucht kurz nach dem Öffnen manchmal noch eine ältere Nachricht auf?</h3>
+            <p>Beim Öffnen eines Chats holt die App im Hintergrund die neuesten Nachrichten von der Plattform (Synchronisierung). Dabei kann eine <strong>ältere automatische Nachricht</strong> ein paar Sekunden später nachgeladen werden.</p>
+            <p>Sie wird jetzt <strong>an der richtigen Stelle im zeitlichen Verlauf</strong> einsortiert — nicht mehr einfach unten angehängt. Der Chat sortiert sich also selbst korrekt, auch ohne Neuladen.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-comment-slash"></i> Warum hat UMI nicht geantwortet?</h3>
+            <p>UMI antwortet <strong>nicht automatisch</strong>, wenn einer dieser Punkte zutrifft:</p>
+            <ul>
+                <li><strong>UMI ist ausgeschaltet</strong> für diesen Chat (graues/blaues Roboter-Symbol statt grün).</li>
+                <li><strong>Auto-Respond ist aus</strong> — UMI schlägt dann nur vor, sendet aber nichts von allein.</li>
+                <li>Der Chat ist <strong>eskaliert</strong> — bei heiklen Themen zieht sich UMI zurück und überlässt es dem Team.</li>
+                <li>Es geht um ein <strong>eingeschränktes Thema</strong> aus der Wissensdatenbank (Tab „Eskalation").</li>
+                <li>Die Antwort <strong>wartet auf Freigabe</strong> — sie ist erstellt, aber noch nicht gesendet.</li>
+            </ul>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-check-double"></i> Warum wurde ein Chat als „gelesen" markiert, obwohl ich nichts gemacht habe?</h3>
+            <p>Wenn jemand aus dem Team <strong>direkt über Airbnb oder Booking.com</strong> antwortet (statt über diese App), erkennt die Synchronisierung diese Antwort und markiert den Chat automatisch als gelesen. So entstehen keine falschen „Ungelesen"-Markierungen.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-arrow-up"></i> Warum wandert ein Chat plötzlich nach oben oder ist wieder ungelesen?</h3>
+            <p>Der Posteingang sortiert immer nach der <strong>neuesten Nachricht</strong> — der aktivste Chat steht oben. Schreibt ein Gast etwas Neues, springt der Chat nach oben und wird <strong>fett</strong> als ungelesen markiert.</p>
+            <div class="help-tip">
+                <strong>Gut zu wissen:</strong> Eine automatische Plattform-Nachricht (Bestätigung/Angebot) zieht einen Chat <strong>nicht</strong> nach oben — nur echte neue Nachrichten zählen.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-lock"></i> Warum kann ich eine gesendete Nachricht nicht mehr ändern?</h3>
+            <p>Sobald eine Nachricht an den Gast rausgeht, liegt sie bei Airbnb/Booking.com — sie lässt sich nicht mehr zurückholen oder bearbeiten. Deshalb kannst du UMI-Antworten <strong>vor</strong> dem Senden bearbeiten (und UMI lernt daraus). Ist etwas falsch rausgegangen, schreib dem Gast einfach eine kurze Korrektur.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-hourglass-half"></i> Warum dauert eine UMI-Antwort manchmal ein paar Sekunden?</h3>
+            <p>UMI läuft auf einem KI-Modell direkt bei uns auf dem Server. Für eine gute, passende Antwort liest sie das Profil, das Wissen und den Verlauf — das braucht ein paar Sekunden. Das Glühbirnen-/Roboter-Symbol dreht sich so lange.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-id-badge"></i> Warum sehe ich manchmal „Reservierung 12345" statt einem Namen?</h3>
+            <p>Der Gästename kommt aus den Reservierungsdaten der Plattform. Ist er noch nicht synchronisiert, zeigt die App vorübergehend die <strong>Reservierungsnummer</strong>. Nach der nächsten Synchronisierung erscheint der richtige Name. Mit dem <strong>Sync-Button</strong> (&#8635;) kannst du das beschleunigen.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-plug"></i> Warum fehlen manchmal Nachrichten von Booking.com?</h3>
+            <p>Zwischen Booking.com und Smoobu (unserer Schnittstelle) gehen gelegentlich Nachrichten verloren oder kommen verspätet an — das liegt nicht an dieser App. Nutze in dem Fall den <strong>Sync-Button</strong> (&#8635;) im Chat, um die neuesten Nachrichten direkt nachzuladen.</p>
         </div>
     </div>
 </div>

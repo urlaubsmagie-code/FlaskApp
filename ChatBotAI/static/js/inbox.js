@@ -67,6 +67,8 @@ function createConversationCard(conv) {
     card.dataset.escalated = conv.escalated ? 'true' : 'false';
     card.dataset.autoRespond = conv.auto_respond ? 'true' : 'false';
     card.dataset.hasPendingApproval = conv.has_pending_approval ? 'true' : 'false';
+    card.dataset.aiEnabled = conv.ai_enabled ? 'true' : 'false';
+    card.dataset.lastSender = (conv.last_message && conv.last_message.sender_type) || '';
     if (conv.escalated) card.classList.add('escalated');
 
     const guestName = (conv.guest && (conv.guest.name || conv.guest.email)) || 'Unknown Guest';
@@ -115,7 +117,7 @@ function createConversationCard(conv) {
             ${approvalLabel}
             ${cancellationLabel}
             <span class="status-badge ${conv.status}">${formatStatus(conv.status)}</span>
-            ${conv.status !== 'closed' ? `<button class="btn-close-conv" onclick="closeConversation(event, ${conv.id})" title="${i18n.t('inbox.closeChat') || 'Gespräch beenden'}"><i class="fas fa-times"></i></button>` : ''}
+            <button class="card-menu-btn" onclick="openCardMenu(event, ${conv.id})" title="${i18n.t('inbox.menu.title') || 'Optionen'}" aria-label="Optionen"><i class="fas fa-ellipsis-v"></i></button>
         </div>
     `;
 
@@ -1101,8 +1103,314 @@ document.addEventListener('DOMContentLoaded', () => {
     loadStats();
     inboxPoller.start();
     initConversationPrefetch();
+    initCardMenu();
 
     // Stagger external service sync to avoid blocking page load
     setTimeout(() => initGmailAutoSync(), 3000);
     setTimeout(() => initSmoobuAutoSync(), 6000);
 });
+
+// ============================================================================
+// Inbox card ⋮ quick-actions menu
+// ============================================================================
+let cardMenuEl = null;        // single reused popover
+let cardMenuConvId = null;
+
+function ensureCardMenuEl() {
+    if (cardMenuEl) return cardMenuEl;
+    cardMenuEl = document.createElement('div');
+    cardMenuEl.className = 'card-menu';
+    document.body.appendChild(cardMenuEl);
+    // Delegated clicks for the standing menu items (data-action). Preview
+    // buttons wire their own handlers.
+    cardMenuEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        handleCardMenuAction(btn.dataset.action);
+    });
+    return cardMenuEl;
+}
+
+function closeCardMenu() {
+    if (cardMenuEl) {
+        cardMenuEl.classList.remove('open');
+        cardMenuEl.innerHTML = '';
+    }
+    cardMenuConvId = null;
+}
+
+function openCardMenu(event, convId) {
+    event.preventDefault();
+    event.stopPropagation();
+    const card = document.querySelector(`.conversation-card[data-conversation-id="${convId}"]`);
+    if (!card) return;
+    // Second tap on the same button closes it.
+    if (cardMenuConvId === convId && cardMenuEl && cardMenuEl.classList.contains('open')) {
+        closeCardMenu();
+        return;
+    }
+    const menu = ensureCardMenuEl();
+    cardMenuConvId = convId;
+    menu.innerHTML = buildCardMenuHtml(card);
+    menu.classList.add('open');
+    positionCardMenu(menu, event.currentTarget || card.querySelector('.card-menu-btn') || card);
+}
+
+function positionCardMenu(menu, anchor) {
+    const rect = anchor.getBoundingClientRect();
+    const mW = menu.offsetWidth;
+    const mH = menu.offsetHeight;
+    let left = rect.right - mW;                 // right-align to the button
+    if (left < 8) left = 8;
+    if (left + mW > window.innerWidth - 8) left = window.innerWidth - mW - 8;
+    let top = rect.bottom + 6;
+    if (top + mH > window.innerHeight - 8) top = rect.top - mH - 6;   // flip up
+    if (top < 8) top = 8;
+    menu.style.top = top + 'px';
+    menu.style.left = left + 'px';
+}
+
+function cardMenuItem(action, icon, label, extraClass) {
+    return `<button class="card-menu-item ${extraClass || ''}" data-action="${action}">
+        <i class="fas ${icon}"></i><span>${escapeHtml(label)}</span></button>`;
+}
+
+function buildCardMenuHtml(card) {
+    const t = (k, d) => i18n.t(k) || d;
+    const isRead = card.dataset.isRead === 'true';
+    const status = card.dataset.status;
+    const autoRespond = card.dataset.autoRespond === 'true';
+    const aiEnabled = card.dataset.aiEnabled === 'true';
+    const escalated = card.dataset.escalated === 'true';
+    const lastSender = card.dataset.lastSender;
+    let html = '';
+
+    html += cardMenuItem('read', isRead ? 'fa-envelope' : 'fa-envelope-open',
+        isRead ? t('inbox.menu.markUnread', 'Als ungelesen markieren')
+               : t('inbox.menu.markRead', 'Als gelesen markieren'));
+
+    if (aiEnabled) {
+        html += cardMenuItem('auto', 'fa-bolt',
+            autoRespond ? t('inbox.menu.autoOff', 'Auto-Antwort AUS')
+                        : t('inbox.menu.autoOn', 'Auto-Antwort AN'));
+    }
+
+    // UMI-Antwort — only when UMI is on, chat is not escalated, and the guest
+    // sent the last message (avoids double-replying).
+    if (aiEnabled && !escalated && lastSender === 'guest') {
+        const instant = window.inboxConfig && window.inboxConfig.instantSend;
+        html += cardMenuItem('umi', 'fa-robot',
+            instant ? t('inbox.menu.umiReplySend', 'UMI-Antwort senden')
+                    : t('inbox.menu.umiReply', 'UMI-Antwort'));
+    }
+
+    if (status !== 'closed') {
+        html += '<div class="card-menu-sep"></div>';
+        html += cardMenuItem('close', 'fa-times-circle',
+            t('inbox.menu.close', 'Chat schließen'), 'card-menu-danger');
+    }
+    return html;
+}
+
+function handleCardMenuAction(action) {
+    const convId = cardMenuConvId;
+    const card = document.querySelector(`.conversation-card[data-conversation-id="${convId}"]`);
+    if (!card) { closeCardMenu(); return; }
+    if (action === 'read') return cardToggleRead(convId, card);
+    if (action === 'auto') return cardToggleAuto(convId, card);
+    if (action === 'umi') return cardUmiReply(convId, card);
+    if (action === 'close') { closeCardMenu(); closeConversation(_noopEvent(), convId); }
+}
+
+function _noopEvent() {
+    return { preventDefault() {}, stopPropagation() {} };
+}
+
+function cardToggleRead(convId, card) {
+    const isRead = card.dataset.isRead === 'true';
+    const opts = isRead
+        ? { method: 'POST' }
+        : { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) };
+    const url = isRead ? `/chatbot/api/conversations/${convId}/unread`
+                       : `/chatbot/api/conversations/${convId}/read`;
+    fetch(url, opts)
+        .then(r => r.json())
+        .then(d => {
+            const nowRead = !!d.is_read;
+            card.dataset.isRead = nowRead ? 'true' : 'false';
+            card.classList.toggle('unread', !nowRead);
+            const sr = card.querySelector('.sr-only');
+            if (nowRead && sr) sr.remove();
+            if (!nowRead && !sr) {
+                const s = document.createElement('span');
+                s.className = 'sr-only';
+                s.textContent = 'Unread';
+                card.insertBefore(s, card.firstChild);
+            }
+            if (typeof loadStats === 'function') loadStats();
+        })
+        .catch(() => showNotification(i18n.t('common.error') || 'Fehler', 'error'))
+        .finally(closeCardMenu);
+}
+
+function cardToggleAuto(convId, card) {
+    fetch(`/chatbot/api/conversations/${convId}/toggle-auto-respond`, { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+            if (d.error) { showNotification(d.error, 'error'); return; }
+            card.dataset.autoRespond = d.auto_respond ? 'true' : 'false';
+            const badge = card.querySelector('.ai-badge');
+            if (badge) {
+                badge.classList.toggle('auto-respond-on', d.auto_respond);
+                badge.classList.toggle('auto-respond-off', !d.auto_respond);
+            }
+            showNotification(
+                d.auto_respond ? (i18n.t('inbox.menu.autoOnDone') || 'Auto-Antwort an')
+                               : (i18n.t('inbox.menu.autoOffDone') || 'Auto-Antwort aus'),
+                'success');
+        })
+        .catch(() => showNotification(i18n.t('common.error') || 'Fehler', 'error'))
+        .finally(closeCardMenu);
+}
+
+function cardUmiReply(convId, card) {
+    const menu = cardMenuEl;
+    menu.innerHTML = `<div class="card-menu-spinner"><i class="fas fa-spinner fa-spin"></i> ${escapeHtml(i18n.t('inbox.menu.generating') || 'UMI denkt nach…')}</div>`;
+    const anchor = card.querySelector('.card-menu-btn');
+    if (anchor) positionCardMenu(menu, anchor);
+    fetch(`/chatbot/api/conversations/${convId}/ai-response`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ draft_only: true })
+    })
+        .then(async r => ({ ok: r.ok, data: await r.json().catch(() => ({})) }))
+        .then(({ ok, data }) => {
+            if (cardMenuConvId !== convId) return;   // menu changed/closed meanwhile
+            if (data.skipped) {
+                showNotification(i18n.t('inbox.menu.noReplyNeeded') || 'Keine Antwort nötig', 'info');
+                closeCardMenu();
+                return;
+            }
+            if (!ok || data.error || !data.message) {
+                menu.innerHTML = `<div class="card-menu-spinner">${escapeHtml(data.error || (i18n.t('common.error') || 'Fehler'))}</div>`;
+                if (anchor) positionCardMenu(menu, anchor);
+                return;
+            }
+            if (window.inboxConfig && window.inboxConfig.instantSend) {
+                cardApproveDraft(data.message.id);
+            } else {
+                renderDraftPreview(convId, data.message, card);
+            }
+        })
+        .catch(() => {
+            menu.innerHTML = `<div class="card-menu-spinner">${escapeHtml(i18n.t('common.error') || 'Fehler')}</div>`;
+        });
+}
+
+function renderDraftPreview(convId, msg, card) {
+    const menu = cardMenuEl;
+    menu.innerHTML = `
+        <div class="card-menu-preview">
+            <div class="cm-draft">${escapeHtml(msg.content || '')}</div>
+            <div class="cm-actions">
+                <button class="btn btn-secondary btn-sm" data-cm="cancel">${escapeHtml(i18n.t('inbox.menu.cancel') || 'Abbrechen')}</button>
+                <button class="btn btn-primary btn-sm" data-cm="send">${escapeHtml(i18n.t('inbox.menu.send') || 'Senden')}</button>
+            </div>
+        </div>`;
+    menu.querySelector('[data-cm="cancel"]').addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation(); cardRejectDraft(msg.id);
+    });
+    menu.querySelector('[data-cm="send"]').addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation(); cardApproveDraft(msg.id);
+    });
+    const anchor = card.querySelector('.card-menu-btn');
+    if (anchor) positionCardMenu(menu, anchor);
+}
+
+function cardApproveDraft(messageId) {
+    fetch(`/chatbot/api/messages/${messageId}/approve`, { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+            if (d.error) { showNotification(d.error, 'error'); return; }
+            showNotification(i18n.t('inbox.menu.sent') || 'Gesendet', 'success');
+            if (typeof refreshConversations === 'function') refreshConversations();
+        })
+        .catch(() => showNotification(i18n.t('inbox.menu.sendError') || 'Senden fehlgeschlagen', 'error'))
+        .finally(closeCardMenu);
+}
+
+function cardRejectDraft(messageId) {
+    fetch(`/chatbot/api/messages/${messageId}/reject`, { method: 'POST' })
+        .catch(() => {})
+        .finally(closeCardMenu);
+}
+
+function initCardMenu() {
+    ensureCardMenuEl();
+    document.addEventListener('click', (e) => {
+        if (cardMenuEl && cardMenuEl.classList.contains('open') &&
+            !cardMenuEl.contains(e.target) && !e.target.closest('.card-menu-btn')) {
+            closeCardMenu();
+        }
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCardMenu(); });
+    const list = document.getElementById('conversationList');
+    if (list) list.addEventListener('scroll', closeCardMenu, { passive: true });
+    window.addEventListener('scroll', closeCardMenu, { passive: true });
+}
+
+// ============================================================================
+// Guided Tour — inbox page steps (engine lives in guided-tour.js)
+// ============================================================================
+GuidedTour.buildSteps = function () {
+    const steps = [];
+    steps.push({
+        selector: '#statsCard',
+        titleKey: 'tour.inbox.stats',
+        textKey: 'tour.inbox.stats.desc'
+    });
+    // A real conversation row — only if the list isn't empty.
+    if (document.querySelector('.conversation-card')) {
+        steps.push({
+            selector: '.conversation-card',
+            titleKey: 'tour.inbox.card',
+            textKey: 'tour.inbox.card.desc'
+        });
+    }
+    // The ⋮ quick-actions menu — only if a card (and its button) is present.
+    if (document.querySelector('.card-menu-btn')) {
+        steps.push({
+            selector: '.card-menu-btn',
+            titleKey: 'tour.inbox.menu',
+            textKey: 'tour.inbox.menu.desc'
+        });
+    }
+    steps.push({
+        selector: '.filter-group[aria-label="Filter by platform"]',
+        titleKey: 'tour.inbox.platform',
+        textKey: 'tour.inbox.platform.desc'
+    });
+    steps.push({
+        selector: '.filter-group[aria-label="Filter by status"]',
+        titleKey: 'tour.inbox.status',
+        textKey: 'tour.inbox.status.desc'
+    });
+    steps.push({
+        selector: '[data-filter-unread]',
+        titleKey: 'tour.inbox.unread',
+        textKey: 'tour.inbox.unread.desc'
+    });
+    steps.push({
+        selector: '.search-box',
+        titleKey: 'tour.inbox.search',
+        textKey: 'tour.inbox.search.desc'
+    });
+    steps.push({
+        selector: '#markAllReadBtn',
+        titleKey: 'tour.inbox.markRead',
+        textKey: 'tour.inbox.markRead.desc'
+    });
+    return steps;
+};

@@ -20,6 +20,9 @@
             <button class="btn btn-secondary" onclick="refreshConversations()">
                 <i class="fas fa-sync-alt"></i> <span data-i18n="common.refresh">Aktualisieren</span>
             </button>
+            <button class="btn btn-secondary" onclick="startGuidedTour()" data-i18n-title="conversation.tour.start" title="Geführte Tour">
+                <i class="fas fa-question-circle"></i> <span data-i18n="tour.inbox.start">Tour</span>
+            </button>
         </div>
     </div>
 
@@ -88,7 +91,7 @@
     <div class="conversation-list" id="conversationList">
         {% if conversations %}
             {% for conv in conversations %}
-            <a href="{{ url_for('chatbot.conversation_view', conversation_id=conv.id) }}" class="conversation-card{% if not conv.is_read %} unread{% endif %}" data-conversation-id="{{ conv.id }}" data-updated-at="{{ conv.updated_at.isoformat() if conv.updated_at else '' }}" data-platform="{{ conv.platform }}" data-status="{{ conv.status }}" data-guest-id="{{ conv.guest_id }}" data-is-read="{{ 'true' if conv.is_read else 'false' }}">
+            <a href="{{ url_for('chatbot.conversation_view', conversation_id=conv.id) }}" class="conversation-card{% if not conv.is_read %} unread{% endif %}" data-conversation-id="{{ conv.id }}" data-updated-at="{{ conv.updated_at.isoformat() if conv.updated_at else '' }}" data-platform="{{ conv.platform }}" data-status="{{ conv.status }}" data-guest-id="{{ conv.guest_id }}" data-is-read="{{ 'true' if conv.is_read else 'false' }}" data-ai-enabled="{{ 'true' if conv.ai_enabled else 'false' }}" data-auto-respond="{{ 'true' if conv.auto_respond else 'false' }}" data-escalated="{{ 'true' if conv.escalated else 'false' }}" data-last-sender="{{ conv.last_message.sender_type if conv.last_message else '' }}">
                 {% if not conv.is_read %}
                 <span class="sr-only">Unread</span>
                 {% endif %}
@@ -128,9 +131,7 @@
                         <span class="cancellation-badge" title="{{ conv.cancelled_at|to_local if conv.cancelled_at else '' }}"><i class="fas fa-ban"></i> <span data-i18n="inbox.badge.cancelled">Storniert</span></span>
                     {% endif %}
                     <span class="status-badge {{ conv.status }}">{{ conv.status|replace('_', ' ')|title }}</span>
-                    {% if conv.status != 'closed' %}
-                        <button class="btn-close-conv" onclick="closeConversation(event, {{ conv.id }})" title="Gespräch beenden"><i class="fas fa-times"></i></button>
-                    {% endif %}
+                    <button class="card-menu-btn" onclick="openCardMenu(event, {{ conv.id }})" data-i18n-title="inbox.menu.title" title="Optionen" aria-label="Optionen"><i class="fas fa-ellipsis-v"></i></button>
                 </div>
             </a>
             {% endfor %}
@@ -171,10 +172,12 @@
 <script>
     window.inboxConfig = {
         loadedCount: {{ conversations|length }},
-        totalCount: {{ total_conversations }}
+        totalCount: {{ total_conversations }},
+        instantSend: {{ 'true' if inbox_instant_send else 'false' }}
     };
 </script>
 <script src="{{ url_for('chatbot.static', filename='js/polling.js') }}?v=8"></script>
 <script src="{{ url_for('chatbot.static', filename='js/filter-state.js') }}?v=11"></script>
-<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=29"></script>
+<script src="{{ url_for('chatbot.static', filename='js/guided-tour.js') }}?v=1"></script>
+<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=32"></script>
 {% endblock %}
