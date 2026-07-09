@@ -1398,6 +1398,26 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// On chat open: live-fetch this chat's Booking emails. The server is the source
+// of truth for "is this a Booking chat?" (resolve_channel) and applies its own
+// throttle, so we POST unconditionally — it short-circuits cheaply for non-Booking
+// chats with no Gmail call. Runs async; never blocks the thread from rendering.
+document.addEventListener('DOMContentLoaded', function() {
+    fetch(`/chatbot/api/conversation/${conversationId}/fetch-booking-live`, {
+        method: 'POST'
+    })
+        .then(r => (r.ok ? r.json() : null))
+        .then(data => {
+            if (data && data.inserted > 0) {
+                // Pull the newly inserted messages in via the existing incremental
+                // poller (fetches messages after maxKnownMessageId).
+                messagePoller.stop();
+                messagePoller.start();
+            }
+        })
+        .catch(err => console.debug('booking live-fetch skipped:', err));
+});
+
 // ============================================================================
 // Guided Tour — chat page steps (engine lives in guided-tour.js)
 // ============================================================================
