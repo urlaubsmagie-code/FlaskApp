@@ -61,6 +61,20 @@ def _parse_smoobu_date(value):
         return None
 
 
+def _res_guest_counts(res):
+    """Extract (adults, children) ints from a Smoobu reservation dict, or (None, None)."""
+    if not isinstance(res, dict):
+        return None, None
+
+    def _int(v):
+        try:
+            return int(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    return _int(res.get('adults')), _int(res.get('children'))
+
+
 class SmoobuService:
     """Service for interacting with the Smoobu API"""
 
@@ -118,6 +132,9 @@ class SmoobuService:
         headers.setdefault('Content-Type', 'application/json')
 
         timeout = kwargs.pop('timeout', 30)
+        # Non-idempotent calls (message send) opt out of the 429 retry: re-POSTing
+        # a send that Smoobu already delivered would double-message the guest.
+        allow_retry = kwargs.pop('allow_retry', True)
         max_retries = 2
 
         for attempt in range(max_retries + 1):
@@ -142,7 +159,7 @@ class SmoobuService:
 
                 # Handle 429 Too Many Requests
                 if response.status_code == 429:
-                    if attempt < max_retries:
+                    if allow_retry and attempt < max_retries:
                         wait = 10  # default backoff
                         if retry_after:
                             try:
@@ -322,7 +339,7 @@ class SmoobuService:
             body['subject'] = subject
         resp = self._request('POST',
                              f'/reservations/{reservation_id}/messages/send-message-to-guest',
-                             json=body)
+                             json=body, allow_retry=False)
         if resp and resp.status_code in (200, 201):
             return resp.json()
         return None
@@ -343,7 +360,14 @@ class SmoobuService:
 
     def get_reservation(self, reservation_id) -> Optional[Dict]:
         """GET /reservations/{id} — single reservation details."""
+        import time as _t
+        _t0 = _t.monotonic()
         resp = self._request('GET', f'/reservations/{reservation_id}')
+        _el = _t.monotonic() - _t0
+        # Diagnostic: this runs synchronously before every AI suggestion. If it's
+        # slow (Smoobu cold/network), it adds straight onto the felt reply time.
+        if _el > 2:
+            logger.warning(f"[SMOOBU SLOW] get_reservation({reservation_id}) took {_el:.1f}s")
         if resp and resp.status_code == 200:
             return resp.json()
         return None
@@ -384,6 +408,30 @@ class SmoobuService:
     # Bookings outside this window still get caught when first created (their
     # created_at will be recent), or when their reservation is updated.
     DISCOVERY_DAYS_BACK = 90
+
+    def _heal_conv_fields(self, conv, thread):
+        """Fill check_in/out + property_id from reservation-list data we already
+        hold (no extra Smoobu API call). Fixes bare 'Reservation N' inbox labels,
+        and runs on the fast-path skip where we never fetch messages."""
+        from ..models import db
+        changed = False
+        if not conv.check_in:
+            ci = _parse_smoobu_date(thread.get('arrival'))
+            if ci:
+                conv.check_in = ci
+                changed = True
+        if not conv.check_out:
+            co = _parse_smoobu_date(thread.get('departure'))
+            if co:
+                conv.check_out = co
+                changed = True
+        if conv.property_id is None:
+            pid = self._resolve_property_id(thread)
+            if pid:
+                conv.property_id = pid
+                changed = True
+        if changed:
+            db.session.commit()
 
     def sync_messages(self, force: bool = False,
                       days_back: Optional[int] = None) -> Dict[str, Any]:
@@ -481,6 +529,15 @@ class SmoobuService:
                 'apartment': apt,
                 'subject': f"Reservation {res_id}",
                 'reservation_id': str(res_id),
+                # Carry guest counts from the reservation row so the AI suggest path
+                # can read them locally (no per-suggest live Smoobu call).
+                'adults': res.get('adults'),
+                'children': res.get('children'),
+                # modifiedAt drives the fast-path skip; arrival/departure let us
+                # heal check_in/out without a per-reservation get_reservation call.
+                'modified_at': res.get('modifiedAt') or res.get('modified-at'),
+                'arrival': res.get('arrival') or res.get('check-in'),
+                'departure': res.get('departure') or res.get('check-out'),
             })
 
         router = get_message_router()
@@ -502,6 +559,17 @@ class SmoobuService:
             ).all()
             for conv_id, pmid in rows:
                 known_ids_by_conv.setdefault(conv_id, set()).add(pmid)
+        # Newest stored message time per conversation — the watermark the
+        # modifiedAt fast-path compares against to skip unchanged reservations.
+        last_msg_by_conv: Dict[int, Any] = {}
+        if all_smoobu_convs:
+            from sqlalchemy import func as _func
+            for cid, last_at in db.session.query(
+                    MsgModel.conversation_id, _func.max(MsgModel.sent_at)).filter(
+                    MsgModel.conversation_id.in_(conv_ids),
+                    MsgModel.sent_at.isnot(None)).group_by(
+                    MsgModel.conversation_id).all():
+                last_msg_by_conv[cid] = last_at
         # Map platform_id to conversation for quick lookup
         conv_by_platform_id = {c.platform_id: c for c in all_smoobu_convs}
 
@@ -516,6 +584,24 @@ class SmoobuService:
                 if not reservation_id:
                     continue
 
+                existing_conv = conv_by_platform_id.get(f"smoobu-{reservation_id}")
+
+                # Fast-path skip: for a conversation we already have, only pay the
+                # per-reservation message API call if Smoobu says the reservation
+                # changed since our newest stored message. Re-fetching every
+                # in-window reservation each cycle blew past Smoobu's rate limit and
+                # wedged the sweep for 40+ min. modifiedAt bumps on new guest
+                # messages and booking edits; it does NOT bump on owner-sent Smoobu
+                # messages, so those rely on the webhook / per-chat manual sync.
+                # New reservations (no existing_conv) are never skipped, so
+                # owner-only "outbound-first" chats still get created here.
+                if existing_conv:
+                    modified_at = _parse_smoobu_timestamp(thread.get('modified_at'))
+                    watermark = last_msg_by_conv.get(existing_conv.id)
+                    if modified_at and watermark and modified_at <= watermark:
+                        self._heal_conv_fields(existing_conv, thread)  # cheap, no API
+                        continue
+
                 # Fetch page 1 first for quick-check, then all pages if needed
                 # (Smoobu returns 25/page oldest-first; new messages land on last page)
                 msg_data = self.get_reservation_messages(reservation_id)
@@ -524,22 +610,11 @@ class SmoobuService:
                     continue
 
                 # Quick check: if we already know all messages, skip this thread
-                existing_conv = conv_by_platform_id.get(f"smoobu-{reservation_id}")
                 total_from_api = msg_data.get('total_items', 0) if isinstance(msg_data, dict) else len(msg_data if isinstance(msg_data, list) else [])
                 if existing_conv:
-                    # Backfill check_in/check_out if missing (runs even when no new messages)
-                    if not existing_conv.check_in or not existing_conv.check_out:
-                        res_detail = self.get_reservation(reservation_id)
-                        if res_detail:
-                            ci = _parse_smoobu_date(
-                                res_detail.get('arrival') or res_detail.get('check-in'))
-                            co = _parse_smoobu_date(
-                                res_detail.get('departure') or res_detail.get('check-out'))
-                            if ci and not existing_conv.check_in:
-                                existing_conv.check_in = ci
-                            if co and not existing_conv.check_out:
-                                existing_conv.check_out = co
-                            db.session.commit()
+                    # One-time heals (check_in/out + "Reservation N" property label)
+                    # straight from reservation-list data — no extra get_reservation.
+                    self._heal_conv_fields(existing_conv, thread)
 
                     known_ids = known_ids_by_conv.get(existing_conv.id, set())
                     if total_from_api <= len(known_ids):
@@ -581,14 +656,7 @@ class SmoobuService:
                             guest_name = f"{firstname} {lastname}".strip()
 
                 # Find property by apartment_id (threads nest it as apartment.id)
-                apt = thread.get('apartment') or {}
-                apartment_id = str(apt.get('id', '') if isinstance(apt, dict) else
-                                   thread.get('apartment_id') or thread.get('apartmentId') or '')
-                property_id = None
-                if apartment_id:
-                    prop = Property.query.filter_by(smoobu_apartment_id=apartment_id).first()
-                    if prop:
-                        property_id = prop.id
+                property_id = self._resolve_property_id(thread)
 
                 # Get known IDs for this conversation (for fast duplicate skip)
                 conv_known_ids = set()
@@ -783,6 +851,20 @@ class SmoobuService:
                                 final_conv.check_out = co
                             db.session.commit()
 
+                    # Populate guest counts from the reservation row carried on the
+                    # thread (already in the list response — no extra API call). Runs
+                    # every sync so existing conversations self-heal within one cycle.
+                    t_ad, t_ch = _res_guest_counts(thread)
+                    counts_changed = False
+                    if t_ad is not None and final_conv.adults != t_ad:
+                        final_conv.adults = t_ad
+                        counts_changed = True
+                    if t_ch is not None and final_conv.children != t_ch:
+                        final_conv.children = t_ch
+                        counts_changed = True
+                    if counts_changed:
+                        db.session.commit()
+
                     # Enrich guest details (only for new conversations)
                     if not existing_conv and final_conv.guest:
                         if not res_detail:
@@ -821,6 +903,27 @@ class SmoobuService:
         SmoobuService._last_full_sync = time.time()
         logger.info(f"Smoobu sync complete: {result['imported']} new messages imported")
         return result
+
+    def _resolve_property_id(self, thread: Dict[str, Any]) -> Optional[int]:
+        """Resolve our Property.id from a thread/reservation's apartment ref.
+
+        Smoobu nests the apartment as ``apartment: {id, name}`` on reservations
+        and threads; some payloads use a flat ``apartment_id``/``apartmentId``.
+        Returns None when no apartment is present or no Property matches — the
+        caller then leaves property_id unset (inbox falls back to subject).
+        """
+        from ..models import Property
+        apt = thread.get('apartment') or {}
+        apartment_id = ''
+        if isinstance(apt, dict):
+            apartment_id = str(apt.get('id', '') or '')
+        if not apartment_id:
+            apartment_id = str(thread.get('apartment_id')
+                               or thread.get('apartmentId') or '')
+        if not apartment_id:
+            return None
+        prop = Property.query.filter_by(smoobu_apartment_id=apartment_id).first()
+        return prop.id if prop else None
 
     def sync_conversation_messages(self, reservation_id: str,
                                    force: bool = False) -> Dict[str, Any]:
@@ -867,6 +970,7 @@ class SmoobuService:
         res_detail: Optional[Dict[str, Any]] = None
         prefetched_guest_name = ''
         prefetched_guest_email = ''
+        prefetched_property_id: Optional[int] = None
         if not conv:
             res_detail = self.get_reservation(reservation_id)
             if res_detail:
@@ -876,6 +980,9 @@ class SmoobuService:
                     res_detail.get('guest-name') or '')
                 prefetched_guest_email = (res_detail.get('email')
                                           or res_detail.get('guest-email') or '')
+                # Resolve the apartment now so the conversation is born linked
+                # to its property — otherwise the inbox shows "Reservation <id>".
+                prefetched_property_id = self._resolve_property_id(res_detail)
 
         # Pre-load all known platform_message_ids in one query
         known_ids: set = set()
@@ -957,6 +1064,7 @@ class SmoobuService:
                         message_content=msg_content,
                         subject=f"Reservation {reservation_id}",
                         platform_message_id=platform_msg_id,
+                        property_id=prefetched_property_id,
                         auto_respond=False,
                         sent_at=msg_time,
                         skip_push=True  # Push handled after full thread sync
@@ -1068,8 +1176,18 @@ class SmoobuService:
                 if co:
                     final_conv.check_out = co
                     changed = True
+            ad, ch = _res_guest_counts(res_detail)
+            if ad is not None and final_conv.adults != ad:
+                final_conv.adults = ad
+                changed = True
+            if ch is not None and final_conv.children != ch:
+                final_conv.children = ch
+                changed = True
             if not final_conv.smoobu_reservation_id:
                 final_conv.smoobu_reservation_id = reservation_id
+                changed = True
+            if final_conv.property_id is None and prefetched_property_id:
+                final_conv.property_id = prefetched_property_id
                 changed = True
             if final_conv.guest:
                 try:
@@ -1250,6 +1368,13 @@ class SmoobuService:
                     changed = True
                 if co and conv.check_out != co:
                     conv.check_out = co
+                    changed = True
+                ad, ch = _res_guest_counts(res_data)
+                if ad is not None and conv.adults != ad:
+                    conv.adults = ad
+                    changed = True
+                if ch is not None and conv.children != ch:
+                    conv.children = ch
                     changed = True
                 if changed:
                     # Tripwire so inbox/conversation pages refresh
