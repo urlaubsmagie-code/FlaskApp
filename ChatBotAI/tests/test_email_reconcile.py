@@ -498,7 +498,7 @@ def test_orchestrator_autoinserts_high_confidence_booking(app):
                    sender_email='5843975682-x@guest.booking.com',
                    date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
                    authentication_results=[BOOKING_AR_DIRECT])
-    gmail = FakeGmail({'from:guest.booking.com newer_than:90d': [email]})
+    gmail = FakeGmail({'from:guest.booking.com newer_than:30d': [email]})
 
     AISettings.set('email_reconcile_enabled', 'true')  # feature is dormant by default
     stats = reconcile_from_email(gmail)
@@ -511,6 +511,9 @@ def test_orchestrator_autoinserts_high_confidence_booking(app):
 
 
 def test_orchestrator_queues_low_confidence_airbnb(app):
+    # Airbnb is intentionally NOT scanned anymore (Booking-only). Even if an
+    # Airbnb notification is present under its old query key, the scan never
+    # requests it, so nothing is queued or inserted.
     g = Guest(name='Rosy Fernandez'); db.session.add(g); db.session.flush()
     conv = Conversation(guest_id=g.id, platform='airbnb')
     db.session.add(conv); db.session.commit()
@@ -520,15 +523,14 @@ def test_orchestrator_queues_low_confidence_airbnb(app):
                    subject='RE: Buchung für „Pool | Sauna", 14.–16. Juni',
                    date='Mon, 09 Jun 2026 12:19:00 +0200', body=AIRBNB_BODY,
                    authentication_results=[AIRBNB_AR_PASS])
-    gmail = FakeGmail({'from:airbnb.com newer_than:90d': [email]})
+    gmail = FakeGmail({'from:airbnb.com newer_than:30d': [email]})
 
-    AISettings.set('email_reconcile_enabled', 'true')  # feature is dormant by default
+    AISettings.set('email_reconcile_enabled', 'true')
     stats = reconcile_from_email(gmail)
 
-    assert stats['queued'] == 1
+    assert stats['queued'] == 0
     assert Message.query.filter_by(conversation_id=conv.id).count() == 0
-    cand = EmailBackfillCandidate.query.filter_by(gmail_message_id='ga1').first()
-    assert cand is not None and cand.status == 'pending'
+    assert EmailBackfillCandidate.query.filter_by(gmail_message_id='ga1').first() is None
 
 
 def test_orchestrator_skips_duplicates(app):
@@ -543,7 +545,7 @@ def test_orchestrator_skips_duplicates(app):
     email = _email(id='gb1', sender_email='5843975682-x@guest.booking.com',
                    date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
                    authentication_results=[BOOKING_AR_DIRECT])
-    gmail = FakeGmail({'from:guest.booking.com newer_than:90d': [email]})
+    gmail = FakeGmail({'from:guest.booking.com newer_than:30d': [email]})
 
     AISettings.set('email_reconcile_enabled', 'true')  # feature is dormant by default
     stats = reconcile_from_email(gmail)
@@ -559,7 +561,7 @@ def test_orchestrator_rescan_does_not_duplicate(app):
     email = _email(id='gb1', sender_email='5843975682-x@guest.booking.com',
                    date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
                    authentication_results=[BOOKING_AR_DIRECT])
-    gmail = FakeGmail({'from:guest.booking.com newer_than:90d': [email]})
+    gmail = FakeGmail({'from:guest.booking.com newer_than:30d': [email]})
 
     AISettings.set('email_reconcile_enabled', 'true')  # feature is dormant by default
     first = reconcile_from_email(gmail)
@@ -777,7 +779,7 @@ def test_orchestrator_drops_spoofed_email(app):
                    sender_email='5843975682-x@guest.booking.com',
                    date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
                    authentication_results=[SPOOFED_BOOKING_AR])
-    gmail = FakeGmail({'from:guest.booking.com newer_than:90d': [email]})
+    gmail = FakeGmail({'from:guest.booking.com newer_than:30d': [email]})
 
     AISettings.set('email_reconcile_enabled', 'true')
     stats = reconcile_from_email(gmail)
@@ -787,3 +789,12 @@ def test_orchestrator_drops_spoofed_email(app):
     assert Message.query.filter_by(conversation_id=conv.id).count() == 0
     # Spoofed mail must NOT pollute the review tray either.
     assert EmailBackfillCandidate.query.filter_by(gmail_message_id='spoof1').first() is None
+
+
+from ChatBotAI.services.email_reconcile import platform_queries
+
+
+def test_platform_queries_is_booking_only():
+    q = platform_queries(30)
+    assert set(q.keys()) == {'booking'}
+    assert q['booking'] == 'from:guest.booking.com newer_than:30d'

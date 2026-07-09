@@ -614,11 +614,11 @@ def resolve_channel(conv):
 # Task 8: Orchestrator
 # ---------------------------------------------------------------------------
 
-# Gmail search — relay-domain funnel. Date window (newer_than) is configurable
-# via email_reconcile_days so only recent notifications get matched.
+# Gmail search — relay-domain funnel. Booking only: Smoobu lacks the Booking
+# messaging scope, so Booking guest messages arrive solely as @guest.booking.com
+# notification emails. Airbnb messaging works via Smoobu, so it is not scanned.
 _PLATFORM_SENDER = {
     'booking': 'from:guest.booking.com',
-    'airbnb': 'from:airbnb.com',
 }
 
 
