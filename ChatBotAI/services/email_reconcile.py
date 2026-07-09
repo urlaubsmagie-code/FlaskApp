@@ -626,27 +626,34 @@ def platform_queries(days: int) -> dict:
     return {p: f'{sender} newer_than:{days}d' for p, sender in _PLATFORM_SENDER.items()}
 
 
+def _conv_view(conv, channel):
+    """One scorer-input dict for a conversation."""
+    from ..models import Guest, Property
+    guest = Guest.query.get(conv.guest_id)
+    prop = Property.query.get(conv.property_id) if conv.property_id else None
+    return {
+        'conversation_id': conv.id,
+        'channel': channel,
+        'guest_name': guest.name if guest else None,
+        # Smoobu conversation subjects are generic ("Reservation 12345"), which
+        # would never overlap a real property name — fall back to None instead.
+        'property_name': prop.name if prop else None,
+        'apartment_code': code_from_smoobu_id(prop.smoobu_apartment_id) if prop else None,
+        'check_in': conv.check_in,
+        'check_out': conv.check_out,
+    }
+
+
 def _candidate_views(channel: str):
     """Build scorer input dicts for all conversations on a channel."""
-    from ..models import Conversation, Guest, Property
-    views = []
-    for conv in Conversation.query.all():
-        if resolve_channel(conv) != channel:
-            continue
-        guest = Guest.query.get(conv.guest_id)
-        prop = Property.query.get(conv.property_id) if conv.property_id else None
-        views.append({
-            'conversation_id': conv.id,
-            'channel': channel,
-            'guest_name': guest.name if guest else None,
-            # Smoobu conversation subjects are generic ("Reservation 12345"), which
-            # would never overlap a real property name — fall back to None instead.
-            'property_name': prop.name if prop else None,
-            'apartment_code': code_from_smoobu_id(prop.smoobu_apartment_id) if prop else None,
-            'check_in': conv.check_in,
-            'check_out': conv.check_out,
-        })
-    return views
+    from ..models import Conversation
+    return [_conv_view(conv, channel) for conv in Conversation.query.all()
+            if resolve_channel(conv) == channel]
+
+
+def _safe_query_term(term: str) -> str:
+    """Strip characters that would break out of a quoted Gmail search term."""
+    return (term or '').replace('"', '')
 
 
 def _new_stats() -> dict:
@@ -761,4 +768,80 @@ def reconcile_from_email(gmail_service, max_per_platform: int = 50) -> dict:
                                        auto_insert_all=False)
 
     logger.info("email-reconcile: %s", stats)
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# Live per-chat Booking fetch (on chat open)
+# ---------------------------------------------------------------------------
+
+_LIVE_FETCH_DEFAULT_THROTTLE_MIN = 15
+# ponytail: in-memory throttle; a server restart at worst permits one extra
+# fetch. Move to a Conversation column only if multi-worker fetches become a
+# Gmail-quota problem.
+_last_live_fetch: dict = {}
+
+
+def _live_fetch_throttled(conversation_id: int, now: datetime) -> bool:
+    from ..models import AISettings
+    try:
+        mins = int(AISettings.get('email_onopen_live_throttle_minutes',
+                                  str(_LIVE_FETCH_DEFAULT_THROTTLE_MIN))
+                   or _LIVE_FETCH_DEFAULT_THROTTLE_MIN)
+    except (TypeError, ValueError):
+        mins = _LIVE_FETCH_DEFAULT_THROTTLE_MIN
+    last = _last_live_fetch.get(conversation_id)
+    return last is not None and (now - last) < timedelta(minutes=mins)
+
+
+def fetch_booking_for_conversation(gmail_service, conversation_id: int, now=None) -> dict:
+    """Live per-chat Booking fetch: search Gmail scoped to this guest, auto-insert
+    every positive match (score>0). Booking-only, throttled, never queues. Returns
+    a stats dict (auto_inserted counts inserts; 'reason' set on early no-op)."""
+    from ..models import Conversation, Guest, AISettings
+    from .message_router import get_message_router
+
+    now = now or datetime.utcnow()
+    stats = _new_stats()
+
+    if AISettings.get('email_onopen_live_enabled', 'true') == 'false':
+        stats['reason'] = 'disabled'
+        return stats
+
+    conv = Conversation.query.get(conversation_id)
+    if not conv or resolve_channel(conv) != 'booking':
+        stats['reason'] = 'not_booking'
+        return stats
+
+    guest = Guest.query.get(conv.guest_id)
+    if not guest or not guest.name:
+        stats['reason'] = 'no_guest_name'
+        return stats
+
+    if _live_fetch_throttled(conversation_id, now):
+        stats['reason'] = 'throttled'
+        return stats
+    # Record the attempt BEFORE fetching so a slow/empty/failed Gmail call still
+    # throttles subsequent opens.
+    _last_live_fetch[conversation_id] = now
+
+    cfg = get_reconcile_config()
+    views = [_conv_view(conv, 'booking')]
+    name = _safe_query_term(guest.name)
+    query = f'from:guest.booking.com "{name}" newer_than:{cfg["days"]}d'
+    try:
+        emails = gmail_service.get_recent_emails(
+            max_results=50, query=query, apply_filter=False)
+    except Exception:
+        logger.exception("live booking fetch: Gmail fetch failed for conv %s",
+                         conversation_id)
+        stats['reason'] = 'gmail_error'
+        return stats
+
+    router = get_message_router()
+    for email in emails:
+        _handle_notification_email(email, 'booking', views, cfg, router, stats,
+                                   auto_insert_all=True)
+
+    logger.info("live booking fetch conv %s: %s", conversation_id, stats)
     return stats

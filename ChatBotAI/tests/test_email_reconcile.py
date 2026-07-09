@@ -798,3 +798,82 @@ def test_platform_queries_is_booking_only():
     q = platform_queries(30)
     assert set(q.keys()) == {'booking'}
     assert q['booking'] == 'from:guest.booking.com newer_than:30d'
+
+
+from ChatBotAI.services.email_reconcile import fetch_booking_for_conversation
+import ChatBotAI.services.email_reconcile as _er
+
+
+def test_live_fetch_inserts_matching_booking(app):
+    _er._last_live_fetch.clear()
+    g = Guest(name='Carolin Janowski'); db.session.add(g); db.session.flush()
+    conv = Conversation(guest_id=g.id, platform='booking',
+                        check_in=_d(2026, 6, 12), check_out=_d(2026, 6, 14))
+    db.session.add(conv); db.session.commit()
+
+    email = _email(id='glive1', sender_email='5843975682-x@guest.booking.com',
+                   date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
+                   authentication_results=[BOOKING_AR_DIRECT])
+    query = f'from:guest.booking.com "Carolin Janowski" newer_than:30d'
+    gmail = FakeGmail({query: [email]})
+
+    stats = fetch_booking_for_conversation(gmail, conv.id)
+    assert stats['auto_inserted'] == 1
+    msgs = Message.query.filter_by(conversation_id=conv.id).all()
+    assert len(msgs) == 1 and msgs[0].platform_message_id == 'email:glive1'
+
+
+def test_live_fetch_noop_on_non_booking(app):
+    _er._last_live_fetch.clear()
+    g = Guest(name='Someone'); db.session.add(g); db.session.flush()
+    conv = Conversation(guest_id=g.id, platform='email')
+    db.session.add(conv); db.session.commit()
+    gmail = FakeGmail({})  # must never be queried
+    stats = fetch_booking_for_conversation(gmail, conv.id)
+    assert stats['auto_inserted'] == 0
+    assert stats.get('reason') == 'not_booking'
+
+
+def test_live_fetch_throttled_second_call(app):
+    _er._last_live_fetch.clear()
+    g = Guest(name='Carolin Janowski'); db.session.add(g); db.session.flush()
+    conv = Conversation(guest_id=g.id, platform='booking',
+                        check_in=_d(2026, 6, 12), check_out=_d(2026, 6, 14))
+    db.session.add(conv); db.session.commit()
+    email = _email(id='glive2', sender_email='5843975682-x@guest.booking.com',
+                   date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
+                   authentication_results=[BOOKING_AR_DIRECT])
+    query = f'from:guest.booking.com "Carolin Janowski" newer_than:30d'
+    gmail = FakeGmail({query: [email]})
+
+    first = fetch_booking_for_conversation(gmail, conv.id)
+    second = fetch_booking_for_conversation(gmail, conv.id)  # within throttle window
+    assert first['auto_inserted'] == 1
+    assert second.get('reason') == 'throttled'
+    assert Message.query.filter_by(conversation_id=conv.id).count() == 1
+
+
+def test_live_fetch_does_not_insert_zero_score(app, monkeypatch):
+    # The live rule is "insert iff score > 0". A zero score (e.g. the
+    # same-name/wrong-apartment soft-veto) must NOT insert and must NOT queue.
+    # Force the score deterministically rather than depend on apartment-config.
+    _er._last_live_fetch.clear()
+    g = Guest(name='Carolin Janowski'); db.session.add(g); db.session.flush()
+    conv = Conversation(guest_id=g.id, platform='booking',
+                        check_in=_d(2026, 6, 12), check_out=_d(2026, 6, 14))
+    db.session.add(conv); db.session.commit()
+
+    email = _email(id='glive3', sender_email='5843975682-x@guest.booking.com',
+                   date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
+                   authentication_results=[BOOKING_AR_DIRECT])
+    query = f'from:guest.booking.com "Carolin Janowski" newer_than:30d'
+    gmail = FakeGmail({query: [email]})
+
+    # _handle_notification_email looks up pick_best_match at module scope.
+    monkeypatch.setattr(_er, 'pick_best_match', lambda notif, views: (views[0], 0.0))
+
+    stats = fetch_booking_for_conversation(gmail, conv.id)
+    assert stats['auto_inserted'] == 0
+    assert stats['skipped_lowscore'] == 1
+    assert EmailBackfillCandidate.query.filter_by(gmail_message_id='glive3').first() is None
+    assert Message.query.filter_by(conversation_id=conv.id).count() == 0
