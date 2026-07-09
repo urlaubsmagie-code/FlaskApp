@@ -713,7 +713,10 @@ def _handle_notification_email(email, platform, views, cfg, router, stats,
 
     if auto_insert_all:
         # Live per-chat path: name-scoped search already narrows to this guest;
-        # insert every positive match, skip non-matches (never queue).
+        # insert every positive match, skip non-matches (never queue). The
+        # score>0 guard is belt-and-suspenders: pick_best_match only returns a
+        # truthy `best` when score>0, so the else is unreachable via the real
+        # scorer (a zero-score email already exited above as unmatched).
         if score > 0:
             _insert()
         else:
@@ -776,9 +779,11 @@ def reconcile_from_email(gmail_service, max_per_platform: int = 50) -> dict:
 # ---------------------------------------------------------------------------
 
 _LIVE_FETCH_DEFAULT_THROTTLE_MIN = 15
-# ponytail: in-memory throttle; a server restart at worst permits one extra
-# fetch. Move to a Conversation column only if multi-worker fetches become a
-# Gmail-quota problem.
+# ponytail: in-memory throttle, shared across Waitress's threads (single
+# process). The check-then-set below is not atomic, so a multi-thread race can
+# let two near-simultaneous opens of the same chat both fetch — worst case one
+# wasted Gmail call; dedup still prevents a double-insert. Add a lock or move to
+# a Conversation column only if that wasted call becomes a Gmail-quota problem.
 _last_live_fetch: dict = {}
 
 
