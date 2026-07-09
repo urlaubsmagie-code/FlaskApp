@@ -649,19 +649,99 @@ def _candidate_views(channel: str):
     return views
 
 
+def _new_stats() -> dict:
+    return {'scanned': 0, 'matched': 0, 'auto_inserted': 0, 'queued': 0,
+            'skipped_dupe': 0, 'unmatched': 0, 'rejected_unauthenticated': 0,
+            'skipped_lowscore': 0}
+
+
+def _handle_notification_email(email, platform, views, cfg, router, stats,
+                               auto_insert_all):
+    """Process one notification email into `views`, mutating `stats`.
+
+    Shared by the background scan (auto_insert_all=False: threshold-gated
+    insert, else queue to the review tray) and the live per-chat fetch
+    (auto_insert_all=True: insert any score>0 match, never queue).
+    Anti-spoof and dedup guards are identical in both paths.
+    """
+    from ..models import EmailBackfillCandidate, Message
+    stats['scanned'] += 1
+    notif = parse_notification(email)
+    if not notif or not notif.message_text or not notif.sent_at:
+        return
+
+    # Tier-1 anti-spoof gate: trust only Gmail's own DKIM/DMARC verdict aligned
+    # to the platform domain. Spoofed mail is dropped — never inserted or queued.
+    authentic, auth_info = verify_sender_authenticity(email, platform)
+    if not authentic:
+        stats['rejected_unauthenticated'] += 1
+        logger.warning("email-reconcile: dropped unauthenticated %s email %s (%s)",
+                       platform, notif.gmail_id, auth_info)
+        return
+
+    # Skip if already queued/rejected, or already inserted into ANY conversation.
+    if EmailBackfillCandidate.query.filter_by(gmail_message_id=notif.gmail_id).first():
+        return
+    if Message.query.filter_by(platform_message_id=f"email:{notif.gmail_id}").first():
+        return
+
+    best, score = pick_best_match(notif, views)
+    if not best:
+        stats['unmatched'] += 1
+        return
+    stats['matched'] += 1
+
+    if has_equivalent_message(best['conversation_id'], notif, cfg['window_minutes']):
+        stats['skipped_dupe'] += 1
+        return
+
+    def _insert():
+        router._store_message(
+            conversation_id=best['conversation_id'], sender_type='guest',
+            content=notif.message_text,
+            platform_message_id=f"email:{notif.gmail_id}",
+            sent_at=notif.sent_at, sent_via_app=False,
+        )
+        stats['auto_inserted'] += 1
+
+    if auto_insert_all:
+        # Live per-chat path: name-scoped search already narrows to this guest;
+        # insert every positive match, skip non-matches (never queue).
+        if score > 0:
+            _insert()
+        else:
+            stats['skipped_lowscore'] += 1
+        return
+
+    # Background-scan path: threshold-gated auto-insert, otherwise queue for review.
+    autoinsert = cfg['autoinsert_booking'] if platform == 'booking' else cfg['autoinsert_airbnb']
+    if score >= cfg['threshold'] and autoinsert:
+        _insert()
+    else:
+        db.session.add(EmailBackfillCandidate(
+            gmail_message_id=notif.gmail_id,
+            platform=platform,
+            parsed_name=notif.guest_name,
+            parsed_text=notif.message_text,
+            parsed_timestamp=notif.sent_at,
+            guessed_conversation_id=best['conversation_id'],
+            confidence=score,
+            status='pending',
+        ))
+        db.session.commit()
+        stats['queued'] += 1
+
+
 def reconcile_from_email(gmail_service, max_per_platform: int = 50) -> dict:
-    """Scan Airbnb/Booking notification emails and backfill missing guest messages.
+    """Scan Booking notification emails and backfill missing guest messages.
 
     Returns stats: scanned, matched, auto_inserted, queued, skipped_dupe, unmatched.
     Read-only on Gmail; inserts only into EXISTING conversations.
     """
-    from ..models import EmailBackfillCandidate
     from .message_router import get_message_router
 
     cfg = get_reconcile_config()
-    stats = {'scanned': 0, 'matched': 0, 'auto_inserted': 0,
-             'queued': 0, 'skipped_dupe': 0, 'unmatched': 0,
-             'rejected_unauthenticated': 0}
+    stats = _new_stats()
     if not cfg['enabled']:
         return stats
 
@@ -676,70 +756,9 @@ def reconcile_from_email(gmail_service, max_per_platform: int = 50) -> dict:
             continue
 
         views = _candidate_views(platform)
-
         for email in emails:
-            stats['scanned'] += 1
-            notif = parse_notification(email)
-            if not notif or not notif.message_text or not notif.sent_at:
-                continue
-
-            # Tier-1 anti-spoof gate: only trust DKIM/DMARC-authenticated mail
-            # from the real platform domain (Gmail's own verdict, unforgeable).
-            # Spoofed/phishing mail is dropped entirely — never inserted into a
-            # conversation and never queued to the review tray.
-            authentic, auth_info = verify_sender_authenticity(email, platform)
-            if not authentic:
-                stats['rejected_unauthenticated'] += 1
-                logger.warning("email-reconcile: dropped unauthenticated %s email %s (%s)",
-                               platform, notif.gmail_id, auth_info)
-                continue
-
-            # Skip if already queued OR rejected for this email — a human's
-            # rejection must never be reconsidered on a later scan.
-            if EmailBackfillCandidate.query.filter_by(gmail_message_id=notif.gmail_id).first():
-                continue
-
-            # Global guard: if this email was already auto-inserted into ANY
-            # conversation (possibly a different one due to duplicate-guest churn),
-            # skip it to prevent duplicate messages across conversation rows.
-            from ..models import Message
-            if Message.query.filter_by(platform_message_id=f"email:{notif.gmail_id}").first():
-                continue
-
-            best, score = pick_best_match(notif, views)
-            if not best:
-                stats['unmatched'] += 1
-                continue
-            stats['matched'] += 1
-
-            if has_equivalent_message(best['conversation_id'], notif, cfg['window_minutes']):
-                stats['skipped_dupe'] += 1
-                continue
-
-            autoinsert = cfg['autoinsert_booking'] if platform == 'booking' else cfg['autoinsert_airbnb']
-            if score >= cfg['threshold'] and autoinsert:
-                router._store_message(
-                    conversation_id=best['conversation_id'],
-                    sender_type='guest',
-                    content=notif.message_text,
-                    platform_message_id=f"email:{notif.gmail_id}",
-                    sent_at=notif.sent_at,
-                    sent_via_app=False,
-                )
-                stats['auto_inserted'] += 1
-            else:
-                db.session.add(EmailBackfillCandidate(
-                    gmail_message_id=notif.gmail_id,
-                    platform=platform,
-                    parsed_name=notif.guest_name,
-                    parsed_text=notif.message_text,
-                    parsed_timestamp=notif.sent_at,
-                    guessed_conversation_id=best['conversation_id'],
-                    confidence=score,
-                    status='pending',
-                ))
-                db.session.commit()
-                stats['queued'] += 1
+            _handle_notification_email(email, platform, views, cfg, router, stats,
+                                       auto_insert_all=False)
 
     logger.info("email-reconcile: %s", stats)
     return stats
