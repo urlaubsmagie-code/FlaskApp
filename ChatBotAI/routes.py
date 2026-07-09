@@ -4926,6 +4926,28 @@ def conversation_recover_emails(conversation_id):
     return jsonify({'success': True, 'inserted': inserted})
 
 
+@chatbot_bp.route('/api/conversation/<int:conversation_id>/fetch-booking-live', methods=['POST'])
+@login_required
+def conversation_fetch_booking_live(conversation_id):
+    """Live per-chat Booking email fetch, called on chat open. Booking-only,
+    throttled server-side, auto-inserts positive matches. Never raises to the
+    client — a failed fetch must not block the conversation view."""
+    Conversation.query.get_or_404(conversation_id)
+    from .services.gmail_service import get_gmail_service
+    from .services.email_reconcile import fetch_booking_for_conversation
+    gmail = get_gmail_service()
+    if not gmail or not gmail.is_authenticated():
+        return jsonify({'success': True, 'inserted': 0, 'reason': 'gmail_disconnected'})
+    try:
+        stats = fetch_booking_for_conversation(gmail, conversation_id)
+    except Exception:
+        current_app.logger.exception(
+            "fetch-booking-live failed for conv %s", conversation_id)
+        return jsonify({'success': True, 'inserted': 0, 'reason': 'error'})
+    return jsonify({'success': True, 'inserted': stats.get('auto_inserted', 0),
+                    'reason': stats.get('reason')})
+
+
 @chatbot_bp.route('/api/conversation/<int:conversation_id>/import-email-thread', methods=['POST'])
 @login_required
 def conversation_import_email_thread(conversation_id: int):

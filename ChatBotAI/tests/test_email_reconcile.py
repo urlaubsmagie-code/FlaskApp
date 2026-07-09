@@ -877,3 +877,49 @@ def test_live_fetch_does_not_insert_zero_score(app, monkeypatch):
     assert stats['skipped_lowscore'] == 1
     assert EmailBackfillCandidate.query.filter_by(gmail_message_id='glive3').first() is None
     assert Message.query.filter_by(conversation_id=conv.id).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 4: Route — POST /api/conversation/<id>/fetch-booking-live
+# ---------------------------------------------------------------------------
+
+def test_fetch_booking_live_route_inserts(client, monkeypatch):
+    import ChatBotAI.services.email_reconcile as er
+    er._last_live_fetch.clear()
+    g = Guest(name='Carolin Janowski'); db.session.add(g); db.session.flush()
+    conv = Conversation(guest_id=g.id, platform='booking',
+                        check_in=_d(2026, 6, 12), check_out=_d(2026, 6, 14))
+    db.session.add(conv); db.session.commit()
+
+    email = _email(id='groute1', sender_email='5843975682-x@guest.booking.com',
+                   date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
+                   authentication_results=[BOOKING_AR_DIRECT])
+
+    class FakeAuthedGmail:
+        def is_authenticated(self):
+            return True
+        def get_recent_emails(self, max_results=10, query=None, apply_filter=True):
+            return [email]
+
+    import ChatBotAI.services.gmail_service as gs
+    monkeypatch.setattr(gs, 'get_gmail_service', lambda: FakeAuthedGmail())
+
+    r = client.post(f'/chatbot/api/conversation/{conv.id}/fetch-booking-live')
+    assert r.status_code == 200
+    assert r.get_json()['inserted'] == 1
+    assert Message.query.filter_by(conversation_id=conv.id).count() == 1
+
+
+def test_fetch_booking_live_route_gmail_disconnected(client, monkeypatch):
+    import ChatBotAI.services.email_reconcile as er
+    er._last_live_fetch.clear()
+    g = Guest(name='X'); db.session.add(g); db.session.flush()
+    conv = Conversation(guest_id=g.id, platform='booking')
+    db.session.add(conv); db.session.commit()
+
+    import ChatBotAI.services.gmail_service as gs
+    monkeypatch.setattr(gs, 'get_gmail_service', lambda: None)
+
+    r = client.post(f'/chatbot/api/conversation/{conv.id}/fetch-booking-live')
+    assert r.status_code == 200
+    assert r.get_json()['inserted'] == 0
