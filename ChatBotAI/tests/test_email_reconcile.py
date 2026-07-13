@@ -1008,7 +1008,6 @@ def test_fetch_booking_live_route_gmail_disconnected(client, monkeypatch):
     assert r.get_json()['inserted'] == 0
 
 
-from ChatBotAI.models import GuestDetail
 from ChatBotAI.services.email_reconcile import (
     booking_ref_from_note, conversation_booking_ref, email_matches_conversation,
 )
@@ -1056,3 +1055,35 @@ def test_email_checkin_only_match_is_not_enough():
                            check_in=_d(2026, 7, 10), check_out=_d(2026, 7, 12))
     conv = SimpleNamespace(check_in='2026-07-10', check_out='2026-07-16')
     assert email_matches_conversation(notif, conv, None) is False
+
+
+def test_live_fetch_repeat_guest_ignores_stale_note(app, monkeypatch):
+    """Repeat guest: shared guest_note holds the NEWER reservation's number. Opening
+    the OLDER chat must NOT insert the newer reservation's email (which the name
+    search also returns). With >1 conversation the note is skipped for the
+    reservation-scoped Smoobu reference-id."""
+    import ChatBotAI.services.email_reconcile as er
+    er._last_live_fetch.clear()
+    g = Guest(name='Repeat Guest'); db.session.add(g); db.session.flush()
+    db.session.add(GuestDetail(guest_id=g.id, detail_type='special_request',
+        detail_key='guest_note', detail_value='Buchungsnummer: 5843975682'))  # NEWER res
+    old_conv = Conversation(guest_id=g.id, platform='booking', smoobu_reservation_id='111',
+                            check_in=_d(2026, 1, 1), check_out=_d(2026, 1, 3))
+    new_conv = Conversation(guest_id=g.id, platform='booking', smoobu_reservation_id='222',
+                            check_in=_d(2026, 6, 12), check_out=_d(2026, 6, 14))
+    db.session.add_all([old_conv, new_conv]); db.session.commit()
+
+    class FakeSmoobu:
+        def get_reservation(self, rid):
+            return {'reference-id': '111ref'}  # old_conv's authoritative number
+    import ChatBotAI.services.smoobu_service as ss
+    monkeypatch.setattr(ss, 'get_smoobu_service', lambda: FakeSmoobu())
+
+    email = _email(id='gbrepeat', sender_email='5843975682-x@guest.booking.com',
+                   date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
+                   authentication_results=[BOOKING_AR_DIRECT])
+    gmail = FakeGmail({'from:guest.booking.com "Repeat Guest" newer_than:30d': [email]})
+
+    stats = fetch_booking_for_conversation(gmail, old_conv.id)
+    assert stats['auto_inserted'] == 0
+    assert Message.query.filter_by(conversation_id=old_conv.id).count() == 0

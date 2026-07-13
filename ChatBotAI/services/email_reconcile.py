@@ -660,9 +660,15 @@ def conversation_booking_ref(conv, smoobu_service=None) -> str | None:
     """The conversation's Booking reservation number (Buchungsnummer), or None.
     Tier 1: the stored guest note (free). Tier 2: Smoobu 'reference-id' (one API
     call, only when the note yields nothing). Smoobu failure is non-fatal."""
-    ref = booking_ref_from_note(conv.guest_id)
-    if ref:
-        return ref
+    from ..models import Conversation
+    # The guest_note is per-GUEST (a single upserted row), so for a repeat guest it
+    # holds only the latest reservation's Buchungsnummer. Trust it only when this
+    # guest has a single conversation; otherwise use the reservation-scoped Smoobu
+    # reference-id so an older chat can't match a newer reservation's email.
+    if Conversation.query.filter_by(guest_id=conv.guest_id).count() <= 1:
+        ref = booking_ref_from_note(conv.guest_id)
+        if ref:
+            return ref
     if not conv.smoobu_reservation_id:
         return None
     svc = smoobu_service
@@ -722,12 +728,16 @@ def _authentic_new_notif(email, platform, stats):
     notif = parse_notification(email)
     if not notif or not notif.message_text or not notif.sent_at:
         return None
+    # Anti-spoof gate: trust only Gmail's own DKIM/DMARC verdict, never a header
+    # the sender could have injected. Spoofed mail is dropped here.
     authentic, auth_info = verify_sender_authenticity(email, platform)
     if not authentic:
         stats['rejected_unauthenticated'] += 1
         logger.warning("email-reconcile: dropped unauthenticated %s email %s (%s)",
                        platform, notif.gmail_id, auth_info)
         return None
+    # Skip an email already inserted into ANY conversation (platform_message_id
+    # is globally unique, not scoped to one chat).
     if Message.query.filter_by(platform_message_id=f"email:{notif.gmail_id}").first():
         return None
     return notif
@@ -867,8 +877,10 @@ def _handle_live_booking_email(email, conv, conv_ref, cfg, router, stats):
 
 def fetch_booking_for_conversation(gmail_service, conversation_id: int, now=None) -> dict:
     """Live per-chat Booking fetch: search Gmail scoped to this guest, auto-insert
-    every positive match (score>0). Booking-only, throttled, never queues. Returns
-    a stats dict (auto_inserted counts inserts; 'reason' set on early no-op)."""
+    an email that matches this conversation by Buchungsnummer (stored note or
+    Smoobu reference-id) or by exact check-in/check-out dates. Booking-only,
+    throttled, never queues. Returns a stats dict (auto_inserted counts inserts;
+    'reason' set on early no-op)."""
     from ..models import Conversation, Guest, AISettings
     from .message_router import get_message_router
 
