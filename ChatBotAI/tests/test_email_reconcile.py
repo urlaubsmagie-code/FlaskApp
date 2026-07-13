@@ -923,3 +923,53 @@ def test_fetch_booking_live_route_gmail_disconnected(client, monkeypatch):
     r = client.post(f'/chatbot/api/conversation/{conv.id}/fetch-booking-live')
     assert r.status_code == 200
     assert r.get_json()['inserted'] == 0
+
+
+from ChatBotAI.models import GuestDetail
+from ChatBotAI.services.email_reconcile import (
+    booking_ref_from_note, conversation_booking_ref, email_matches_conversation,
+)
+from types import SimpleNamespace
+
+
+def test_booking_ref_from_note_extracts(app):
+    g = Guest(name='Carolin Janowski'); db.session.add(g); db.session.flush()
+    db.session.add(GuestDetail(guest_id=g.id, detail_type='special_request',
+        detail_key='guest_note',
+        detail_value='Buchungsnummer: 5110199521\nGastnachricht: ** PRE-PAID **'))
+    db.session.commit()
+    assert booking_ref_from_note(g.id) == '5110199521'
+
+
+def test_booking_ref_from_note_absent_returns_none(app):
+    g = Guest(name='No Note'); db.session.add(g); db.session.flush()
+    db.session.commit()
+    assert booking_ref_from_note(g.id) is None
+
+
+def test_email_matches_by_exact_ref():
+    notif = _booking_notif(booking_ref='5110199521',
+                           check_in=_d(2026, 7, 10), check_out=_d(2026, 7, 12))
+    conv = SimpleNamespace(check_in='2026-01-01', check_out='2026-01-02')  # dates differ
+    assert email_matches_conversation(notif, conv, '5110199521') is True
+
+
+def test_email_ref_mismatch_but_dates_match():
+    notif = _booking_notif(booking_ref='9999999999',
+                           check_in=_d(2026, 7, 10), check_out=_d(2026, 7, 12))
+    conv = SimpleNamespace(check_in='2026-07-10', check_out='2026-07-12')
+    assert email_matches_conversation(notif, conv, '5110199521') is True  # via dates
+
+
+def test_email_no_match_when_ref_and_dates_differ():
+    notif = _booking_notif(booking_ref='9999999999',
+                           check_in=_d(2026, 7, 10), check_out=_d(2026, 7, 12))
+    conv = SimpleNamespace(check_in='2026-07-10', check_out='2026-07-16')  # checkout differs
+    assert email_matches_conversation(notif, conv, '5110199521') is False
+
+
+def test_email_checkin_only_match_is_not_enough():
+    notif = _booking_notif(booking_ref=None,
+                           check_in=_d(2026, 7, 10), check_out=_d(2026, 7, 12))
+    conv = SimpleNamespace(check_in='2026-07-10', check_out='2026-07-16')
+    assert email_matches_conversation(notif, conv, None) is False

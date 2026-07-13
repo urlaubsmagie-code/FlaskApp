@@ -644,6 +644,58 @@ def _conv_view(conv, channel):
     }
 
 
+def booking_ref_from_note(guest_id) -> str | None:
+    """Tier 1: the Buchungsnummer stored in the guest's Smoobu note, or None.
+    Booking reservations carry 'Buchungsnummer: <digits>' in the reservation
+    note, which Smoobu enrichment stores as the guest_note detail."""
+    from ..models import GuestDetail
+    d = GuestDetail.query.filter_by(guest_id=guest_id, detail_key='guest_note').first()
+    if not d or not d.detail_value:
+        return None
+    m = re.search(r'Buchungsnummer:\s*(\d+)', d.detail_value)
+    return m.group(1) if m else None
+
+
+def conversation_booking_ref(conv, smoobu_service=None) -> str | None:
+    """The conversation's Booking reservation number (Buchungsnummer), or None.
+    Tier 1: the stored guest note (free). Tier 2: Smoobu 'reference-id' (one API
+    call, only when the note yields nothing). Smoobu failure is non-fatal."""
+    ref = booking_ref_from_note(conv.guest_id)
+    if ref:
+        return ref
+    if not conv.smoobu_reservation_id:
+        return None
+    svc = smoobu_service
+    if svc is None:
+        from .smoobu_service import get_smoobu_service
+        svc = get_smoobu_service()
+    if not svc:
+        return None
+    try:
+        res = svc.get_reservation(conv.smoobu_reservation_id)
+    except Exception:
+        logger.exception("live booking fetch: smoobu get_reservation failed for conv %s", conv.id)
+        return None
+    val = (res or {}).get('reference-id')
+    return str(val) if val else None
+
+
+def email_matches_conversation(notif, conv, conv_ref) -> bool:
+    """Does this Booking email belong to this conversation?
+
+    Exact Buchungsnummer match wins. Otherwise (no number on one side) the guest
+    name is already guaranteed by the name-scoped Gmail search, so require the
+    email's check-in AND check-out to equal the conversation's exactly — check-in
+    alone is what mis-files a short stay onto an overlapping longer one."""
+    if conv_ref and notif.booking_ref and str(notif.booking_ref) == str(conv_ref):
+        return True
+    return bool(
+        notif.check_in and notif.check_out and conv.check_in and conv.check_out
+        and _iso_date(notif.check_in) == _iso_date(conv.check_in)
+        and _iso_date(notif.check_out) == _iso_date(conv.check_out)
+    )
+
+
 def _candidate_views(channel: str):
     """Build scorer input dicts for all conversations on a channel."""
     from ..models import Conversation
