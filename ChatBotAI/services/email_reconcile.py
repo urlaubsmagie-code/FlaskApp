@@ -662,34 +662,35 @@ def _new_stats() -> dict:
             'skipped_lowscore': 0}
 
 
-def _handle_notification_email(email, platform, views, cfg, router, stats,
-                               auto_insert_all):
-    """Process one notification email into `views`, mutating `stats`.
-
-    Shared by the background scan (auto_insert_all=False: threshold-gated
-    insert, else queue to the review tray) and the live per-chat fetch
-    (auto_insert_all=True: insert any score>0 match, never queue).
-    Anti-spoof and dedup guards are identical in both paths.
-    """
-    from ..models import EmailBackfillCandidate, Message
+def _authentic_new_notif(email, platform, stats):
+    """Shared front-half for both the scan and live paths: count, parse,
+    anti-spoof, and skip anything already inserted. Returns the parsed
+    ParsedNotification to act on, or None to skip. Mutates `stats`."""
+    from ..models import Message
     stats['scanned'] += 1
     notif = parse_notification(email)
     if not notif or not notif.message_text or not notif.sent_at:
-        return
-
-    # Tier-1 anti-spoof gate: trust only Gmail's own DKIM/DMARC verdict aligned
-    # to the platform domain. Spoofed mail is dropped — never inserted or queued.
+        return None
     authentic, auth_info = verify_sender_authenticity(email, platform)
     if not authentic:
         stats['rejected_unauthenticated'] += 1
         logger.warning("email-reconcile: dropped unauthenticated %s email %s (%s)",
                        platform, notif.gmail_id, auth_info)
+        return None
+    if Message.query.filter_by(platform_message_id=f"email:{notif.gmail_id}").first():
+        return None
+    return notif
+
+
+def _handle_notification_email(email, platform, views, cfg, router, stats):
+    """Background-scan handler: threshold-gated auto-insert, else queue for review."""
+    from ..models import EmailBackfillCandidate
+    notif = _authentic_new_notif(email, platform, stats)
+    if notif is None:
         return
 
-    # Skip if already queued/rejected, or already inserted into ANY conversation.
+    # Scan path skips emails already queued/rejected (a human decision).
     if EmailBackfillCandidate.query.filter_by(gmail_message_id=notif.gmail_id).first():
-        return
-    if Message.query.filter_by(platform_message_id=f"email:{notif.gmail_id}").first():
         return
 
     best, score = pick_best_match(notif, views)
@@ -702,7 +703,8 @@ def _handle_notification_email(email, platform, views, cfg, router, stats,
         stats['skipped_dupe'] += 1
         return
 
-    def _insert():
+    autoinsert = cfg['autoinsert_booking'] if platform == 'booking' else cfg['autoinsert_airbnb']
+    if score >= cfg['threshold'] and autoinsert:
         router._store_message(
             conversation_id=best['conversation_id'], sender_type='guest',
             content=notif.message_text,
@@ -710,23 +712,6 @@ def _handle_notification_email(email, platform, views, cfg, router, stats,
             sent_at=notif.sent_at, sent_via_app=False,
         )
         stats['auto_inserted'] += 1
-
-    if auto_insert_all:
-        # Live per-chat path: name-scoped search already narrows to this guest;
-        # insert every positive match, skip non-matches (never queue). The
-        # score>0 guard is belt-and-suspenders: pick_best_match only returns a
-        # truthy `best` when score>0, so the else is unreachable via the real
-        # scorer (a zero-score email already exited above as unmatched).
-        if score > 0:
-            _insert()
-        else:
-            stats['skipped_lowscore'] += 1
-        return
-
-    # Background-scan path: threshold-gated auto-insert, otherwise queue for review.
-    autoinsert = cfg['autoinsert_booking'] if platform == 'booking' else cfg['autoinsert_airbnb']
-    if score >= cfg['threshold'] and autoinsert:
-        _insert()
     else:
         db.session.add(EmailBackfillCandidate(
             gmail_message_id=notif.gmail_id,
@@ -767,8 +752,7 @@ def reconcile_from_email(gmail_service, max_per_platform: int = 50) -> dict:
 
         views = _candidate_views(platform)
         for email in emails:
-            _handle_notification_email(email, platform, views, cfg, router, stats,
-                                       auto_insert_all=False)
+            _handle_notification_email(email, platform, views, cfg, router, stats)
 
     logger.info("email-reconcile: %s", stats)
     return stats
