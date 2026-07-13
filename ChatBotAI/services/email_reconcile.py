@@ -710,8 +710,7 @@ def _safe_query_term(term: str) -> str:
 
 def _new_stats() -> dict:
     return {'scanned': 0, 'matched': 0, 'auto_inserted': 0, 'queued': 0,
-            'skipped_dupe': 0, 'unmatched': 0, 'rejected_unauthenticated': 0,
-            'skipped_lowscore': 0}
+            'skipped_dupe': 0, 'unmatched': 0, 'rejected_unauthenticated': 0}
 
 
 def _authentic_new_notif(email, platform, stats):
@@ -835,6 +834,37 @@ def _live_fetch_throttled(conversation_id: int, now: datetime) -> bool:
     return last is not None and (now - last) < timedelta(minutes=mins)
 
 
+def _handle_live_booking_email(email, conv, conv_ref, cfg, router, stats):
+    """Live per-chat handler: insert the email into THIS conversation if it
+    matches (Buchungsnummer, else exact dates), and rescue a mis-filed pending
+    candidate by confirming it. Unlike the scan, it does NOT skip already-queued
+    emails — that skip is exactly what stranded mis-filed messages."""
+    from ..models import EmailBackfillCandidate
+    notif = _authentic_new_notif(email, 'booking', stats)
+    if notif is None:
+        return
+    if not email_matches_conversation(notif, conv, conv_ref):
+        return
+    if has_equivalent_message(conv.id, notif, cfg['window_minutes']):
+        stats['skipped_dupe'] += 1
+        return
+    router._store_message(
+        conversation_id=conv.id, sender_type='guest', content=notif.message_text,
+        platform_message_id=f"email:{notif.gmail_id}", sent_at=notif.sent_at,
+        sent_via_app=False,
+    )
+    stats['auto_inserted'] += 1
+    stats['matched'] += 1
+    # Rescue: a pending candidate for this same email (possibly filed under the
+    # wrong conversation) is now handled — confirm it so it leaves the review tray
+    # and can never be promoted into the wrong chat.
+    cand = EmailBackfillCandidate.query.filter_by(
+        gmail_message_id=notif.gmail_id, status='pending').first()
+    if cand:
+        cand.status = 'confirmed'
+        db.session.commit()
+
+
 def fetch_booking_for_conversation(gmail_service, conversation_id: int, now=None) -> dict:
     """Live per-chat Booking fetch: search Gmail scoped to this guest, auto-insert
     every positive match (score>0). Booking-only, throttled, never queues. Returns
@@ -867,7 +897,7 @@ def fetch_booking_for_conversation(gmail_service, conversation_id: int, now=None
     _last_live_fetch[conversation_id] = now
 
     cfg = get_reconcile_config()
-    views = [_conv_view(conv, 'booking')]
+    conv_ref = conversation_booking_ref(conv)
     name = _safe_query_term(guest.name)
     query = f'from:guest.booking.com "{name}" newer_than:{cfg["days"]}d'
     try:
@@ -881,8 +911,7 @@ def fetch_booking_for_conversation(gmail_service, conversation_id: int, now=None
 
     router = get_message_router()
     for email in emails:
-        _handle_notification_email(email, 'booking', views, cfg, router, stats,
-                                   auto_insert_all=True)
+        _handle_live_booking_email(email, conv, conv_ref, cfg, router, stats)
 
     logger.info("live booking fetch conv %s: %s", conversation_id, stats)
     return stats

@@ -853,30 +853,113 @@ def test_live_fetch_throttled_second_call(app):
     assert Message.query.filter_by(conversation_id=conv.id).count() == 1
 
 
-def test_live_fetch_does_not_insert_zero_score(app, monkeypatch):
-    # The live rule is "insert iff score > 0". A zero score (e.g. the
-    # same-name/wrong-apartment soft-veto) must NOT insert and must NOT queue.
-    # Force the score deterministically rather than depend on apartment-config.
-    _er._last_live_fetch.clear()
+def test_live_fetch_matches_by_stored_buchungsnummer(app):
+    import ChatBotAI.services.email_reconcile as er
+    er._last_live_fetch.clear()
     g = Guest(name='Carolin Janowski'); db.session.add(g); db.session.flush()
+    # Note carries the same Buchungsnummer as BOOKING_BODY (5843975682); dates deliberately DON'T match.
+    db.session.add(GuestDetail(guest_id=g.id, detail_type='special_request',
+        detail_key='guest_note', detail_value='Buchungsnummer: 5843975682\nGastnachricht: x'))
+    conv = Conversation(guest_id=g.id, platform='booking',
+                        check_in=_d(2020, 1, 1), check_out=_d(2020, 1, 2))
+    db.session.add(conv); db.session.commit()
+
+    email = _email(id='gbref', sender_email='5843975682-x@guest.booking.com',
+                   date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
+                   authentication_results=[BOOKING_AR_DIRECT])
+    gmail = FakeGmail({'from:guest.booking.com "Carolin Janowski" newer_than:30d': [email]})
+
+    stats = fetch_booking_for_conversation(gmail, conv.id)
+    assert stats['auto_inserted'] == 1
+    assert Message.query.filter_by(conversation_id=conv.id, platform_message_id='email:gbref').count() == 1
+
+
+def test_live_fetch_rescues_misfiled_candidate(app):
+    # The email is already a PENDING candidate filed under the WRONG conversation.
+    # Opening the correct chat (whose note carries the matching ref) must insert it
+    # here and flip the candidate to confirmed.
+    import ChatBotAI.services.email_reconcile as er
+    er._last_live_fetch.clear()
+    other = Guest(name='Someone Else'); db.session.add(other); db.session.flush()
+    wrong_conv = Conversation(guest_id=other.id, platform='booking')
+    db.session.add(wrong_conv); db.session.flush()
+    db.session.add(EmailBackfillCandidate(
+        gmail_message_id='gbref', platform='booking', parsed_name='Carolin Janowski',
+        parsed_text='hi', parsed_timestamp=datetime(2026, 6, 9, 11, 24),
+        guessed_conversation_id=wrong_conv.id, confidence=0.15, status='pending'))
+
+    g = Guest(name='Carolin Janowski'); db.session.add(g); db.session.flush()
+    db.session.add(GuestDetail(guest_id=g.id, detail_type='special_request',
+        detail_key='guest_note', detail_value='Buchungsnummer: 5843975682'))
+    right_conv = Conversation(guest_id=g.id, platform='booking',
+                              check_in=_d(2020, 1, 1), check_out=_d(2020, 1, 2))
+    db.session.add(right_conv); db.session.commit()
+
+    email = _email(id='gbref', sender_email='5843975682-x@guest.booking.com',
+                   date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
+                   authentication_results=[BOOKING_AR_DIRECT])
+    gmail = FakeGmail({'from:guest.booking.com "Carolin Janowski" newer_than:30d': [email]})
+
+    stats = fetch_booking_for_conversation(gmail, right_conv.id)
+    assert stats['auto_inserted'] == 1
+    assert Message.query.filter_by(conversation_id=right_conv.id).count() == 1
+    assert Message.query.filter_by(conversation_id=wrong_conv.id).count() == 0
+    assert EmailBackfillCandidate.query.filter_by(gmail_message_id='gbref').first().status == 'confirmed'
+
+
+def test_live_fetch_matches_by_dates_when_no_note(app):
+    import ChatBotAI.services.email_reconcile as er
+    er._last_live_fetch.clear()
+    g = Guest(name='Carolin Janowski'); db.session.add(g); db.session.flush()
+    # No note -> no Tier-1 ref; BOOKING_BODY dates are 12.-14.06.2026, so match those.
     conv = Conversation(guest_id=g.id, platform='booking',
                         check_in=_d(2026, 6, 12), check_out=_d(2026, 6, 14))
     db.session.add(conv); db.session.commit()
-
-    email = _email(id='glive3', sender_email='5843975682-x@guest.booking.com',
+    email = _email(id='gbdate', sender_email='5843975682-x@guest.booking.com',
                    date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
                    authentication_results=[BOOKING_AR_DIRECT])
-    query = f'from:guest.booking.com "Carolin Janowski" newer_than:30d'
-    gmail = FakeGmail({query: [email]})
+    gmail = FakeGmail({'from:guest.booking.com "Carolin Janowski" newer_than:30d': [email]})
+    stats = fetch_booking_for_conversation(gmail, conv.id)
+    assert stats['auto_inserted'] == 1
 
-    # _handle_notification_email looks up pick_best_match at module scope.
-    monkeypatch.setattr(_er, 'pick_best_match', lambda notif, views: (views[0], 0.0))
 
+def test_live_fetch_no_insert_when_ref_and_dates_differ(app):
+    import ChatBotAI.services.email_reconcile as er
+    er._last_live_fetch.clear()
+    g = Guest(name='Carolin Janowski'); db.session.add(g); db.session.flush()
+    conv = Conversation(guest_id=g.id, platform='booking',
+                        check_in=_d(2026, 6, 12), check_out=_d(2026, 6, 20))  # checkout differs
+    db.session.add(conv); db.session.commit()
+    email = _email(id='gbno', sender_email='9999999999-x@guest.booking.com',
+                   date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
+                   authentication_results=[BOOKING_AR_DIRECT])
+    gmail = FakeGmail({'from:guest.booking.com "Carolin Janowski" newer_than:30d': [email]})
     stats = fetch_booking_for_conversation(gmail, conv.id)
     assert stats['auto_inserted'] == 0
-    assert stats['skipped_lowscore'] == 1
-    assert EmailBackfillCandidate.query.filter_by(gmail_message_id='glive3').first() is None
     assert Message.query.filter_by(conversation_id=conv.id).count() == 0
+
+
+def test_live_fetch_matches_by_smoobu_reference_id(app, monkeypatch):
+    # No note, dates DON'T match -> Tier 2: Smoobu reference-id supplies the number.
+    import ChatBotAI.services.email_reconcile as er
+    er._last_live_fetch.clear()
+    g = Guest(name='Carolin Janowski'); db.session.add(g); db.session.flush()
+    conv = Conversation(guest_id=g.id, platform='booking', smoobu_reservation_id='146578501',
+                        check_in=_d(2020, 1, 1), check_out=_d(2020, 1, 2))
+    db.session.add(conv); db.session.commit()
+
+    class FakeSmoobu:
+        def get_reservation(self, rid):
+            return {'reference-id': '5843975682'}  # matches BOOKING_BODY's ref
+    import ChatBotAI.services.smoobu_service as ss
+    monkeypatch.setattr(ss, 'get_smoobu_service', lambda: FakeSmoobu())
+
+    email = _email(id='gbsmoobu', sender_email='5843975682-x@guest.booking.com',
+                   date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
+                   authentication_results=[BOOKING_AR_DIRECT])
+    gmail = FakeGmail({'from:guest.booking.com "Carolin Janowski" newer_than:30d': [email]})
+    stats = fetch_booking_for_conversation(gmail, conv.id)
+    assert stats['auto_inserted'] == 1
 
 
 # ---------------------------------------------------------------------------
