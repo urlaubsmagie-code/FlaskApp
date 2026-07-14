@@ -60,6 +60,10 @@ function createConversationCard(conv) {
     card.className = 'conversation-card' + (!conv.is_read ? ' unread' : '');
     card.dataset.conversationId = conv.id;
     card.dataset.updatedAt = conv.updated_at || '';
+    // last_message_at drives the shown time AND the date-group header, matching the
+    // server's sort order (Conversation.last_message_at.desc). updated_at bumps on any
+    // row touch (sync, read, AI summary), so grouping by it interleaved the headers.
+    card.dataset.lastMessageAt = conv.last_message_at || '';
     card.dataset.platform = conv.platform;
     card.dataset.status = conv.status;
     card.dataset.guestId = conv.guest_id || '';
@@ -105,7 +109,7 @@ function createConversationCard(conv) {
         <div class="conversation-info">
             <div class="conversation-header">
                 <span class="guest-name">${escapeHtml(guestName)}</span>
-                <span class="conversation-time" data-timestamp="${conv.updated_at || ''}" title="${formatAbsoluteTime(conv.updated_at)}">${formatRelativeTime(conv.updated_at)}</span>
+                <span class="conversation-time" data-timestamp="${conv.last_message_at || ''}" title="${formatAbsoluteTime(conv.last_message_at)}">${formatRelativeTime(conv.last_message_at)}</span>
             </div>
             <div class="conversation-subject">${escapeHtml(conv.property_name || conv.subject || 'No subject')}${conv.check_in && conv.check_out ? ` <span class="stay-dates">${formatStayDates(conv.check_in, conv.check_out)}</span>` : ''}</div>
             <div class="conversation-preview">${escapeHtml(preview)}</div>
@@ -126,6 +130,7 @@ function createConversationCard(conv) {
 
 function updateConversationCard(card, conv) {
     card.dataset.updatedAt = conv.updated_at || '';
+    card.dataset.lastMessageAt = conv.last_message_at || '';
     card.dataset.status = conv.status;
     card.dataset.isRead = conv.is_read ? 'true' : 'false';
     card.dataset.escalated = conv.escalated ? 'true' : 'false';
@@ -149,9 +154,9 @@ function updateConversationCard(card, conv) {
 
     const timeEl = card.querySelector('.conversation-time');
     if (timeEl) {
-        timeEl.dataset.timestamp = conv.updated_at || '';
-        timeEl.title = formatAbsoluteTime(conv.updated_at);
-        timeEl.textContent = formatRelativeTime(conv.updated_at);
+        timeEl.dataset.timestamp = conv.last_message_at || '';
+        timeEl.title = formatAbsoluteTime(conv.last_message_at);
+        timeEl.textContent = formatRelativeTime(conv.last_message_at);
     }
 
     const previewEl = card.querySelector('.conversation-preview');
@@ -384,8 +389,8 @@ function insertDateGroupHeaders() {
     let lastGroup = null;
 
     cards.forEach(card => {
-        const updatedAt = card.dataset.updatedAt;
-        const group = getDateGroup(updatedAt);
+        const lastMessageAt = card.dataset.lastMessageAt;
+        const group = getDateGroup(lastMessageAt);
         if (group !== lastGroup) {
             container.insertBefore(createDateGroupHeader(group), card);
             lastGroup = group;
