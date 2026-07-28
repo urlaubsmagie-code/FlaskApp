@@ -1106,27 +1106,40 @@ def api_send_message(conversation_id):
     if not data or 'content' not in data:
         return jsonify({'error': 'Content is required'}), 400
 
-    # Create owner message
-    message = Message(
-        conversation_id=conversation_id,
-        sender_type='owner',
-        content=data['content'],
-        sent_at=datetime.utcnow(),
-        sent_via_app=True,
-        user_id=current_user.id if current_user.is_authenticated else None
-    )
-    db.session.add(message)
-    now_ts = datetime.utcnow()
-    conversation.updated_at = now_ts
-    msg_sent_at = message.sent_at or now_ts
-    if not conversation.last_message_at or msg_sent_at > conversation.last_message_at:
-        conversation.last_message_at = msg_sent_at
+    content = data['content']
 
-    # Assign conversation to the user who is responding
-    if current_user.is_authenticated and conversation.user_id is None:
-        conversation.user_id = current_user.id
+    # This generic local-store endpoint does NOT send to any platform, so without a
+    # duplicate guard it silently creates a phantom copy of a reply that was already
+    # delivered via the Smoobu/Gmail path — a second DB row shown twice in our app
+    # while the guest was messaged only once. Same per-conversation lock + guard as
+    # the platform-send paths, so a concurrent local + platform send can't race.
+    with _conversation_send_lock(conversation_id):
+        if _recent_duplicate_owner_reply(conversation_id, content):
+            logger.info(f"Duplicate local message skipped for conversation {conversation_id}")
+            return jsonify({'success': True, 'duplicate_skipped': True,
+                            'content': content}), 200
 
-    db.session.commit()
+        # Create owner message
+        message = Message(
+            conversation_id=conversation_id,
+            sender_type='owner',
+            content=content,
+            sent_at=datetime.utcnow(),
+            sent_via_app=True,
+            user_id=current_user.id if current_user.is_authenticated else None
+        )
+        db.session.add(message)
+        now_ts = datetime.utcnow()
+        conversation.updated_at = now_ts
+        msg_sent_at = message.sent_at or now_ts
+        if not conversation.last_message_at or msg_sent_at > conversation.last_message_at:
+            conversation.last_message_at = msg_sent_at
+
+        # Assign conversation to the user who is responding
+        if current_user.is_authenticated and conversation.user_id is None:
+            conversation.user_id = current_user.id
+
+        db.session.commit()
 
     # Store correction if host edited an AI draft
     correction_saved = False

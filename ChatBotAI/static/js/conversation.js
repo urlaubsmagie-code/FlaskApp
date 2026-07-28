@@ -392,6 +392,15 @@ function sendLocal(content, tempId, correctionOriginal) {
     })
     .then(response => response.json())
     .then(data => {
+        if (data.duplicate_skipped) {
+            // Server refused a repeat: this exact text was just sent. Drop the
+            // optimistic bubble so it isn't shown twice.
+            const el = document.querySelector(`[data-message-id="${tempId}"]`);
+            if (el) el.remove();
+            knownMessageIds.delete(tempId);
+            showNotification('Diese Nachricht wurde gerade eben schon gesendet – sie wurde nicht erneut verschickt.', 'info', 6000);
+            return;
+        }
         if (data.id) {
             knownMessageIds.delete(tempId);
             knownMessageIds.add(data.id);

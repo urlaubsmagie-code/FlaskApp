@@ -150,3 +150,46 @@ def test_different_conversations_are_not_serialized(monkeypatch):
     assert max_conc == 2, 'different conversations must not block each other'
     assert len(send_calls) == 2
     assert all(r.get('message_id') for r in results)
+
+
+# ---------------------------------------------------------------------------
+# The generic local-store endpoint (/api/conversations/<id>/messages) had NO
+# guard, so it silently created a phantom copy of a reply already sent via the
+# platform path — the duplicate seen ONLY in our app (the guest was messaged
+# once). It must now dedup like the platform-send paths.
+# ---------------------------------------------------------------------------
+from ChatBotAI.models import User
+
+
+@pytest.fixture
+def client(app):
+    user = User(username='tester', display_name='Tester', is_admin=True)
+    user.set_password('pw')
+    db.session.add(user)
+    db.session.commit()
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s['_user_id'] = str(user.id)
+        s['_fresh'] = True
+    return c
+
+
+def test_local_send_endpoint_skips_duplicate(client):
+    c = _conv()
+    R._conversation_send_locks.pop(c.id, None)
+    body = {'content': 'Hallo, das passt gut für uns!'}
+    r1 = client.post(f'/chatbot/api/conversations/{c.id}/messages', json=body)
+    r2 = client.post(f'/chatbot/api/conversations/{c.id}/messages', json=body)
+    assert r1.status_code == 201
+    assert r2.status_code == 200 and r2.get_json().get('duplicate_skipped') is True
+    # Exactly one owner message stored despite two identical POSTs.
+    assert Message.query.filter_by(conversation_id=c.id, sender_type='owner').count() == 1
+
+
+def test_local_send_endpoint_allows_distinct_messages(client):
+    c = _conv()
+    R._conversation_send_locks.pop(c.id, None)
+    client.post(f'/chatbot/api/conversations/{c.id}/messages', json={'content': 'Erste Nachricht'})
+    r2 = client.post(f'/chatbot/api/conversations/{c.id}/messages', json={'content': 'Andere Nachricht'})
+    assert r2.status_code == 201
+    assert Message.query.filter_by(conversation_id=c.id, sender_type='owner').count() == 2
