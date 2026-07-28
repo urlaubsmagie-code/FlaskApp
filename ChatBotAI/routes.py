@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 from .models import db, User, UserSession, Guest, GuestDetail, Conversation, Message, Property, AISettings, ReplyTemplate, KnowledgeEntry, EmailBackfillCandidate, ProblemReport, preload_last_messages, preload_unread_counts, preload_display_platforms
 from .services.ai_service import get_ai_service
 from .services.memory_service import get_memory_service
+from .services.message_router import get_message_router
 
 
 # ============================================================================
@@ -4540,6 +4541,57 @@ def _recent_duplicate_owner_reply(conversation_id, content, within_seconds=120):
     return any(_normalize_content(m.content or '') == target for m in recent)
 
 
+# Per-conversation send locks. The duplicate guard above only reads *committed*
+# rows, so the old check-then-send-then-store sequence had a TOCTOU race: the
+# (sometimes slow, 20-40s) Smoobu send sat between the check and the store, so two
+# overlapping sends of the same text both passed the guard before either persisted
+# — delivering the reply to the guest twice. Holding a per-conversation lock across
+# check+send+store makes them atomic, so the second send sees the first's stored
+# row and is blocked. Production is single-process Waitress, so an in-process lock
+# is sufficient.
+# ponytail: unbounded dict, one lock per conversation ever replied to — trivially
+# small for a few thousand chats on one process; add eviction only if it grows.
+_conversation_send_locks = {}
+_conversation_send_locks_guard = threading.Lock()
+
+
+def _conversation_send_lock(conversation_id):
+    with _conversation_send_locks_guard:
+        lock = _conversation_send_locks.get(conversation_id)
+        if lock is None:
+            lock = threading.Lock()
+            _conversation_send_locks[conversation_id] = lock
+        return lock
+
+
+def _guarded_smoobu_reply(conversation, content, send_fn):
+    """Atomically (per conversation) guard-check, send, and store an owner reply.
+
+    send_fn() performs the actual Smoobu send and returns its raw result (falsy on
+    failure). The per-conversation lock spans check+send+store so a second identical
+    send to the same chat cannot slip past the duplicate guard while this one's
+    (possibly slow) send is in flight. Stores the message only on a successful send,
+    so a failed send leaves nothing behind. Returns exactly one of:
+      {'duplicate_skipped': True} | {'message_id': <id>} | {'error': <msg>}"""
+    with _conversation_send_lock(conversation.id):
+        if _recent_duplicate_owner_reply(conversation.id, content):
+            logger.info(f"Duplicate reply blocked for conversation {conversation.id}")
+            return {'duplicate_skipped': True}
+        send_result = send_fn()
+        if not send_result:
+            return {'error': 'Failed to send message via Smoobu'}
+        smoobu_msg_id = None
+        if isinstance(send_result, dict):
+            smoobu_msg_id = str(send_result.get('id') or send_result.get('message_id')
+                                or send_result.get('messageId') or '')
+        platform_msg_id = (f"smoobu-{conversation.smoobu_reservation_id}-{smoobu_msg_id}"
+                           if smoobu_msg_id else None)
+        owner_result = get_message_router().process_owner_message(
+            conversation_id=conversation.id, content=content, extract_memory=True,
+            platform_message_id=platform_msg_id, sent_via_app=True)
+        return {'message_id': owner_result.get('message_id')}
+
+
 @chatbot_bp.route('/api/smoobu/reply/<int:conversation_id>', methods=['POST'])
 def api_smoobu_reply(conversation_id):
     """Send a reply through Smoobu API"""
@@ -4563,53 +4615,34 @@ def api_smoobu_reply(conversation_id):
     if not smoobu or not smoobu.is_configured():
         return jsonify({'error': 'Smoobu not connected'}), 400
 
-    # Never deliver the same reply to the guest twice (see helper docstring).
-    if _recent_duplicate_owner_reply(conversation_id, message_content):
-        logger.info(f"Duplicate reply blocked for conversation {conversation_id}")
+    # Atomic per-conversation guard+send+store: never deliver the same reply twice,
+    # even when two sends race across a slow Smoobu call (see helper docstring).
+    result = _guarded_smoobu_reply(
+        conversation, message_content,
+        lambda: smoobu.send_message(conversation.smoobu_reservation_id, message_content))
+
+    if result.get('duplicate_skipped'):
         return jsonify({
-            'success': True,
-            'duplicate_skipped': True,
-            'content': message_content,
+            'success': True, 'duplicate_skipped': True, 'content': message_content,
         }), 200
+    if result.get('error'):
+        return jsonify({'error': result['error']}), 500
 
-    send_result = smoobu.send_message(conversation.smoobu_reservation_id, message_content)
+    # Assign conversation to the user who is responding
+    if current_user.is_authenticated and conversation.user_id is None:
+        conversation.user_id = current_user.id
+        db.session.commit()
 
-    if send_result:
-        # Try to extract message ID from Smoobu response for duplicate prevention
-        smoobu_msg_id = None
-        if isinstance(send_result, dict):
-            smoobu_msg_id = str(send_result.get('id') or send_result.get('message_id')
-                               or send_result.get('messageId') or '')
-        platform_msg_id = (f"smoobu-{conversation.smoobu_reservation_id}-{smoobu_msg_id}"
-                           if smoobu_msg_id else None)
+    # Store correction if host edited an AI draft
+    original_ai_content = data.get('original_ai_content')
+    if original_ai_content:
+        _store_correction_if_needed(original_ai_content, message_content, conversation)
 
-        # Store as owner message
-        router = get_message_router()
-        owner_result = router.process_owner_message(
-            conversation_id=conversation_id,
-            content=message_content,
-            extract_memory=True,
-            platform_message_id=platform_msg_id,
-            sent_via_app=True
-        )
-
-        # Assign conversation to the user who is responding
-        if current_user.is_authenticated and conversation.user_id is None:
-            conversation.user_id = current_user.id
-            db.session.commit()
-
-        # Store correction if host edited an AI draft
-        original_ai_content = data.get('original_ai_content')
-        if original_ai_content:
-            _store_correction_if_needed(original_ai_content, message_content, conversation)
-
-        return jsonify({
-            'success': True,
-            'message_id': owner_result.get('message_id'),
-            'content': message_content
-        })
-    else:
-        return jsonify({'error': 'Failed to send message via Smoobu'}), 500
+    return jsonify({
+        'success': True,
+        'message_id': result.get('message_id'),
+        'content': message_content
+    })
 
 
 # ============================================================================

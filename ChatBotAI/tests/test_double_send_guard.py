@@ -60,3 +60,93 @@ def test_scoped_to_conversation(app):
     _owner_msg(c1.id, 'Danke!', datetime.utcnow())
     # Same text in a DIFFERENT conversation must not block.
     assert not _recent_duplicate_owner_reply(c2.id, 'Danke!')
+
+
+# ---------------------------------------------------------------------------
+# Concurrency: the guard alone is a TOCTOU race (check -> slow send -> store).
+# `_guarded_smoobu_reply` closes it by holding a per-conversation lock across the
+# whole check+send+store, so two overlapping identical sends can't both get through.
+# In-memory SQLite isn't shared across threads, so we test the concurrency-control
+# layer with mocked collaborators (the guard's SQL is covered by the tests above).
+# ---------------------------------------------------------------------------
+import threading
+import time
+from ChatBotAI import routes as R
+
+
+class _Conv:
+    def __init__(self, cid):
+        self.id = cid
+        self.smoobu_reservation_id = 'R' + str(cid)
+
+
+def _run_two_sends(monkeypatch, conv_a, conv_b, content='same text'):
+    """Fire two _guarded_smoobu_reply calls concurrently. Returns (results,
+    send_calls, max_concurrent_sends). `stored` acts as the committed-message
+    store the duplicate guard reads."""
+    stored = []                 # normalized 'DB' of stored owner replies
+    store_lock = threading.Lock()
+    send_calls = []
+    conc = {'now': 0, 'max': 0}
+    conc_lock = threading.Lock()
+
+    # Guard: reports a duplicate once an identical reply has been stored.
+    monkeypatch.setattr(R, '_recent_duplicate_owner_reply',
+                        lambda cid, text, **kw: (cid, text) in stored)
+
+    class FakeRouter:
+        def process_owner_message(self, conversation_id, content, **kw):
+            with store_lock:
+                stored.append((conversation_id, content))
+                return {'message_id': len(stored)}
+    monkeypatch.setattr(R, 'get_message_router', lambda: FakeRouter())
+
+    def slow_send():
+        with conc_lock:
+            conc['now'] += 1
+            conc['max'] = max(conc['max'], conc['now'])
+        try:
+            time.sleep(0.25)          # widen the race window
+            send_calls.append(1)
+            return {'id': str(len(send_calls))}
+        finally:
+            with conc_lock:
+                conc['now'] -= 1
+
+    results = []
+    res_lock = threading.Lock()
+
+    def work(conv):
+        r = R._guarded_smoobu_reply(conv, content, slow_send)
+        with res_lock:
+            results.append(r)
+
+    # clean any leftover locks for these conversation ids
+    R._conversation_send_locks.pop(conv_a.id, None)
+    R._conversation_send_locks.pop(conv_b.id, None)
+
+    t1 = threading.Thread(target=work, args=(conv_a,))
+    t2 = threading.Thread(target=work, args=(conv_b,))
+    t1.start(); t2.start(); t1.join(); t2.join()
+    return results, send_calls, conc['max']
+
+
+def test_race_same_conversation_sends_once(monkeypatch):
+    # Two identical sends to the SAME chat, racing across a slow send: exactly one
+    # reaches the guest, the other is duplicate-skipped. This is the reported bug.
+    conv = _Conv(9001)
+    results, send_calls, max_conc = _run_two_sends(monkeypatch, conv, conv)
+    assert max_conc == 1, 'per-conversation lock must serialize the sends'
+    assert len(send_calls) == 1, 'only one message delivered to the guest'
+    assert sum(1 for r in results if r.get('duplicate_skipped')) == 1
+    assert sum(1 for r in results if r.get('message_id')) == 1
+
+
+def test_different_conversations_are_not_serialized(monkeypatch):
+    # The lock is PER conversation: sends to two different chats run concurrently
+    # and both deliver (no false duplicate blocking, no global bottleneck).
+    ca, cb = _Conv(9002), _Conv(9003)
+    results, send_calls, max_conc = _run_two_sends(monkeypatch, ca, cb)
+    assert max_conc == 2, 'different conversations must not block each other'
+    assert len(send_calls) == 2
+    assert all(r.get('message_id') for r in results)
