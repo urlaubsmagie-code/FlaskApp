@@ -417,7 +417,7 @@ function showBrowserNotification(title, body, url) {
 
     const notification = new Notification(title, {
         body: body,
-        icon: '/chatbot/static/favicon.ico'
+        icon: '/chatbot/chatbot/static/img/pwa/icon-192.png'
     });
 
     if (url) {

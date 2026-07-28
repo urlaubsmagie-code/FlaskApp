@@ -2953,7 +2953,13 @@ def service_worker():
 @chatbot_bp.route('/manifest.webmanifest')
 def manifest():
     """Web app manifest — makes the messenger installable as 'UMI-Chat'."""
-    from flask import make_response
+    from flask import make_response, url_for
+    # url_for, not hardcoded — the blueprint serves static at /chatbot/chatbot/static
+    # (url_prefix + static_url_path both carry /chatbot). Hardcoding 404s the icons,
+    # which silently makes the PWA non-installable.
+    def icon(name, size, purpose):
+        return {"src": url_for('chatbot.static', filename='img/pwa/' + name),
+                "sizes": size, "type": "image/png", "purpose": purpose}
     data = {
         "name": "UMI-Chat",
         "short_name": "UMI-Chat",
@@ -2964,10 +2970,10 @@ def manifest():
         "theme_color": "#7B2332",
         "background_color": "#7B2332",
         "icons": [
-            {"src": "/chatbot/static/img/pwa/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-            {"src": "/chatbot/static/img/pwa/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
-            {"src": "/chatbot/static/img/pwa/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
-            {"src": "/chatbot/static/img/pwa/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+            icon("icon-192.png", "192x192", "any"),
+            icon("icon-512.png", "512x512", "any"),
+            icon("icon-maskable-192.png", "192x192", "maskable"),
+            icon("icon-maskable-512.png", "512x512", "maskable"),
         ],
     }
     resp = make_response(jsonify(data))

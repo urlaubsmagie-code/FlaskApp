@@ -41,8 +41,8 @@ self.addEventListener('push', function(event) {
     var title = data.title || 'ChatBotAI';
     var options = {
         body: data.body || '',
-        icon: '/chatbot/static/img/pwa/icon-192.png',
-        badge: '/chatbot/static/img/pwa/icon-192.png',
+        icon: '/chatbot/chatbot/static/img/pwa/icon-192.png',
+        badge: '/chatbot/chatbot/static/img/pwa/icon-192.png',
         tag: data.tag || 'chatbotai',
         data: { url: data.url || '/chatbot/' }
     };

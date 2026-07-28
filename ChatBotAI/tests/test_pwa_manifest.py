@@ -33,6 +33,9 @@ def test_manifest_served_with_correct_type_and_content(client):
     assert data['theme_color'] == '#7B2332'
     assert len(data['icons']) == 4
     assert any(i.get('purpose') == 'maskable' for i in data['icons'])
+    # Every icon URL must actually load — a 404 icon silently blocks PWA install.
+    for ic in data['icons']:
+        assert client.get(ic['src']).status_code == 200, f"icon 404: {ic['src']}"
 
 
 def test_login_page_has_pwa_head_tags(app):
