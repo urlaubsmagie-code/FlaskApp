@@ -113,7 +113,7 @@ def require_login():
     # Whitelist: static files, login, setup, webhooks, health check, service worker
     if request.endpoint and (
         request.endpoint == 'chatbot.static'
-        or request.endpoint in ('chatbot.login', 'chatbot.setup', 'chatbot.service_worker')
+        or request.endpoint in ('chatbot.login', 'chatbot.setup', 'chatbot.service_worker', 'chatbot.manifest')
         or (request.endpoint and request.endpoint.startswith('chatbot.webhook_'))
         or request.endpoint == 'chatbot.health_check'
         or request.endpoint == 'chatbot.api_keepalive'
@@ -2950,6 +2950,32 @@ def service_worker():
     return response
 
 
+@chatbot_bp.route('/manifest.webmanifest')
+def manifest():
+    """Web app manifest — makes the messenger installable as 'UMI-Chat'."""
+    from flask import make_response
+    data = {
+        "name": "UMI-Chat",
+        "short_name": "UMI-Chat",
+        "start_url": "/chatbot/",
+        "scope": "/chatbot/",
+        "display": "standalone",
+        "orientation": "portrait",
+        "theme_color": "#7B2332",
+        "background_color": "#7B2332",
+        "icons": [
+            {"src": "/chatbot/static/img/pwa/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": "/chatbot/static/img/pwa/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            {"src": "/chatbot/static/img/pwa/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+            {"src": "/chatbot/static/img/pwa/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+        ],
+    }
+    resp = make_response(jsonify(data))
+    resp.headers['Content-Type'] = 'application/manifest+json'
+    resp.headers['Cache-Control'] = 'no-cache'
+    return resp
+
+
 @chatbot_bp.route('/api/push/vapid-key', methods=['GET'])
 def api_push_vapid_key():
     """Return the VAPID public key for the frontend"""
@@ -4362,6 +4388,43 @@ def api_smoobu_sync_properties():
 
     result = smoobu.sync_properties()
     return jsonify(result)
+
+
+@chatbot_bp.route('/api/smoobu/backfill-historical', methods=['POST'])
+@admin_required
+def api_smoobu_backfill_historical():
+    """One-time historical backfill: walk ALL Smoobu /threads pages and import any
+    missing conversations/messages. Idempotent (dedup by platform_message_id).
+
+    Runs in a background thread so the request returns immediately — a full walk
+    of hundreds of pages takes minutes and would exceed the Cloudflare 100s HTTP
+    timeout. Reuses SmoobuService.sync_recent_threads(max_pages=None), which is
+    rate-limit aware via the shared _request 429 handling.
+    """
+    from .services.smoobu_service import get_smoobu_service
+    smoobu = get_smoobu_service()
+    if not smoobu or not smoobu.is_configured():
+        return jsonify({'error': 'Smoobu not connected'}), 400
+
+    import threading
+    from flask import current_app
+    app_obj = current_app._get_current_object()
+
+    def _run():
+        with app_obj.app_context():
+            try:
+                res = smoobu.sync_recent_threads(max_pages=None)
+                logger.info("Smoobu historical backfill complete: %s", res)
+                print(
+                    f"[ChatBotAI] Smoobu historical backfill complete: "
+                    f"{res.get('synced')} threads synced, {res.get('imported')} msg(s) imported",
+                    flush=True)
+            except Exception:
+                logger.exception("Smoobu historical backfill failed")
+
+    threading.Thread(target=_run, daemon=True, name='smoobu-backfill').start()
+    return jsonify({'success': True, 'started': True,
+                    'message': 'Historical backfill started in background'})
 
 
 @chatbot_bp.route('/api/smoobu/fix-timestamps', methods=['POST'])
