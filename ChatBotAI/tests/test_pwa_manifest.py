@@ -33,3 +33,27 @@ def test_manifest_served_with_correct_type_and_content(client):
     assert data['theme_color'] == '#7B2332'
     assert len(data['icons']) == 4
     assert any(i.get('purpose') == 'maskable' for i in data['icons'])
+
+
+def test_login_page_has_pwa_head_tags(app):
+    # A user must exist, else /chatbot/login redirects to setup (routes.py:219).
+    from ChatBotAI.models import User, db
+    user = User(username='u', display_name='U', is_admin=True)
+    user.set_password('pw'); db.session.add(user); db.session.commit()
+    html = app.test_client().get('/chatbot/login').get_data(as_text=True)
+    assert 'rel="manifest"' in html
+    assert 'name="theme-color"' in html
+    assert 'apple-touch-icon' in html
+
+
+def test_inbox_has_pwa_head_tags(app):
+    # Authenticated inbox (base.html) must carry the manifest link too.
+    from ChatBotAI.models import User, db
+    user = User(username='t', display_name='T', is_admin=True)
+    user.set_password('pw'); db.session.add(user); db.session.commit()
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s['_user_id'] = str(user.id); s['_fresh'] = True
+    html = c.get('/chatbot/').get_data(as_text=True)
+    assert 'rel="manifest"' in html
+    assert 'apple-mobile-web-app-title' in html
