@@ -430,7 +430,7 @@ const translations = {
         'conversation.knowledge.extract': 'Wissen extrahieren',
         'conversation.knowledge.saved': '{count} Einträge zur Wissensdatenbank hinzugefügt',
         'conversation.knowledge.nothingFound': 'Keine nützlichen Informationen in dieser Nachricht gefunden',
-        'conversation.knowledge.extractFailed': 'Wissensextraktion fehlgeschlagen',
+        'conversation.knowledge.extractFailed': 'Wissensextraktion fehlgeschlagen – bitte versuche es gleich noch einmal.',
         'conversation.emailSource': 'via E-Mail-Abgleich',
 
         // Approval Queue
@@ -994,7 +994,7 @@ const translations = {
         'conversation.knowledge.extract': 'Extract knowledge',
         'conversation.knowledge.saved': '{count} entries added to Knowledge Base',
         'conversation.knowledge.nothingFound': 'No useful information found in this message',
-        'conversation.knowledge.extractFailed': 'Knowledge extraction failed',
+        'conversation.knowledge.extractFailed': 'Knowledge extraction failed — please try again.',
         'conversation.emailSource': 'via email reconciliation',
 
         // Approval Queue

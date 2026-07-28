@@ -785,7 +785,7 @@ function toggleAutoRespond() {
     .catch(err => console.error('Failed to toggle auto-respond:', err));
 }
 
-function extractKnowledge(messageId) {
+function extractKnowledge(messageId, attempt = 1) {
     const msgDiv = document.querySelector(`[data-message-id="${messageId}"]`);
     const btn = msgDiv ? msgDiv.querySelector('.btn-extract-knowledge') : null;
 
@@ -793,9 +793,27 @@ function extractKnowledge(messageId) {
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
     }
+    const restoreBtn = () => {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-graduation-cap"></i>';
+        }
+    };
 
     fetch(`/chatbot/api/messages/${messageId}/extract-knowledge`, { method: 'POST' })
-    .then(r => r.json())
+    .then(async r => {
+        if (!r.ok) {
+            // The handler returns JSON on its own errors; a non-JSON body means the
+            // request died at the proxy (Cloudflare ~100s cut on a slow cloud model).
+            // Read serverMessage if present so we can tell a real error from a timeout.
+            let serverMessage = null;
+            try { serverMessage = (await r.json()).error; } catch (e) {}
+            const err = new Error(serverMessage || `HTTP ${r.status}`);
+            err.serverMessage = serverMessage;   // set => real handler error, don't retry
+            throw err;
+        }
+        return r.json();
+    })
     .then(data => {
         if (data.error) {
             showNotification(data.error, 'error', 4000);
@@ -807,16 +825,22 @@ function extractKnowledge(messageId) {
                 'success', 4000
             );
         }
+        restoreBtn();
     })
     .catch(err => {
-        console.error('Knowledge extraction failed:', err);
-        showNotification(i18n.t('conversation.knowledge.extractFailed'), 'error', 4000);
-    })
-    .finally(() => {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-graduation-cap"></i>';
+        // Transient failure (proxy timeout / network) with no handler JSON: the
+        // cloud model was likely cold or slow. Retry once — it usually warms up.
+        if (attempt < 2 && !err.serverMessage) {
+            console.warn('Knowledge extraction transient failure, retrying once:', err.message);
+            setTimeout(() => extractKnowledge(messageId, attempt + 1), 1500);
+            return;   // keep the spinner; restoreBtn runs on the retry's outcome
         }
+        console.error('Knowledge extraction failed:', err);
+        showNotification(
+            err.serverMessage || i18n.t('conversation.knowledge.extractFailed'),
+            'error', 5000
+        );
+        restoreBtn();
     });
 }
 

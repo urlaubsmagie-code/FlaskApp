@@ -16,6 +16,12 @@ from .prompt_loader import load_prompt
 
 logger = logging.getLogger(__name__)
 
+# Knowledge extraction runs behind the Cloudflare tunnel, which cuts any HTTP
+# request at ~100s. Cap the (cloud-model) extraction call below that so a slow
+# response fails as a clean JSON error the UI can show and retry — instead of a
+# proxy 524 whose non-JSON body breaks the client and shows a cryptic popup.
+KNOWLEDGE_EXTRACT_TIMEOUT_S = 90
+
 
 class AIService:
     """Service for interacting with Ollama AI"""
@@ -728,7 +734,10 @@ Message to analyze:
 JSON array:"""
 
         try:
-            response = self.generate_response(prompt, system=system, timeout=self.timeout, model=self.reasoning_model)
+            # Cap below the Cloudflare 100s cut so a slow cloud model returns a
+            # clean failure (None -> JSON 500) before the proxy kills the request.
+            extract_timeout = min(self.timeout, KNOWLEDGE_EXTRACT_TIMEOUT_S)
+            response = self.generate_response(prompt, system=system, timeout=extract_timeout, model=self.reasoning_model)
             if not response:
                 logger.warning("No response from AI for knowledge extraction")
                 return None
