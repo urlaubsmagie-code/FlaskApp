@@ -11,6 +11,16 @@ self.addEventListener('activate', function(event) {
     event.waitUntil(clients.claim());
 });
 
+// Minimal fetch handler — REQUIRED for Chrome to treat the app as installable
+// (Chrome ignores a service worker with no/empty fetch handler, so beforeinstallprompt
+// never fires). Plain network pass-through on navigations only; no offline caching.
+// ponytail: navigate-only pass-through; add a cache here only if offline is ever wanted.
+self.addEventListener('fetch', function(event) {
+    if (event.request.mode === 'navigate') {
+        event.respondWith(fetch(event.request));
+    }
+});
+
 self.addEventListener('push', function(event) {
     console.log('[SW] Push event received:', event);
 
