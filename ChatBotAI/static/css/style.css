@@ -2196,8 +2196,10 @@ a {
     .mobile-menu-btn {
         display: flex;
         position: fixed;
-        top: 8px;
-        left: 8px;
+        /* Offset by the iOS notch/status-bar safe area so the button isn't hidden
+           under the Dynamic Island when installed as a standalone PWA. */
+        top: calc(8px + env(safe-area-inset-top));
+        left: calc(8px + env(safe-area-inset-left));
         z-index: 1001;
         width: 44px;
         height: 44px;
