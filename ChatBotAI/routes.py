@@ -4770,14 +4770,30 @@ def api_extract_knowledge_from_message(message_id):
     if not entries:
         return jsonify({'saved': 0, 'message': 'No useful knowledge found in this message'}), 200
 
-    # Determine property_id from the conversation
+    # Resolve scope: room (default) | street | general
+    data = request.get_json(silent=True) or {}
+    scope = data.get('scope', 'room')
     conversation = Conversation.query.get(message.conversation_id)
-    property_id = conversation.property_id if conversation else None
+    prop = Property.query.get(conversation.property_id) if conversation and conversation.property_id else None
+
+    if scope == 'room':
+        if not prop:
+            return jsonify({'error': 'Kein Zimmer für diese Unterhaltung — nur "Allgemein" möglich.'}), 400
+        target_property_id, target_street = prop.id, None
+    elif scope == 'street':
+        if not prop or not prop.street:
+            return jsonify({'error': 'Keine Straße für dieses Zimmer bekannt.'}), 400
+        target_property_id, target_street = None, prop.street
+    elif scope == 'general':
+        target_property_id, target_street = None, None
+    else:
+        return jsonify({'error': f'Invalid scope: {scope}'}), 400
 
     saved = []
     for entry in entries:
         ke = KnowledgeEntry(
-            property_id=property_id,
+            property_id=target_property_id,
+            street=target_street,
             category=entry['category'],
             label=entry['label'],
             value=entry['value']
