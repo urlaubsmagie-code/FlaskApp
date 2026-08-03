@@ -1233,6 +1233,8 @@ class SmoobuService:
         address_parts = [p for p in [street, zip_code, city, country] if p]
         if address_parts:
             fields['address'] = ', '.join(address_parts)
+        if street:
+            fields['street'] = street
 
         # Rooms: try nested rooms object, then flat fields
         rooms = apt.get('rooms') or {}
