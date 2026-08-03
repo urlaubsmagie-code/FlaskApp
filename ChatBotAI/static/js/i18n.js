@@ -431,6 +431,12 @@ const translations = {
         'conversation.knowledge.saved': '{count} Einträge zur Wissensdatenbank hinzugefügt',
         'conversation.knowledge.nothingFound': 'Keine nützlichen Informationen in dieser Nachricht gefunden',
         'conversation.knowledge.extractFailed': 'Wissensextraktion fehlgeschlagen – bitte versuche es gleich noch einmal.',
+        'knowledge.scope.title': 'Wo speichern?',
+        'knowledge.scope.subtitle': 'Für wen gilt diese Information?',
+        'knowledge.scope.room': 'Nur dieses Zimmer',
+        'knowledge.scope.street': 'Diese Straße',
+        'knowledge.scope.general': 'Allgemein',
+        'knowledge.scope.cancel': 'Abbrechen',
         'conversation.emailSource': 'via E-Mail-Abgleich',
 
         // Approval Queue
@@ -995,6 +1001,12 @@ const translations = {
         'conversation.knowledge.saved': '{count} entries added to Knowledge Base',
         'conversation.knowledge.nothingFound': 'No useful information found in this message',
         'conversation.knowledge.extractFailed': 'Knowledge extraction failed — please try again.',
+        'knowledge.scope.title': 'Where to save?',
+        'knowledge.scope.subtitle': 'Who does this apply to?',
+        'knowledge.scope.room': 'This room only',
+        'knowledge.scope.street': 'This street',
+        'knowledge.scope.general': 'General',
+        'knowledge.scope.cancel': 'Cancel',
         'conversation.emailSource': 'via email reconciliation',
 
         // Approval Queue

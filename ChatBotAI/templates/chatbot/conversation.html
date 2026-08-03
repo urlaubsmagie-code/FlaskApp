@@ -345,6 +345,7 @@
         guestName: {{ (guest.name or "Guest")|tojson }},
         guestNotifyName: {{ (guest.name or guest.email or "New Message")|tojson }},
         propertyName: {{ (conversation.property.name if conversation.property else "")|tojson }},
+        propertyStreet: {{ (conversation.property.street if conversation.property else "")|tojson }},
         checkInTime: {{ (conversation.property.check_in_time if conversation.property else "3:00 PM")|tojson }},
         approvalQueueEnabled: {{ 'true' if approval_queue_enabled else 'false' }},
         autoApprove: {{ 'true' if conversation.auto_approve else 'false' }},
@@ -352,5 +353,5 @@
     };
 </script>
 <script src="{{ url_for('chatbot.static', filename='js/guided-tour.js') }}?v=1"></script>
-<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=33"></script>
+<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=34"></script>
 {% endblock %}

@@ -785,7 +785,57 @@ function toggleAutoRespond() {
     .catch(err => console.error('Failed to toggle auto-respond:', err));
 }
 
-function extractKnowledge(messageId, attempt = 1) {
+// 🎓 button: ask Room / Street / General before saving, then extract with that scope.
+function openKnowledgeScopePopup(messageId) {
+    // Remove any existing popup first.
+    const old = document.getElementById('kbScopePopup');
+    if (old) old.remove();
+
+    const roomName = cfg.propertyName || '';
+    const street = cfg.propertyStreet || '';
+    const hasRoom = !!cfg.currentPropertyId;
+
+    const t = (k, d) => (typeof i18n !== 'undefined' && i18n.t(k)) || d;
+    let buttons = '';
+    if (hasRoom) {
+        buttons += `<button class="kb-scope-btn" data-scope="room">`
+            + `${t('knowledge.scope.room', 'Nur dieses Zimmer')}`
+            + (roomName ? ` <span class="kb-scope-hint">(${roomName})</span>` : '') + `</button>`;
+    }
+    if (hasRoom && street) {
+        buttons += `<button class="kb-scope-btn" data-scope="street">`
+            + `${t('knowledge.scope.street', 'Diese Straße')}`
+            + ` <span class="kb-scope-hint">(${street})</span></button>`;
+    }
+    buttons += `<button class="kb-scope-btn" data-scope="general">`
+        + `${t('knowledge.scope.general', 'Allgemein')}</button>`;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'kbScopePopup';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.45);'
+        + 'display:flex;align-items:center;justify-content:center;padding:16px;';
+    overlay.innerHTML =
+        `<div style="background:var(--card-bg,#fff);color:var(--text,#222);border-radius:12px;`
+        + `max-width:420px;width:100%;padding:18px;box-shadow:0 8px 30px rgba(0,0,0,.4);">`
+        + `<div style="font-weight:600;margin-bottom:4px;">${t('knowledge.scope.title', 'Wo speichern?')}</div>`
+        + `<div style="font-size:.9rem;color:var(--text-secondary,#666);margin-bottom:14px;">`
+        + `${t('knowledge.scope.subtitle', 'Für wen gilt diese Information?')}</div>`
+        + `<div style="display:flex;flex-direction:column;gap:8px;">${buttons}</div>`
+        + `<button id="kbScopeCancel" style="margin-top:14px;background:transparent;border:0;`
+        + `color:var(--text-secondary,#666);cursor:pointer;">${t('knowledge.scope.cancel', 'Abbrechen')}</button>`
+        + `</div>`;
+    document.body.appendChild(overlay);
+
+    overlay.querySelectorAll('.kb-scope-btn').forEach(b => {
+        b.style.cssText = 'padding:12px;border:1px solid var(--border,#ccc);border-radius:8px;'
+            + 'background:var(--sidebar-bg,#4A1520);color:#fff;cursor:pointer;font-size:.95rem;text-align:left;';
+        b.onclick = () => { overlay.remove(); extractKnowledge(messageId, b.dataset.scope); };
+    });
+    overlay.querySelector('#kbScopeCancel').onclick = () => overlay.remove();
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+}
+
+function extractKnowledge(messageId, scope = 'room', attempt = 1) {
     const msgDiv = document.querySelector(`[data-message-id="${messageId}"]`);
     const btn = msgDiv ? msgDiv.querySelector('.btn-extract-knowledge') : null;
 
@@ -800,7 +850,11 @@ function extractKnowledge(messageId, attempt = 1) {
         }
     };
 
-    fetch(`/chatbot/api/messages/${messageId}/extract-knowledge`, { method: 'POST' })
+    fetch(`/chatbot/api/messages/${messageId}/extract-knowledge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope })
+    })
     .then(async r => {
         if (!r.ok) {
             // The handler returns JSON on its own errors; a non-JSON body means the
@@ -832,7 +886,7 @@ function extractKnowledge(messageId, attempt = 1) {
         // cloud model was likely cold or slow. Retry once — it usually warms up.
         if (attempt < 2 && !err.serverMessage) {
             console.warn('Knowledge extraction transient failure, retrying once:', err.message);
-            setTimeout(() => extractKnowledge(messageId, attempt + 1), 1500);
+            setTimeout(() => extractKnowledge(messageId, scope, attempt + 1), 1500);
             return;   // keep the spinner; restoreBtn runs on the retry's outcome
         }
         console.error('Knowledge extraction failed:', err);
@@ -1131,7 +1185,7 @@ function addMessageToUI(message, senderType) {
             <i class="fas fa-lightbulb"></i>
            </button>`;
     } else if ((actualSenderType === 'owner' || actualSenderType === 'ai') && message.id) {
-        perMsgActionBtn = `<button class="btn-extract-knowledge" onclick="extractKnowledge(${message.id})"
+        perMsgActionBtn = `<button class="btn-extract-knowledge" onclick="openKnowledgeScopePopup(${message.id})"
             data-i18n-title="conversation.knowledge.extract"
             title="${i18n.t('conversation.knowledge.extract')}">
             <i class="fas fa-graduation-cap"></i>
