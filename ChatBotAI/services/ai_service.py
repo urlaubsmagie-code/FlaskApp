@@ -704,7 +704,8 @@ Return ONLY the JSON object:"""
         """
         system = ("You are a JSON extraction assistant for a vacation rental messaging system. "
                   "Analyze host messages and extract useful knowledge that could help an AI assistant "
-                  "answer future guest questions. Respond with ONLY a valid JSON array, no other text.")
+                  "answer future guest questions. Write every label and value in GERMAN, regardless of "
+                  "the source message language. Respond with ONLY a valid JSON array, no other text.")
 
         prompt = f"""Analyze this host message and extract any useful knowledge for answering future guest questions.
 
@@ -722,6 +723,7 @@ Rules:
 - Each entry needs a short label (max 200 chars) and a detailed value
 - If the message contains NO useful knowledge, return an empty array []
 - Return 1-5 entries maximum
+- Write the "label" and "value" in German (translate if the message is in another language)
 
 Return ONLY a valid JSON array:
 [
