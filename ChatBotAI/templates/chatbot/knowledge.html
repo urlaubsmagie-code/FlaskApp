@@ -6,9 +6,14 @@
 <div class="settings-container">
     <div class="page-header">
         <h1><i class="fas fa-book"></i> <span data-i18n="knowledge.title">Wissensdatenbank</span></h1>
-        <button class="btn btn-primary" onclick="knowledgeApp.openAddModal()">
-            <i class="fas fa-plus"></i> <span data-i18n="knowledge.add">Eintrag hinzufügen</span>
-        </button>
+        <div style="display:flex; gap:8px;">
+            <button class="btn btn-secondary" onclick="openCategoryHelp()" title="Kategorie-Hilfe">
+                <i class="fas fa-question-circle"></i> <span>Kategorie-Hilfe</span>
+            </button>
+            <button class="btn btn-primary" onclick="knowledgeApp.openAddModal()">
+                <i class="fas fa-plus"></i> <span data-i18n="knowledge.add">Eintrag hinzufügen</span>
+            </button>
+        </div>
     </div>
 
     <!-- Tab Bar -->
@@ -126,5 +131,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('chatbot.static', filename='js/knowledge.js') }}?v=6"></script>
+<script src="{{ url_for('chatbot.static', filename='js/knowledge.js') }}?v=7"></script>
 {% endblock %}

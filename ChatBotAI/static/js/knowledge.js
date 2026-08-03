@@ -46,6 +46,65 @@ const CATEGORY_ORDER = ['general', 'checkin_checkout', 'nearby', 'house_rules', 
 const KNOWLEDGE_CATEGORIES = ['general', 'checkin_checkout', 'nearby', 'house_rules', 'emergency', 'faq', 'cleaning'];
 const ESCALATION_CATEGORIES = ['esc_maintenance', 'esc_cleanliness', 'esc_noise', 'esc_payment', 'esc_access', 'esc_emergency', 'esc_other'];
 
+// Short "what belongs here" guide per category, shown by the Kategorie-Hilfe popup.
+// German (team language); labels/icons reuse CATEGORY_LABELS / CATEGORY_ICONS.
+const CATEGORY_HELP = {
+    general: 'Basisinfos, die nirgends sonst passen — WLAN-Passwort, Ausstattung, Stockwerk.',
+    checkin_checkout: 'Ankunft & Abreise — Zeiten, Schlüssel/Codes, Abreiseablauf.',
+    nearby: 'Umgebung — Restaurants, Einkaufen, Wandern, Verkehr.',
+    house_rules: 'Regeln & Nutzungszeiten — Ruhezeiten, Rauchen, Waschraum-Zeiten, Haustiere.',
+    emergency: 'Notfälle — Telefonnummern, Ansprechpartner, Vorgehen.',
+    faq: 'Wiederkehrende Gastfragen mit fertiger Antwort — echte FAQ.',
+    cleaning: 'Reinigung — Endreinigung, Reinigungsplan, wo Putzmittel/Staubsauger sind.',
+    esc_maintenance: 'Defekte & Reparaturen — kaputte Geräte, Heizung, Wasser, Strom.',
+    esc_cleanliness: 'Sauberkeitsprobleme — unsaubere Unterkunft, Beschwerden zur Reinigung.',
+    esc_noise: 'Lärm & Nachbarschaft — laute Nachbarn, Ruhestörung, Beschwerden.',
+    esc_payment: 'Zahlungsprobleme — Rückerstattung, Kaution, falsche Beträge.',
+    esc_access: 'Zugangsprobleme — Schlüssel verloren, Code funktioniert nicht, Aussperrung.',
+    esc_emergency: 'Echte Notfälle — Gesundheit, Sicherheit, Wasserschaden, dringend.',
+    esc_other: 'Alles andere, was an das Team eskaliert werden muss.',
+};
+
+// Read-only popup: explains what belongs in each category of the CURRENT tab.
+function openCategoryHelp() {
+    var existing = document.getElementById('catHelpPopup');
+    if (existing) { existing.remove(); return; }  // toggle off if already open
+
+    var lang = (typeof i18n !== 'undefined' && i18n.currentLanguage) || 'de';
+    var tab = knowledgeApp.currentTab;
+    var cats = tab === 'escalation' ? ESCALATION_CATEGORIES
+             : tab === 'corrections' ? []
+             : KNOWLEDGE_CATEGORIES;
+
+    var rows = cats.map(function (cat) {
+        var labels = CATEGORY_LABELS[cat];
+        var label = labels ? (labels[lang] || labels.de) : cat;
+        var icon = CATEGORY_ICONS[cat] || 'fa-folder';
+        var help = CATEGORY_HELP[cat] || '';
+        return '<div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border,#eee);">'
+            + '<i class="fas ' + icon + '" style="width:20px;text-align:center;color:var(--sidebar-bg,#7B2332);margin-top:2px;"></i>'
+            + '<div><div style="font-weight:600;">' + label + '</div>'
+            + '<div style="font-size:.9rem;color:var(--text-secondary,#666);">' + help + '</div></div></div>';
+    }).join('');
+    if (!rows) rows = '<div style="color:var(--text-secondary,#666);">Korrekturen haben keine Kategorien.</div>';
+
+    var overlay = document.createElement('div');
+    overlay.id = 'catHelpPopup';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.45);'
+        + 'display:flex;align-items:center;justify-content:center;padding:16px;';
+    overlay.innerHTML =
+        '<div style="background:var(--card-bg,#fff);color:var(--text,#222);border-radius:12px;'
+        + 'max-width:520px;width:100%;max-height:80vh;overflow-y:auto;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.4);">'
+        + '<div style="display:flex;align-items:center;margin-bottom:12px;">'
+        + '<div style="font-weight:600;font-size:1.05rem;">Kategorie-Hilfe</div>'
+        + '<button id="catHelpClose" aria-label="Schließen" style="margin-left:auto;background:transparent;border:0;'
+        + 'font-size:1.5rem;line-height:1;cursor:pointer;color:var(--text-secondary,#666);">&times;</button>'
+        + '</div>' + rows + '</div>';
+    document.body.appendChild(overlay);
+    overlay.querySelector('#catHelpClose').onclick = function () { overlay.remove(); };
+    overlay.onclick = function (e) { if (e.target === overlay) overlay.remove(); };
+}
+
 const knowledgeApp = {
     entries: [],
     currentTab: 'knowledge',
