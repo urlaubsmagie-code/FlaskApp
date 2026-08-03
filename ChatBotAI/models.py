@@ -653,6 +653,7 @@ class KnowledgeEntry(db.Model):
     VALID_CATEGORIES = [
         'general', 'checkin_checkout', 'nearby',
         'house_rules', 'emergency', 'faq', 'cleaning',
+        'wifi', 'arrival_parking', 'appliances',
         # Granular escalation categories (must match ESCALATION_CATEGORIES in
         # knowledge.js). 'escalation' kept for backward-compat with legacy rows.
         'esc_maintenance', 'esc_cleanliness', 'esc_noise', 'esc_payment',

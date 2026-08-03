@@ -14,8 +14,9 @@ from ChatBotAI.models import db, User, KnowledgeEntry
 ESCALATION_CATEGORIES = ['esc_maintenance', 'esc_cleanliness', 'esc_noise',
                          'esc_payment', 'esc_access', 'esc_emergency', 'esc_other']
 # Mirrors KNOWLEDGE_CATEGORIES in static/js/knowledge.js (Wissen tab)
-KNOWLEDGE_CATEGORIES = ['general', 'checkin_checkout', 'nearby', 'house_rules',
-                        'emergency', 'faq', 'cleaning']
+KNOWLEDGE_CATEGORIES = ['general', 'wifi', 'checkin_checkout', 'arrival_parking',
+                        'nearby', 'house_rules', 'appliances', 'cleaning',
+                        'emergency', 'faq']
 
 
 @pytest.fixture

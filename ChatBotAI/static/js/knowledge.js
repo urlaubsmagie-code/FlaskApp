@@ -11,6 +11,9 @@ const CATEGORY_LABELS = {
     emergency: { de: 'Notfallkontakte', en: 'Emergency Contacts' },
     faq: { de: 'Häufige Fragen', en: 'FAQ / Common Questions' },
     cleaning: { de: 'Reinigung / Sauberkeit', en: 'Cleaning / Housekeeping' },
+    wifi: { de: 'WLAN / Internet', en: 'WiFi / Internet' },
+    arrival_parking: { de: 'Anreise & Parken', en: 'Arrival & Parking' },
+    appliances: { de: 'Geräte & Bedienung', en: 'Appliances & How-to' },
     esc_maintenance: { de: 'Wartung / Reparatur', en: 'Maintenance / Repair' },
     esc_cleanliness: { de: 'Sauberkeit', en: 'Cleanliness' },
     esc_noise: { de: 'Lärm / Nachbarn', en: 'Noise / Neighbors' },
@@ -29,6 +32,9 @@ const CATEGORY_ICONS = {
     emergency: 'fa-phone-alt',
     faq: 'fa-question-circle',
     cleaning: 'fa-broom',
+    wifi: 'fa-wifi',
+    arrival_parking: 'fa-car',
+    appliances: 'fa-plug',
     esc_maintenance: 'fa-wrench',
     esc_cleanliness: 'fa-broom',
     esc_noise: 'fa-volume-up',
@@ -39,11 +45,13 @@ const CATEGORY_ICONS = {
     correction: 'fa-spell-check',
 };
 
-const CATEGORY_ORDER = ['general', 'checkin_checkout', 'nearby', 'house_rules', 'emergency', 'faq', 'cleaning',
+const CATEGORY_ORDER = ['general', 'wifi', 'checkin_checkout', 'arrival_parking', 'nearby', 'house_rules',
+    'appliances', 'cleaning', 'emergency', 'faq',
     'esc_maintenance', 'esc_cleanliness', 'esc_noise', 'esc_payment', 'esc_access', 'esc_emergency', 'esc_other',
     'correction'];
 
-const KNOWLEDGE_CATEGORIES = ['general', 'checkin_checkout', 'nearby', 'house_rules', 'emergency', 'faq', 'cleaning'];
+const KNOWLEDGE_CATEGORIES = ['general', 'wifi', 'checkin_checkout', 'arrival_parking', 'nearby', 'house_rules',
+    'appliances', 'cleaning', 'emergency', 'faq'];
 const ESCALATION_CATEGORIES = ['esc_maintenance', 'esc_cleanliness', 'esc_noise', 'esc_payment', 'esc_access', 'esc_emergency', 'esc_other'];
 
 // Short "what belongs here" guide per category, shown by the Kategorie-Hilfe popup.
@@ -56,6 +64,9 @@ const CATEGORY_HELP = {
     emergency: 'Notfälle — Telefonnummern, Ansprechpartner, Vorgehen.',
     faq: 'Wiederkehrende Gastfragen mit fertiger Antwort — echte FAQ.',
     cleaning: 'Reinigung — Endreinigung, Reinigungsplan, wo Putzmittel/Staubsauger sind.',
+    wifi: 'WLAN & Internet — Netzwerkname, Passwort, Verbindungsprobleme.',
+    arrival_parking: 'Anreise & Parken — Wegbeschreibung, Adresse, Parkplatz, Anfahrt mit Auto/Bahn.',
+    appliances: 'Geräte & Bedienung — Heizung, Ofen, Waschmaschine, Sauna, Kaffeemaschine, TV.',
     esc_maintenance: 'Defekte & Reparaturen — kaputte Geräte, Heizung, Wasser, Strom.',
     esc_cleanliness: 'Sauberkeitsprobleme — unsaubere Unterkunft, Beschwerden zur Reinigung.',
     esc_noise: 'Lärm & Nachbarschaft — laute Nachbarn, Ruhestörung, Beschwerden.',
