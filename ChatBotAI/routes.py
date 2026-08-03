@@ -784,6 +784,11 @@ def api_get_conversations():
     escalated = request.args.get('escalated')
     if escalated == 'true':
         query = query.filter_by(escalated=True)
+    # Unread filter is server-side so the inbox shows ALL unread conversations, not
+    # just the unread ones on the currently loaded page (the client-side filter alone
+    # hid old unread behind "Load More").
+    if request.args.get('unread') == 'true':
+        query = query.filter(Conversation.is_read == False)
 
     pagination = query.order_by(Conversation.last_message_at.desc()).paginate(
         page=page, per_page=per_page, error_out=False

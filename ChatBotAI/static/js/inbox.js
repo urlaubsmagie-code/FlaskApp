@@ -763,16 +763,33 @@ let lastKnownTimestamp = null;
 let lastKnownUnread = null;
 
 async function fullInboxFetch(signal) {
-    let url = '/chatbot/api/conversations?per_page=50';
-    if (filterState.getState().status === 'escalated') {
-        url += '&escalated=true';
-    }
+    const st = filterState.getState();
+    // Unread is a server-side filter that must return ALL unread conversations, not
+    // just page 1 — otherwise old unread stay hidden behind "Load More". Use a high
+    // per_page in unread mode. ponytail: 500 covers any realistic backlog; raise it if
+    // an inbox ever legitimately exceeds 500 unread at once.
+    const perPage = st.unread ? 500 : 50;
+    let url = `/chatbot/api/conversations?per_page=${perPage}`;
+    if (st.status === 'escalated') url += '&escalated=true';
+    if (st.unread) url += '&unread=true';
     const response = await fetch(url, { signal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     updateInboxList(data.conversations);
     updateInboxBadgeFromData(data.conversations);
     loadStats();
+}
+
+// The "Ungelesen" filter is server-backed (see fullInboxFetch): toggling it must
+// re-fetch so ALL unread conversations load, not just the ones already on screen.
+// "Load More" is hidden while the filter is on because the fetch returns the full set.
+function toggleUnreadFilter() {
+    filterState.toggleUnread();
+    const unread = filterState.getState().unread;
+    const loadMoreContainer = document.getElementById('loadMoreContainer');
+    if (loadMoreContainer) loadMoreContainer.style.display = unread ? 'none' : '';
+    loadMorePage = 1;  // full refetch replaces the list; keep Load More paging consistent
+    fullInboxFetch().catch(err => console.error('Unread filter refresh failed:', err));
 }
 
 const inboxPoller = new PollingManager({
@@ -1102,6 +1119,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const results = await fetchSearchResults(filterState.state.search);
             renderSearchResults(results);
         }, 100);
+    }
+
+    // If the inbox loaded with the unread filter active (persisted/bookmarked URL),
+    // fetch the full unread set from the server instead of filtering only page 1.
+    if (filterState.state.unread) {
+        const loadMoreContainer = document.getElementById('loadMoreContainer');
+        if (loadMoreContainer) loadMoreContainer.style.display = 'none';
+        fullInboxFetch().catch(err => console.error('Unread filter initial load failed:', err));
     }
 
     populateGuestDropdown();

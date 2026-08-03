@@ -66,7 +66,7 @@
         </div>
 
         <!-- Unread Toggle -->
-        <button class="filter-btn" data-filter-unread onclick="filterState.toggleUnread()">
+        <button class="filter-btn" data-filter-unread onclick="toggleUnreadFilter()">
             <i class="fas fa-envelope"></i> <span data-i18n="inbox.filter.unread">Ungelesen</span>
         </button>
 
@@ -179,5 +179,5 @@
 <script src="{{ url_for('chatbot.static', filename='js/polling.js') }}?v=8"></script>
 <script src="{{ url_for('chatbot.static', filename='js/filter-state.js') }}?v=11"></script>
 <script src="{{ url_for('chatbot.static', filename='js/guided-tour.js') }}?v=1"></script>
-<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=32"></script>
+<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=33"></script>
 {% endblock %}
