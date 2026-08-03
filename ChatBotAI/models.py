@@ -22,6 +22,12 @@ metadata = MetaData(naming_convention=convention)
 db = SQLAlchemy(metadata=metadata)
 
 
+def street_from_address(address):
+    """The street/building key is the first comma-part of a Smoobu address
+    ('street, zip, city, country'). Used to backfill Property.street."""
+    return (address or '').split(',')[0].strip()
+
+
 class User(UserMixin, db.Model):
     """Application user for team access"""
     __tablename__ = 'user'
@@ -454,6 +460,7 @@ class Property(db.Model):
     name = db.Column(db.String(200), nullable=False)
     smoobu_apartment_id = db.Column(db.String(100), unique=True, index=True)
     address = db.Column(db.Text)
+    street = db.Column(db.String(200), nullable=True)  # Smoobu location.street; building key
     description = db.Column(db.Text)
 
     # Property features (stored as JSON array)
@@ -492,6 +499,7 @@ class Property(db.Model):
             'name': self.name,
             'smoobu_apartment_id': self.smoobu_apartment_id,
             'address': self.address,
+            'street': self.street,
             'description': self.description,
             'amenities': self.amenities,
             'pet_friendly': self.pet_friendly,
@@ -657,6 +665,7 @@ class KnowledgeEntry(db.Model):
     category = db.Column(db.String(50), nullable=False)
     label = db.Column(db.String(200), nullable=False)
     value = db.Column(db.Text, nullable=False)
+    street = db.Column(db.String(200), nullable=True, index=True)  # street-scope key
     sort_order = db.Column(db.Integer, default=0)
     # Provenance: 'manual' (default), 'ai' (extracted), 'notion' (synced).
     source = db.Column(db.String(20), nullable=False, default='manual', server_default='manual')
@@ -685,6 +694,7 @@ class KnowledgeEntry(db.Model):
             'property_name': self.property.name if self.property else None,
             'category': self.category,
             'label': self.label,
+            'street': self.street,
             'value': self.value,
             'sort_order': self.sort_order,
             'source': self.source,
