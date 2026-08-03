@@ -13,6 +13,9 @@ from ChatBotAI.models import db, User, KnowledgeEntry
 # Mirrors ESCALATION_CATEGORIES in static/js/knowledge.js
 ESCALATION_CATEGORIES = ['esc_maintenance', 'esc_cleanliness', 'esc_noise',
                          'esc_payment', 'esc_access', 'esc_emergency', 'esc_other']
+# Mirrors KNOWLEDGE_CATEGORIES in static/js/knowledge.js (Wissen tab)
+KNOWLEDGE_CATEGORIES = ['general', 'checkin_checkout', 'nearby', 'house_rules',
+                        'emergency', 'faq', 'cleaning']
 
 
 @pytest.fixture
@@ -37,6 +40,18 @@ def client(app):
 def test_escalation_categories_are_valid():
     for cat in ESCALATION_CATEGORIES:
         assert cat in KnowledgeEntry.VALID_CATEGORIES, f"{cat} rejected by backend"
+
+
+def test_knowledge_categories_are_valid():
+    for cat in KNOWLEDGE_CATEGORIES:
+        assert cat in KnowledgeEntry.VALID_CATEGORIES, f"{cat} rejected by backend"
+
+
+def test_create_with_cleaning_category_succeeds(client):
+    r = client.post('/chatbot/api/knowledge',
+                    json={'category': 'cleaning', 'label': 'Reinigung',
+                          'value': 'Endreinigung freitags 10-14 Uhr'})
+    assert r.status_code == 201, r.get_data(as_text=True)
 
 
 def test_create_with_escalation_category_succeeds(client):

@@ -10,6 +10,7 @@ const CATEGORY_LABELS = {
     house_rules: { de: 'Hausregeln', en: 'House Rules' },
     emergency: { de: 'Notfallkontakte', en: 'Emergency Contacts' },
     faq: { de: 'Häufige Fragen', en: 'FAQ / Common Questions' },
+    cleaning: { de: 'Reinigung / Sauberkeit', en: 'Cleaning / Housekeeping' },
     esc_maintenance: { de: 'Wartung / Reparatur', en: 'Maintenance / Repair' },
     esc_cleanliness: { de: 'Sauberkeit', en: 'Cleanliness' },
     esc_noise: { de: 'Lärm / Nachbarn', en: 'Noise / Neighbors' },
@@ -27,6 +28,7 @@ const CATEGORY_ICONS = {
     house_rules: 'fa-clipboard-list',
     emergency: 'fa-phone-alt',
     faq: 'fa-question-circle',
+    cleaning: 'fa-broom',
     esc_maintenance: 'fa-wrench',
     esc_cleanliness: 'fa-broom',
     esc_noise: 'fa-volume-up',
@@ -37,11 +39,11 @@ const CATEGORY_ICONS = {
     correction: 'fa-spell-check',
 };
 
-const CATEGORY_ORDER = ['general', 'checkin_checkout', 'nearby', 'house_rules', 'emergency', 'faq',
+const CATEGORY_ORDER = ['general', 'checkin_checkout', 'nearby', 'house_rules', 'emergency', 'faq', 'cleaning',
     'esc_maintenance', 'esc_cleanliness', 'esc_noise', 'esc_payment', 'esc_access', 'esc_emergency', 'esc_other',
     'correction'];
 
-const KNOWLEDGE_CATEGORIES = ['general', 'checkin_checkout', 'nearby', 'house_rules', 'emergency', 'faq'];
+const KNOWLEDGE_CATEGORIES = ['general', 'checkin_checkout', 'nearby', 'house_rules', 'emergency', 'faq', 'cleaning'];
 const ESCALATION_CATEGORIES = ['esc_maintenance', 'esc_cleanliness', 'esc_noise', 'esc_payment', 'esc_access', 'esc_emergency', 'esc_other'];
 
 const knowledgeApp = {
