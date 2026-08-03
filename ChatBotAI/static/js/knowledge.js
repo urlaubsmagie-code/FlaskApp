@@ -221,15 +221,30 @@ const knowledgeApp = {
         container.innerHTML = html;
     },
 
-    // Filter category dropdown to show only options relevant to the current tab
+    // Rebuild the category dropdown with ONLY the options valid for the current tab.
+    // We rebuild the <option> list instead of toggling opt.style.display, because
+    // Safari/iOS ignores display:none on <option> — which let escalation categories
+    // leak into the Wissen tab and caused "invalid category" on save.
     updateCategoryOptions(selectedValue) {
         const select = document.getElementById('entryCategory');
         const categoryRow = select.closest('.setting-item');
         const valueRow = document.getElementById('entryValue').closest('.setting-item');
-        const allOptions = select.querySelectorAll('option');
+        const lang = (typeof i18n !== 'undefined' && i18n.currentLanguage) || 'de';
 
-        // Hide category entirely for corrections
+        const buildOptions = (cats) => {
+            select.innerHTML = '';
+            cats.forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                const labels = CATEGORY_LABELS[cat];
+                opt.textContent = labels ? (labels[lang] || labels.de) : cat;
+                select.appendChild(opt);
+            });
+        };
+
+        // Corrections have a single fixed category and no dropdown.
         if (this.currentTab === 'corrections') {
+            buildOptions(['correction']);
             categoryRow.style.display = 'none';
             valueRow.style.display = '';
             select.value = 'correction';
@@ -240,23 +255,13 @@ const knowledgeApp = {
         valueRow.style.display = this.currentTab === 'escalation' ? 'none' : '';
         categoryRow.style.display = '';
 
-        let allowedCategories;
-        if (this.currentTab === 'escalation') {
-            allowedCategories = ESCALATION_CATEGORIES;
-        } else {
-            allowedCategories = KNOWLEDGE_CATEGORIES;
-        }
-
-        allOptions.forEach(opt => {
-            opt.style.display = allowedCategories.includes(opt.value) ? '' : 'none';
-        });
+        const allowedCategories = this.currentTab === 'escalation'
+            ? ESCALATION_CATEGORIES : KNOWLEDGE_CATEGORIES;
+        buildOptions(allowedCategories);
 
         // Set selected value
-        if (selectedValue && allowedCategories.includes(selectedValue)) {
-            select.value = selectedValue;
-        } else {
-            select.value = allowedCategories[0];
-        }
+        select.value = (selectedValue && allowedCategories.includes(selectedValue))
+            ? selectedValue : allowedCategories[0];
     },
 
     openAddModal() {
