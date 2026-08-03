@@ -698,20 +698,26 @@ class MessageRouter:
         knowledge_entries = []
         try:
             if conversation.property_id:
+                prop = conversation.property
+                prop_street = prop.street if prop else None
+                branches = [
+                    db.and_(KnowledgeEntry.property_id.is_(None), KnowledgeEntry.street.is_(None)),
+                    KnowledgeEntry.property_id == conversation.property_id,
+                ]
+                if prop_street:
+                    branches.append(KnowledgeEntry.street == prop_street)
                 knowledge_entries = [e.to_dict() for e in
                                     KnowledgeEntry.query.filter(
                                         KnowledgeEntry.category != 'correction',
-                                        db.or_(
-                                            KnowledgeEntry.property_id.is_(None),
-                                            KnowledgeEntry.property_id == conversation.property_id
-                                        )
+                                        db.or_(*branches)
                                     ).order_by(KnowledgeEntry.category, KnowledgeEntry.sort_order).all()]
             else:
                 knowledge_entries = [e.to_dict() for e in
                                     KnowledgeEntry.query.filter(
-                                        KnowledgeEntry.category != 'correction'
-                                    ).filter_by(property_id=None)
-                                    .order_by(KnowledgeEntry.category, KnowledgeEntry.sort_order).all()]
+                                        KnowledgeEntry.category != 'correction',
+                                        KnowledgeEntry.property_id.is_(None),
+                                        KnowledgeEntry.street.is_(None)
+                                    ).order_by(KnowledgeEntry.category, KnowledgeEntry.sort_order).all()]
         except Exception as e:
             logger.warning(f"Failed to load knowledge entries: {e}")
 
