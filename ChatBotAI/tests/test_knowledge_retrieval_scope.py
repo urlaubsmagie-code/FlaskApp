@@ -1,7 +1,7 @@
 import pytest
 from ChatBotAI.app import create_app
 from ChatBotAI.config import config as config_map
-from ChatBotAI.models import db, Property, KnowledgeEntry
+from ChatBotAI.models import db, Property, KnowledgeEntry, Conversation, Guest
 
 
 @pytest.fixture
@@ -44,3 +44,32 @@ def test_scope_isolation(app):
 
     b1_labels = _load_for_property(b1.id)
     assert b1_labels == {'general_fact'}  # not street_fact (other building), not room_fact
+
+
+def test_classmethod_scope_isolation(app):
+    """Exercises the real KnowledgeEntry.load_for_conversation_context classmethod
+    (not the mirror above) via real Conversation/Guest objects."""
+    f3 = Property(name='F3', street='Hertigswalder Str. 27'); db.session.add(f3)
+    b1 = Property(name='B1', street='Bergblick 11'); db.session.add(b1)
+    db.session.commit()
+
+    db.session.add_all([
+        KnowledgeEntry(category='general', label='general_fact', value='v'),
+        KnowledgeEntry(category='general', label='street_fact', value='v', street='Hertigswalder Str. 27'),
+        KnowledgeEntry(category='general', label='room_fact', value='v', property_id=f3.id),
+    ])
+    db.session.commit()
+
+    guest = Guest(name='G'); db.session.add(guest)
+    db.session.commit()
+
+    f3_conv = Conversation(guest_id=guest.id, platform='airbnb', property_id=f3.id)
+    b1_conv = Conversation(guest_id=guest.id, platform='airbnb', property_id=b1.id)
+    db.session.add_all([f3_conv, b1_conv])
+    db.session.commit()
+
+    f3_labels = {e['label'] for e in KnowledgeEntry.load_for_conversation_context(f3_conv)}
+    assert f3_labels == {'general_fact', 'street_fact', 'room_fact'}
+
+    b1_labels = {e['label'] for e in KnowledgeEntry.load_for_conversation_context(b1_conv)}
+    assert b1_labels == {'general_fact'}

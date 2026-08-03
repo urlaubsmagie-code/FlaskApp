@@ -1246,21 +1246,7 @@ def api_generate_ai_response(conversation_id):
         # Load knowledge base entries for AI context
         knowledge_entries = []
         try:
-            if conversation.property_id:
-                knowledge_entries = [e.to_dict() for e in
-                                    KnowledgeEntry.query.filter(
-                                        KnowledgeEntry.category != 'correction',
-                                        db.or_(
-                                            KnowledgeEntry.property_id.is_(None),
-                                            KnowledgeEntry.property_id == conversation.property_id
-                                        )
-                                    ).order_by(KnowledgeEntry.category, KnowledgeEntry.sort_order).all()]
-            else:
-                knowledge_entries = [e.to_dict() for e in
-                                    KnowledgeEntry.query.filter(
-                                        KnowledgeEntry.category != 'correction'
-                                    ).filter_by(property_id=None)
-                                    .order_by(KnowledgeEntry.category, KnowledgeEntry.sort_order).all()]
+            knowledge_entries = KnowledgeEntry.load_for_conversation_context(conversation)
         except Exception as e:
             logger.warning(f"Failed to load knowledge entries: {e}")
 
@@ -1513,21 +1499,7 @@ def api_suggest_ai_response(conversation_id):
         # Load knowledge base entries for AI context
         knowledge_entries = []
         try:
-            if conversation.property_id:
-                knowledge_entries = [e.to_dict() for e in
-                                    KnowledgeEntry.query.filter(
-                                        KnowledgeEntry.category != 'correction',
-                                        db.or_(
-                                            KnowledgeEntry.property_id.is_(None),
-                                            KnowledgeEntry.property_id == conversation.property_id
-                                        )
-                                    ).order_by(KnowledgeEntry.category, KnowledgeEntry.sort_order).all()]
-            else:
-                knowledge_entries = [e.to_dict() for e in
-                                    KnowledgeEntry.query.filter(
-                                        KnowledgeEntry.category != 'correction'
-                                    ).filter_by(property_id=None)
-                                    .order_by(KnowledgeEntry.category, KnowledgeEntry.sort_order).all()]
+            knowledge_entries = KnowledgeEntry.load_for_conversation_context(conversation)
         except Exception as e:
             logger.warning(f"Failed to load knowledge entries: {e}")
 
@@ -1687,16 +1659,7 @@ def api_suggest_for_message(conversation_id):
         # Knowledge base (exclude corrections)
         knowledge_entries = []
         try:
-            kb_query = KnowledgeEntry.query.filter(KnowledgeEntry.category != 'correction')
-            if conversation.property_id:
-                kb_query = kb_query.filter(db.or_(
-                    KnowledgeEntry.property_id.is_(None),
-                    KnowledgeEntry.property_id == conversation.property_id
-                ))
-            else:
-                kb_query = kb_query.filter_by(property_id=None)
-            knowledge_entries = [e.to_dict() for e in
-                                 kb_query.order_by(KnowledgeEntry.category, KnowledgeEntry.sort_order).all()]
+            knowledge_entries = KnowledgeEntry.load_for_conversation_context(conversation)
         except Exception as e:
             logger.warning(f"Failed to load knowledge entries for per-message suggest: {e}")
 

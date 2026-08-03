@@ -703,6 +703,29 @@ class KnowledgeEntry(db.Model):
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
 
+    @classmethod
+    def load_for_conversation_context(cls, conversation):
+        """Knowledge entries the AI may see for this conversation, scope-ordered:
+        general (property_id NULL AND street NULL) + this room + this room's street.
+        Excludes corrections. Returns a list of to_dict() dicts.
+
+        Single source of truth for KB scope — all AI-context loaders must call this
+        so street-scoped entries never leak across buildings (see the 4 callers)."""
+        q = cls.query.filter(cls.category != 'correction')
+        if conversation.property_id:
+            prop = conversation.property
+            prop_street = prop.street if prop else None
+            branches = [
+                db.and_(cls.property_id.is_(None), cls.street.is_(None)),
+                cls.property_id == conversation.property_id,
+            ]
+            if prop_street:
+                branches.append(cls.street == prop_street)
+            q = q.filter(db.or_(*branches))
+        else:
+            q = q.filter(cls.property_id.is_(None), cls.street.is_(None))
+        return [e.to_dict() for e in q.order_by(cls.category, cls.sort_order).all()]
+
 
 class ProblemReport(db.Model):
     """Team-reported problems/ideas noticed while using the app.
