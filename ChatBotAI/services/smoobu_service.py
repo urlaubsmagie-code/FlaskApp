@@ -15,6 +15,35 @@ from sqlalchemy.exc import IntegrityError
 logger = logging.getLogger(__name__)
 
 
+# Subjects of our Smoobu automated messages (Buchungsbestätigung, Dein Check-in,
+# WhatsApp Kanal, Checkout, Bewertung, …). These are scheduled host→guest sends,
+# NOT replies to the guest, so they must not mark a conversation read — otherwise
+# an unanswered guest message gets hidden from the unread list (the
+# missing_message Problem-Report bug). Matched by normalized subject prefix so all
+# "Buchungsbestätigung mit X" variants are covered without listing each.
+# ponytail: hardcoded — these are stable core templates. If the list starts to
+# churn, move it to an editable AISettings value.
+AUTOMATED_SUBJECT_PREFIXES = (
+    'buchungsbestätigung',   # all "Buchungsbestätigung …" variants
+    'whatsapp kanal',        # WhatsApp Kanal (+ … Booking)
+    'dein check-in',
+    'guten morgen',
+    'checkout',
+    'bitte um bewertung',
+    'bewertung booking',
+    'verlängerung',          # Verlängerung - Aktion / Verlängerung Rechnung
+    'rechnung ferienwohnung',
+)
+
+
+def _is_automated_smoobu_message(msg: dict) -> bool:
+    """True if a Smoobu message is one of our configured automated templates,
+    identified by its subject line. Manual chat replies have an empty subject."""
+    subject = (msg.get('subject') or '').strip().casefold()
+    return bool(subject) and any(
+        subject.startswith(p) for p in AUTOMATED_SUBJECT_PREFIXES)
+
+
 def _parse_smoobu_timestamp(raw) -> 'datetime | None':
     """Parse a Smoobu timestamp string to a naive UTC datetime.
 
@@ -816,10 +845,13 @@ class SmoobuService:
                                 # Update sync watermark
                                 if not conv.last_synced_message_at or owner_msg.sent_at > conv.last_synced_message_at:
                                     conv.last_synced_message_at = owner_msg.sent_at
-                                # Mark as read — someone already replied outside the app
-                                conv.is_read = True
-                                if not conv.last_read_message_id or owner_msg.id > conv.last_read_message_id:
-                                    conv.last_read_message_id = owner_msg.id
+                                # Mark as read — someone already replied outside the
+                                # app. Skip automated templates: they are not a reply,
+                                # so they must not hide an unread guest message.
+                                if not _is_automated_smoobu_message(msg):
+                                    conv.is_read = True
+                                    if not conv.last_read_message_id or owner_msg.id > conv.last_read_message_id:
+                                        conv.last_read_message_id = owner_msg.id
                                 db.session.commit()
                                 result['imported'] += 1
                             except IntegrityError:
@@ -1134,10 +1166,13 @@ class SmoobuService:
                             # Update sync watermark
                             if not conv.last_synced_message_at or owner_msg.sent_at > conv.last_synced_message_at:
                                 conv.last_synced_message_at = owner_msg.sent_at
-                            # Mark as read — someone already replied outside the app
-                            conv.is_read = True
-                            if not conv.last_read_message_id or owner_msg.id > conv.last_read_message_id:
-                                conv.last_read_message_id = owner_msg.id
+                            # Mark as read — someone already replied outside the
+                            # app. Skip automated templates: they are not a reply,
+                            # so they must not hide an unread guest message.
+                            if not _is_automated_smoobu_message(msg):
+                                conv.is_read = True
+                                if not conv.last_read_message_id or owner_msg.id > conv.last_read_message_id:
+                                    conv.last_read_message_id = owner_msg.id
                             db.session.commit()
                             result['imported'] += 1
                         except IntegrityError:
