@@ -8,10 +8,14 @@
     --primary-color: #7B2332;
     --primary-hover: #5E1A27;
     --primary-light: #F9E8EB;
+    --focus-ring: #7B2332;
     --secondary-color: #64748b;
     --success-color: #22c55e;
     --warning-color: #f59e0b;
     --danger-color: #ef4444;
+    /* Darker than --danger-color, for danger used as *text* (#ef4444 is only
+       3.76:1 on white). */
+    --danger: #c0392b;
 
     /* Background */
     --bg-primary: #FDF6F7;
@@ -21,7 +25,10 @@
     /* Text */
     --text-primary: #1e293b;
     --text-secondary: #64748b;
-    --text-light: #94a3b8;
+    /* #94a3b8 was only 2.56:1 on white — below WCAG AA for body text, and this
+       token colours every message timestamp. */
+    --text-light: #606e83;
+    --text-muted: #64748b;
     --text-white: #ffffff;
 
     /* Cards / Panels */
@@ -69,7 +76,12 @@
     --card-bg: #2A1519;
     --text-primary: #f1f5f9;
     --text-secondary: #94a3b8;
-    --text-light: #64748b;
+    --text-light: #78879b;
+    --text-muted: #94a3b8;
+    --danger: #f87171;
+    /* The wine brand colour is only 2.26:1 on the dark background — a ring in
+       it would be invisible. */
+    --focus-ring: #D98A98;
     --border-color: #3D2025;
     --shadow-sm: 0 1px 2px rgba(26, 15, 18, 0.3);
     --shadow-md: 0 4px 6px -1px rgba(26, 15, 18, 0.4);
@@ -88,6 +100,14 @@
 
 :root[data-theme="dark"] .memory-item:hover {
     background-color: #3D2025;
+}
+
+/* One brand focus ring for the whole app. Eight rules used to kill the outline
+   and signal focus with border-colour alone — invisible on buttons, and
+   colour-only. :focus-visible means mouse clicks stay ring-free. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
 }
 
 :root[data-theme="dark"] dialog.edit-modal {
@@ -145,9 +165,31 @@ a {
 /* ============================================================================
    Layout
    ============================================================================ */
+/* The chat is a fixed-viewport screen: the PAGE must never scroll — only the
+   message list inside it does. Chasing whichever descendant was a few px too
+   tall was whack-a-mole; this makes the symptom structurally impossible. It also
+   stops Android Chrome hiding its URL bar (it only hides on page scroll), so the
+   viewport height stops changing under the layout. */
+body.conversation-page {
+    height: 100vh;
+    /* svh, NOT dvh: the small viewport is the height guaranteed visible while
+       Chrome's URL bar is showing. With the page unscrollable the bar can never
+       hide, so svh == the real height at all times — whereas dvh can resolve to
+       the taller bar-hidden value and leave the composer cut off below the
+       screen with no way to scroll to it. */
+    height: 100svh;
+    overflow: hidden;
+}
+
 .app-container {
     display: flex;
+    /* On Android Chrome 100vh is ALWAYS the URL-bar-hidden height, so with the
+       bar visible this box is ~56px taller than the screen. That made every page
+       scrollable by exactly that much — which hides the URL bar, grows the
+       viewport, and drags the chat header out of view. dvh tracks the real
+       height; the vh line stays as the fallback for old browsers. */
     min-height: 100vh;
+    min-height: 100dvh;
 }
 
 .main-content {
@@ -166,6 +208,7 @@ a {
     top: 0;
     width: var(--sidebar-width);
     height: 100vh;
+    height: 100dvh;
     background: var(--bg-sidebar);
     color: var(--text-white);
     display: flex;
@@ -405,7 +448,6 @@ a {
 }
 
 .language-selector select:focus {
-    outline: none;
     border-color: var(--primary-color);
 }
 
@@ -561,7 +603,6 @@ a {
 .search-box input {
     flex: 1;
     border: none;
-    outline: none;
     font-size: 0.875rem;
     background: transparent;
 }
@@ -1025,7 +1066,6 @@ a {
 .guest-dropdown:hover,
 .guest-dropdown:focus {
     color: var(--text-primary);
-    outline: none;
     border-color: var(--primary-color);
 }
 
@@ -1041,6 +1081,10 @@ a {
     display: flex;
     flex-direction: column;
     height: calc(100vh - 48px);
+    /* dvh excludes the mobile browser's collapsing URL bar; with plain vh the
+       container is taller than the visible area and the composer sits below the
+       fold. vh stays above as the fallback for old browsers. */
+    height: calc(100dvh - 48px);
     background: var(--bg-secondary);
     border-radius: var(--border-radius-lg);
     border: 1px solid var(--border-color);
@@ -1054,6 +1098,11 @@ a {
     padding: 16px;
     border-bottom: 1px solid var(--border-color);
     background: var(--bg-secondary);
+    /* The bar must never be wider than the chat, or the whole page scrolls
+       sideways and the composer goes off-screen with it. */
+    min-width: 0;
+    /* …nor give up height when the conversation is long. */
+    flex-shrink: 0;
 }
 
 .conversation-title {
@@ -1061,6 +1110,14 @@ a {
     align-items: center;
     gap: 12px;
     flex: 1;
+    /* Flex items default to min-width:auto and refuse to shrink below their
+       content — a long guest name + apartment + dates is what pushed this bar
+       wider than the screen. */
+    min-width: 0;
+}
+
+.back-btn {
+    flex-shrink: 0;
 }
 
 .guest-avatar {
@@ -1072,6 +1129,7 @@ a {
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 }
 
 .platform-mini-badge {
@@ -1108,6 +1166,17 @@ a {
 .guest-info {
     display: flex;
     flex-direction: column;
+    min-width: 0;
+}
+
+/* Each header line clips instead of stretching the bar. The full text stays
+   reachable via the guest profile, and the bar keeps a fixed height. */
+.guest-name-link,
+.conversation-meta-text,
+.conversation-stay-dates {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .guest-name-link {
@@ -1135,6 +1204,8 @@ a {
     display: flex;
     align-items: center;
     gap: 8px;
+    /* Buttons keep their size; the text block above gives way instead. */
+    flex-shrink: 0;
 }
 
 .property-selector-wrapper {
@@ -1154,7 +1225,6 @@ a {
 }
 
 .property-selector:focus {
-    outline: none;
     border-color: #3b82f6;
 }
 
@@ -1208,6 +1278,11 @@ a {
 /* Messages */
 .messages-container {
     flex: 1;
+    /* The ONLY part of the chat allowed to give up height. Without min-height:0 a
+       flex item refuses to shrink below its content, so a long conversation
+       pushes the composer past the container's edge where overflow:hidden
+       clips it. */
+    min-height: 0;
     overflow-y: auto;
     padding: 20px;
     display: flex;
@@ -1282,6 +1357,8 @@ a {
     background: var(--bg-primary);
     padding: 12px 16px;
     border-radius: var(--border-radius-lg);
+    /* Flex child: without this it refuses to shrink below its content width. */
+    min-width: 0;
 }
 
 .message.owner .message-content,
@@ -1393,6 +1470,11 @@ a {
     font-size: 0.9375rem;
     line-height: 1.5;
     white-space: pre-wrap;
+    /* A guest message can contain a long unbreakable token — a URL, a booking
+       reference, an email address. Without this the bubble grows to fit it and
+       drags the whole chat wider than the screen. `anywhere` (not break-word)
+       because only `anywhere` also shrinks the flex min-content size. */
+    overflow-wrap: anywhere;
 }
 
 .email-source-tag {
@@ -1400,6 +1482,114 @@ a {
     color: var(--text-muted, #888);
     font-style: italic;
     margin-top: 2px;
+}
+
+/* Per-message translate toggle — same circle as the lightbulb, stacked under
+   it in the right gutter. Only rendered on guest messages that aren't already
+   in the reader's language (conversation.js unhides it). */
+.btn-translate {
+    background: var(--text-muted);
+    border: none;
+    /* Flips with the theme: white icon on the light muted grey, dark icon on
+       the light muted grey of dark mode. Plain `white` failed in dark. */
+    color: var(--bg-secondary);
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    font-size: 0.8rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: opacity 0.2s, transform 0.2s;
+    opacity: 0.7;
+    position: absolute;
+    right: -36px;
+    top: 50%;
+    transform: translateY(calc(-50% + 17px));
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.btn-translate[hidden] { display: none; }
+
+/* The gutter buttons stay 28px visually — an invisible 44x44 hit area keeps
+   the look and still meets the touch-target minimum on the Android PWA. */
+.btn-translate::before,
+.btn-suggest-for-message::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+}
+
+.btn-translate:hover {
+    opacity: 1;
+    transform: translateY(calc(-50% + 17px)) scale(1.1);
+}
+
+/* Showing the translation: filled in the brand colour so it's obvious at a
+   glance which bubbles are not the guest's own words. */
+.btn-translate.showing-translation {
+    background: var(--primary-color, #7B2332);
+    opacity: 1;
+}
+
+/* Two buttons in the same gutter — split them around the centre line. Only
+   applies while the translate button is actually visible. */
+.message.guest:has(.btn-translate:not([hidden])) .btn-suggest-for-message {
+    transform: translateY(calc(-50% - 17px));
+}
+.message.guest:has(.btn-translate:not([hidden])) .btn-suggest-for-message:hover {
+    transform: translateY(calc(-50% - 17px)) scale(1.1);
+}
+
+/* Undelivered messages: a send that never reached the platform must not look
+   like one that did. Uses the theme's danger colour so it reads in dark mode too. */
+.delivery-failed-tag {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 6px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+.message.delivery-failed .message-text {
+    opacity: 0.75;
+}
+
+.btn-retry-send {
+    margin-left: auto;
+    padding: 3px 10px;
+    font-size: 0.72rem;
+    cursor: pointer;
+    border-radius: 5px;
+    color: var(--bg-secondary);
+    background: var(--danger);
+    border: none;
+    /* ~22px tall by design — the hit area below brings it up to 44px without
+       making the tag look chunky. */
+    position: relative;
+}
+
+.btn-retry-send::before {
+    content: '';
+    position: absolute;
+    inset: -11px -8px;
+}
+
+.btn-retry-send:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 /* Message Date Dividers */
@@ -1551,10 +1741,24 @@ a {
     padding: 16px;
     border-top: 1px solid var(--border-color);
     background: var(--bg-primary);
+    /* Flex children shrink by default — that squashed the composer and cut off
+       the send row and the "via Smoobu" hint. It must keep its full height. */
+    flex-shrink: 0;
 }
 
 .input-actions {
     margin-bottom: 12px;
+    /* "UMI-Antwort erstellen" is nowrap, so on a narrow phone these three
+       buttons demanded more width than the screen and stretched the whole chat
+       — which is what pushed the text field out of view. Let the row wrap and
+       let each label ellipsis rather than dictate the layout width. */
+    flex-wrap: wrap;
+}
+
+.input-actions .btn {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .message-form {
@@ -1573,7 +1777,6 @@ a {
 }
 
 .message-form textarea:focus {
-    outline: none;
     border-color: var(--primary-color);
 }
 
@@ -1764,7 +1967,6 @@ a {
 }
 
 .notes-textarea:focus {
-    outline: none;
     border-color: var(--primary-color);
 }
 
@@ -2167,6 +2369,7 @@ a {
         top: 0;
         left: 0;
         height: 100vh;
+        height: 100dvh;
         width: min(80vw, 300px);
         z-index: 1000;
         transform: translateX(-100%);
@@ -2273,13 +2476,27 @@ a {
     }
 
     /* --- Conversation Page: full-screen --- */
+    /* Full-bleed chat. Any padding here is added to the container's 100dvh, so
+       the composer ends up that many pixels below the fold — the reason the text
+       field was cut off at the bottom. */
     body.conversation-page .main-content {
-        padding-bottom: 0;
+        padding: 0;
     }
 
     body.conversation-page .conversation-container {
         height: 100vh;
-        height: 100dvh;
+        height: 100svh;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+    }
+
+    /* Safe-area insets deliberately NOT used here: measured on the team's Android
+       (Chrome 150, 412x919) env(safe-area-inset-top) reports 0px, so they buy
+       nothing. The height that actually matters is Chrome's collapsing URL bar,
+       which 100dvh already tracks. */
+    body.conversation-page .message-input-container {
+        padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     }
 
     /* --- Conversation Overflow Menu --- */
@@ -2431,6 +2648,25 @@ a {
         min-height: 22px;
         font-size: 0.65rem;
         left: -28px;
+    }
+
+    .btn-translate {
+        width: 22px;
+        height: 22px;
+        min-width: 22px;
+        min-height: 22px;
+        font-size: 0.65rem;
+        right: -28px;
+        transform: translateY(calc(-50% + 14px));
+    }
+    .btn-translate:hover {
+        transform: translateY(calc(-50% + 14px)) scale(1.1);
+    }
+    .message.guest:has(.btn-translate:not([hidden])) .btn-suggest-for-message {
+        transform: translateY(calc(-50% - 14px));
+    }
+    .message.guest:has(.btn-translate:not([hidden])) .btn-suggest-for-message:hover {
+        transform: translateY(calc(-50% - 14px)) scale(1.1);
     }
 
     /* --- Overflow menu button visible styling --- */
@@ -2802,7 +3038,6 @@ dialog.edit-modal .form-group input {
 }
 
 dialog.edit-modal .form-group input:focus {
-    outline: none;
     border-color: var(--primary-color);
     box-shadow: 0 0 0 3px rgba(123, 35, 50, 0.1);
 }
@@ -2995,7 +3230,6 @@ dialog.merge-modal {
 }
 
 .memory-add-form input:focus {
-    outline: none;
     border-color: var(--primary-color);
 }
 
@@ -3527,6 +3761,22 @@ dialog.merge-modal {
     font-size: 1rem;
     flex-shrink: 0;
 }
+
+/* Booking on-open live fetch — reassures staff a Gmail search is running so an
+   empty/sparse chat doesn't read as "nothing here". JS hides it when done. */
+.booking-search-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    background: color-mix(in srgb, var(--primary-color, #6b1f2a) 8%, var(--card-bg, white));
+    border: 1px solid color-mix(in srgb, var(--primary-color, #6b1f2a) 30%, transparent);
+    border-radius: 8px;
+    margin: 8px 16px;
+    font-size: 0.85rem;
+    color: var(--text-muted, #666);
+}
+.booking-search-banner i { flex-shrink: 0; }
 
 .escalation-banner .btn-resolve {
     margin-left: auto;

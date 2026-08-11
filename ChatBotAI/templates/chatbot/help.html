@@ -191,6 +191,38 @@
         </div>
 
         <div class="help-card">
+            <h3><i class="fas fa-triangle-exclamation" style="color:#dc2626;"></i> Wenn eine Nachricht nicht ankommt</h3>
+            <p>Klappt die Zustellung an die Plattform nicht, bleibt die Nachricht im Chat stehen und bekommt den Hinweis <strong>„Nicht zugestellt"</strong> mit einem Knopf <strong>Erneut senden</strong>.</p>
+            <div class="help-tip">
+                <strong>Vorsicht beim Erneut-Senden:</strong> Manchmal ist die Nachricht trotz Fehlermeldung schon beim Gast angekommen. Deshalb kommt vorher eine Rückfrage — prüfe im Zweifel erst mit <i class="fas fa-sync-alt"></i> <strong>Synchronisieren</strong>, ob sie nicht doch schon da ist.
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-language"></i> Nachricht übersetzen</h3>
+            <p>Bei Gästenachrichten, die <strong>nicht auf Deutsch</strong> sind, erscheint neben der Nachrichtenblase ein kleines <strong>Übersetzen-Symbol</strong> (<i class="fas fa-language"></i>). Ein Klick ersetzt den Text durch die deutsche Übersetzung, ein zweiter Klick zeigt wieder das Original.</p>
+            <ul>
+                <li>Gilt nur für <strong>Nachrichten des Gastes</strong> — eigene Nachrichten werden nicht übersetzt.</li>
+                <li>Bei deutschen Nachrichten erscheint das Symbol gar nicht.</li>
+                <li>Die Übersetzung ist nur für dich sichtbar — der Gast sieht davon nichts, und im Chat wird nichts verändert.</li>
+            </ul>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-exclamation-circle" style="color:#f59e0b;"></i> Chat als „Wichtig" markieren (Eskalation)</h3>
+            <p>Im Chat-Header (am Handy im Menü <i class="fas fa-ellipsis-v"></i>) gibt es den Knopf <strong>Wichtig</strong>. Damit markierst du einen Chat selbst als eskaliert — unabhängig davon, ob UMI überhaupt antwortet.</p>
+            <ul>
+                <li>Der Chat bekommt im Posteingang das <i class="fas fa-exclamation-triangle" style="color:#f59e0b;"></i>-Symbol und ist über den Filter <strong>Eskaliert</strong> auffindbar.</li>
+                <li>Im Chat erscheint oben ein Hinweisbanner.</li>
+                <li>UMI antwortet in eskalierten Chats <strong>nicht</strong> automatisch — das Thema gehört dem Team.</li>
+                <li>Erledigt? Derselbe Knopf heißt dann <strong>Lösen</strong> (oder <strong>Als gelöst markieren</strong> im Banner).</li>
+            </ul>
+            <div class="help-tip">
+                <strong>Gut zu wissen:</strong> Es ist derselbe Marker, den auch UMI und die Auslöser-Wörter aus der Wissensdatenbank setzen. Egal wer eskaliert hat — Symbol, Filter und Banner sind immer gleich.
+            </div>
+        </div>
+
+        <div class="help-card">
             <h3><i class="fas fa-sync-alt"></i> Nachrichten synchronisieren</h3>
             <p>Bei Smoobu-Konversationen findest du einen <strong>Synchronisierungs-Button</strong> (&#8635;) im Header. Damit kannst du die neuesten Nachrichten von der Plattform abrufen, falls etwas fehlt.</p>
             <div class="help-tip">
@@ -352,8 +384,8 @@
             <p>UMI hat mehrere eingebaute Schutzfunktionen:</p>
             <ul>
                 <li><strong>Freigabe-Warteschlange</strong> — automatische Antworten werden nie direkt gesendet, sondern warten auf Bestätigung</li>
-                <li><strong>Eskalation</strong> — bei heiklen Themen (Beschwerden, Schäden, rechtliche Fragen) wird die Konversation automatisch als "Braucht Aufmerksamkeit" markiert und Auto-Respond wird deaktiviert</li>
-                <li><strong>Eingeschränkte Themen</strong> — du kannst in der Wissensdatenbank (Tab "Eskalation") Themen definieren, bei denen UMI nicht selbst antwortet, sondern auf das Team verweist</li>
+                <li><strong>Eskalation über Stichwörter</strong> — enthält eine Gästenachricht eines der <strong>Auslöser-Wörter</strong> aus der Wissensdatenbank (Tab „Eskalation"), wird der Chat sofort als „Braucht Aufmerksamkeit" markiert und die Auto-Antwort abgeschaltet. Das läuft <strong>unabhängig von UMI</strong> — auch bei komplett ausgeschalteter KI</li>
+                <li><strong>Eskalation durch UMI selbst</strong> — die Themennamen aus demselben Tab bekommt UMI in ihre Anweisungen. Erkennt sie eines davon (auch anders formuliert), antwortet sie nicht selbst, sondern gibt an das Team ab</li>
                 <li><strong>Qualitätskontrolle</strong> — UMI prüft ihre eigene Antwort auf Länge, Inhalt und Angemessenheit</li>
                 <li><strong>Automatisches Lernen</strong> — jede bearbeitete UMI-Antwort wird als Korrektur gespeichert und verbessert zukünftige Antworten</li>
             </ul>
@@ -446,16 +478,22 @@
                         <li>Allgemeine Infos, Check-in/Check-out, In der Nähe, Hausregeln, Notfallkontakte, Häufige Fragen</li>
                     </ul>
                 </li>
-                <li><strong>Eskalation</strong> — Themen, bei denen UMI <strong>nicht selbst antworten</strong> soll, sondern auf das Team verweist. Du wählst eine Kategorie und gibst den Themennamen an:
+                <li><strong>Eskalation</strong> — <strong>hier legst du fest, was eskaliert.</strong> Jeder Eintrag ist ein Thema, bei dem UMI nicht selbst antworten soll, sondern das Team übernimmt. Ein Eintrag besteht aus drei Teilen:
                     <ul>
-                        <li>Wartung/Reparatur, Sauberkeit, Lärm/Nachbarn, Zahlung/Erstattung, Schlüssel/Zugang, Notfall, Sonstiges</li>
+                        <li><strong>Bezeichnung</strong> — der Themenname (z. B. „Ausgesperrt / Schlüssel weg"). Diesen Namen bekommt UMI zu sehen, damit sie auch bei anderen Formulierungen erkennt, dass sie das Thema abgeben muss.</li>
+                        <li><strong>Auslöser-Wörter</strong> — mit Komma getrennte Stichwörter (z. B. <em>ausgesperrt, locked out, komme nicht rein</em>). Kommt eines davon in einer Gästenachricht vor, wird der Chat sofort eskaliert — <strong>auch wenn UMI komplett ausgeschaltet ist</strong>.</li>
+                        <li><strong>Information</strong> — eine interne Notiz für das Team (z. B. welche Nummer man anruft). Diese Notiz bleibt intern und wird <strong>nie</strong> an UMI oder den Gast weitergegeben.</li>
                     </ul>
+                    Kategorien: Wartung/Reparatur, Sauberkeit, Lärm/Nachbarn, Zahlung/Erstattung, Schlüssel/Zugang, Notfall, Sonstiges.
                 </li>
                 <li><strong>Korrekturen</strong> — automatisch gespeicherte Verbesserungen, wenn du UMI-Antworten vor dem Senden bearbeitest. Diese werden automatisch erstellt und müssen nicht manuell gepflegt werden.</li>
             </ul>
             <p>Einträge können <strong>global</strong> (für alle Unterkünfte) oder für eine <strong>bestimmte Unterkunft</strong> gelten.</p>
             <div class="help-tip">
                 <strong>Tipp:</strong> Je mehr relevante Informationen du in der Wissensdatenbank hinterlegst, desto genauer werden die UMI-Antworten. Wichtige Infos wie WLAN-Passwörter, Checkout-Zeiten und Hausregeln sollten immer hinterlegt werden.
+            </div>
+            <div class="help-tip">
+                <strong>Wichtig zur Eskalation:</strong> Der Tab „Eskalation" ist die <strong>einzige</strong> Quelle dafür, welche Stichwörter einen Chat eskalieren. Ist dort nichts hinterlegt, eskaliert auch nichts über Stichwörter. Trage deshalb pro Thema ruhig mehrere Schreibweisen und die englischen Wörter mit ein.
             </div>
         </div>
 
@@ -540,6 +578,19 @@
         </div>
 
         <div class="help-card">
+            <h3><i class="fas fa-exclamation-triangle" style="color:#f59e0b;"></i> Warum ist dieser Chat plötzlich „eskaliert"?</h3>
+            <p>Dafür gibt es drei Wege — alle setzen dieselbe Markierung:</p>
+            <ul>
+                <li>Ein <strong>Auslöser-Wort</strong> aus der Wissensdatenbank (Tab „Eskalation") kam in einer Gästenachricht vor. Das passiert auch dann, wenn UMI ganz ausgeschaltet ist.</li>
+                <li><strong>UMI selbst</strong> hat erkannt, dass das Thema zum Team gehört, und abgegeben.</li>
+                <li>Jemand aus dem Team hat den Chat über <strong>Wichtig</strong> markiert.</li>
+            </ul>
+            <div class="help-tip">
+                <strong>Zu viele oder zu wenige Eskalationen?</strong> Das ist keine Einstellung im Hintergrund — die Auslöser-Wörter in der Wissensdatenbank entscheiden. Dort kannst du Wörter ergänzen oder entfernen, und es wirkt sofort.
+            </div>
+        </div>
+
+        <div class="help-card">
             <h3><i class="fas fa-check-double"></i> Warum wurde ein Chat als „gelesen" markiert, obwohl ich nichts gemacht habe?</h3>
             <p>Wenn jemand aus dem Team <strong>direkt über Airbnb oder Booking.com</strong> antwortet (statt über diese App), erkennt die Synchronisierung diese Antwort und markiert den Chat automatisch als gelesen. So entstehen keine falschen „Ungelesen"-Markierungen.</p>
         </div>
@@ -570,6 +621,14 @@
         <div class="help-card">
             <h3><i class="fas fa-plug"></i> Warum fehlen manchmal Nachrichten von Booking.com?</h3>
             <p>Zwischen Booking.com und Smoobu (unserer Schnittstelle) gehen gelegentlich Nachrichten verloren oder kommen verspätet an — das liegt nicht an dieser App. Nutze in dem Fall den <strong>Sync-Button</strong> (&#8635;) im Chat, um die neuesten Nachrichten direkt nachzuladen.</p>
+        </div>
+
+        <div class="help-card">
+            <h3><i class="fas fa-building"></i> Warum tauchen plötzlich Sonnenhof-Chats im Posteingang auf?</h3>
+            <p>Die App ist seit dem <strong>10.08.2026</strong> mit <strong>zwei Smoobu-Konten</strong> verbunden: Urlaubsmagie und Sonnenhof. Beide laufen in <strong>einem gemeinsamen Posteingang</strong>, du erkennst die Unterkunft am Namen auf der Karte.</p>
+            <div class="help-tip">
+                <strong>Gut zu wissen:</strong> Beim Sonnenhof wurde <strong>kein alter Verlauf</strong> importiert — es erscheinen nur Chats ab dem Verbindungsdatum. Ältere Nachrichten stehen weiterhin nur direkt in Smoobu.
+            </div>
         </div>
     </div>
 </div>
