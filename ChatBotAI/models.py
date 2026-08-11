@@ -267,6 +267,9 @@ class Conversation(db.Model):
 
     # Smoobu reservation link
     smoobu_reservation_id = db.Column(db.String(100), index=True)
+    # Which Smoobu account this chat lives in (webhook 'user' / GET /me id).
+    # NULL = written before multi-account existed → treated as the primary account.
+    smoobu_account_id = db.Column(db.String(20), nullable=True, index=True)
 
     # Reservation stay dates (from Smoobu)
     check_in = db.Column(db.Date, nullable=True)
@@ -430,6 +433,18 @@ class Message(db.Model):
         preview = self.content[:50] + '...' if len(self.content) > 50 else self.content
         return f'<Message {self.id}: [{self.sender_type}] {preview}>'
 
+    # A platform send that failed is stored locally with this prefix on
+    # platform_message_id, so the thread can show "not delivered" + a retry instead
+    # of a bubble that looks exactly like a delivered one. Mirrors the existing
+    # 'email:' / 'smoobu-' platform_message_id conventions — no migration needed.
+    FAILED_PREFIX = 'failed:'
+
+    @property
+    def delivery_state(self):
+        """'failed' if the platform send didn't go through, else 'sent'."""
+        return ('failed' if (self.platform_message_id or '').startswith(self.FAILED_PREFIX)
+                else 'sent')
+
     def to_dict(self):
         """Convert message to dictionary"""
         return {
@@ -438,6 +453,7 @@ class Message(db.Model):
             'sender_type': self.sender_type,
             'content': self.content,
             'platform_message_id': self.platform_message_id,
+            'delivery': self.delivery_state,
             'is_processed': self.is_processed,
             'approval_status': self.approval_status,
             'approved_at': self.approved_at.isoformat() if self.approved_at else None,
@@ -455,10 +471,17 @@ class Property(db.Model):
     Provides property details to help AI generate relevant responses.
     """
     __tablename__ = 'property'
+    __table_args__ = (
+        db.UniqueConstraint('smoobu_account_id', 'smoobu_apartment_id',
+                            name='uq_property_account_apartment'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
-    smoobu_apartment_id = db.Column(db.String(100), unique=True, index=True)
+    # Apartment ids are only unique within one Smoobu account, so the uniqueness
+    # constraint is on the (account, apartment) pair — see __table_args__ below.
+    smoobu_apartment_id = db.Column(db.String(100), index=True)
+    smoobu_account_id = db.Column(db.String(20), nullable=True, index=True)
     address = db.Column(db.Text)
     street = db.Column(db.String(200), nullable=True)  # Smoobu location.street; building key
     description = db.Column(db.Text)
@@ -666,6 +689,10 @@ class KnowledgeEntry(db.Model):
     category = db.Column(db.String(50), nullable=False)
     label = db.Column(db.String(200), nullable=False)
     value = db.Column(db.Text, nullable=False)
+    # Comma-separated trigger phrases, escalation categories only. Substring
+    # matched (case-insensitive) against incoming guest messages by
+    # MessageRouter._match_escalation_topic. NULL/empty = topic never fires.
+    trigger_words = db.Column(db.Text, nullable=True)
     street = db.Column(db.String(200), nullable=True, index=True)  # street-scope key
     sort_order = db.Column(db.Integer, default=0)
     # Provenance: 'manual' (default), 'ai' (extracted), 'notion' (synced).
@@ -697,6 +724,7 @@ class KnowledgeEntry(db.Model):
             'label': self.label,
             'street': self.street,
             'value': self.value,
+            'trigger_words': self.trigger_words,
             'sort_order': self.sort_order,
             'source': self.source,
             'notion_page_id': self.notion_page_id,
@@ -705,14 +733,11 @@ class KnowledgeEntry(db.Model):
         }
 
     @classmethod
-    def load_for_conversation_context(cls, conversation):
-        """Knowledge entries the AI may see for this conversation, scope-ordered:
-        general (property_id NULL AND street NULL) + this room + this room's street.
-        Excludes corrections. Returns a list of to_dict() dicts.
+    def _scope_filter(cls, conversation):
+        """Rows visible to this conversation: global + its room + its street.
 
-        Single source of truth for KB scope — all AI-context loaders must call this
-        so street-scoped entries never leak across buildings (see the 4 callers)."""
-        q = cls.query.filter(cls.category != 'correction')
+        Single source of truth for KB scope — every AI-context and escalation
+        loader must use it so street-scoped rows never leak across buildings."""
         if conversation.property_id:
             prop = conversation.property
             prop_street = prop.street if prop else None
@@ -722,9 +747,48 @@ class KnowledgeEntry(db.Model):
             ]
             if prop_street:
                 branches.append(cls.street == prop_street)
-            q = q.filter(db.or_(*branches))
-        else:
-            q = q.filter(cls.property_id.is_(None), cls.street.is_(None))
+            return db.or_(*branches)
+        return db.and_(cls.property_id.is_(None), cls.street.is_(None))
+
+    @staticmethod
+    def parse_trigger_words(raw):
+        """Comma-separated trigger phrases -> lowercased, de-duplicated list."""
+        if not raw:
+            return []
+        words = []
+        for part in raw.split(','):
+            word = part.strip().lower()
+            if word and word not in words:
+                words.append(word)
+        return words
+
+    @classmethod
+    def load_escalation_topics(cls, conversation):
+        """[(label, [word, ...]), ...] for this conversation's scope.
+
+        Only rows in an escalation category with usable trigger words. The
+        internal note (``value``) is deliberately not returned — it is for the
+        team and must never reach the AI."""
+        rows = (cls.query
+                .filter(cls.category.like('esc%'))
+                .filter(cls._scope_filter(conversation))
+                .order_by(cls.category, cls.sort_order)
+                .all())
+        topics = []
+        for row in rows:
+            words = cls.parse_trigger_words(row.trigger_words)
+            if words:
+                topics.append((row.label, words))
+        return topics
+
+    @classmethod
+    def load_for_conversation_context(cls, conversation):
+        """Knowledge entries the AI may see for this conversation, scope-ordered:
+        general (property_id NULL AND street NULL) + this room + this room's street.
+        Excludes corrections. Returns a list of to_dict() dicts."""
+        q = (cls.query
+             .filter(cls.category != 'correction')
+             .filter(cls._scope_filter(conversation)))
         return [e.to_dict() for e in q.order_by(cls.category, cls.sort_order).all()]
 
 

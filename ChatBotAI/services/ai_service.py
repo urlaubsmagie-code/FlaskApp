@@ -52,8 +52,15 @@ class AIService:
         self.timeout = timeout
         self.chat_endpoint = f"{ollama_url}/api/chat"
         self.generate_endpoint = f"{ollama_url}/api/generate"
-        # Semaphore to serialize AI calls — prevents concurrent GPU crashes
-        self._semaphore = threading.Semaphore(1)
+        # Concurrency control depends on WHERE the model runs:
+        #  - local models share one 8GB GPU → serialize (1) to avoid OOM crashes.
+        #  - cloud models (…-cloud) run on Ollama's servers → allow bounded
+        #    parallelism so a user's suggest click never queues behind background
+        #    memory-extraction / auto-reply / summary calls. Picked per-call by
+        #    the model actually used, because reasoning-model routing can send
+        #    some calls to a local model and others to the cloud.
+        self._semaphore = threading.Semaphore(1)          # local: 1 at a time
+        self._cloud_semaphore = threading.Semaphore(8)    # cloud: bounded parallel
         # Cache for test_connection to avoid blocking Waitress threads
         self._connection_cache: Optional[bool] = None
         self._connection_cache_time: float = 0
@@ -248,7 +255,8 @@ class AIService:
     def _call_chat_api(self, messages: List[Dict[str, str]], timeout: Optional[int] = None, model: Optional[str] = None) -> Optional[str]:
         """
         Call the Ollama chat API with a full messages array.
-        Uses a semaphore to serialize calls (prevents GPU crashes with concurrent users).
+        Local-model calls are serialized (GPU safety); cloud-model calls run
+        with bounded parallelism (see the semaphores in __init__).
         Retries up to 2 times on transient failures with backoff.
 
         Args:
@@ -282,7 +290,19 @@ class AIService:
         # deadline and divide remaining time between semaphore and request.
         deadline = time.monotonic() + effective_timeout
         sem_budget = max(effective_timeout - 1, 1)
-        acquired = self._semaphore.acquire(timeout=sem_budget)
+        # Cloud models don't touch the local GPU → use the parallel limiter so
+        # this call doesn't sit behind unrelated AI work.
+        sem = self._cloud_semaphore if self._is_cloud_model(effective_model) else self._semaphore
+        _sem_t0 = time.monotonic()
+        acquired = sem.acquire(timeout=sem_budget)
+        sem_wait = time.monotonic() - _sem_t0
+        # Queue time is invisible from outside: the call still succeeds, it just
+        # succeeds too late for Cloudflare's ~100s cut, and the user sees a generic
+        # failure with nothing in the log. Record it so that's diagnosable.
+        if sem_wait > 5:
+            logger.warning("AI call waited %.1fs in the %s queue before starting (model=%s)",
+                           sem_wait, 'cloud' if sem is self._cloud_semaphore else 'local',
+                           effective_model)
         if not acquired:
             logger.warning("Timed out waiting for AI semaphore — another request is in progress")
             return None
@@ -364,9 +384,14 @@ class AIService:
                     return None  # Don't retry unknown errors
 
         finally:
-            self._semaphore.release()
+            sem.release()
 
         return None
+
+    @staticmethod
+    def _is_cloud_model(model: str) -> bool:
+        """Cloud models (…-cloud) run on Ollama's servers, not the local GPU."""
+        return 'cloud' in (model or '').lower()
 
     @staticmethod
     def _track_api_call(endpoint: str, status_code, duration_ms: float, error=None):
@@ -826,6 +851,16 @@ JSON array:"""
             self._format_reservation_compact(reservation_info) if reservation_info else None
         )
 
+        # Escalation topics: LABELS ONLY. The team's internal note (`value`) may
+        # hold phone numbers and procedures and must never reach the model — the
+        # kb_for_template filter below keeps stripping the whole entry.
+        escalation_topics_text = None
+        if knowledge_entries:
+            labels = [e.get('label') for e in knowledge_entries
+                      if (e.get('category') or '').startswith('esc') and e.get('label')]
+            if labels:
+                escalation_topics_text = ", ".join(dict.fromkeys(labels))
+
         # KB entries: top 3, exclude escalation, truncate value to 80 chars.
         kb_for_template = None
         if knowledge_entries:
@@ -893,6 +928,7 @@ JSON array:"""
             reservation_compact=reservation_compact,
             host_instructions=(host_instructions.strip() if host_instructions else None),
             knowledge_entries=kb_for_template,
+            escalation_topics_text=escalation_topics_text,
             recent_host_replies=recent_host_replies,
             conversation_log=conversation_log,
             unanswered_count=unanswered_count,

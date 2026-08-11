@@ -337,23 +337,35 @@ class ContextFilter:
         Scores each entry and returns only matching ones (top N by score).
         Falls back to FAQ/general entries if nothing matches.
         """
-        if not entries or not message_keywords:
+        # Escalation topics bypass relevance scoring and the cap: UMI must see
+        # the same topic list on every message, not whatever happened to match
+        # today's keywords. The prompt only ever renders their labels, so the
+        # internal note (`value`) is stripped here — deliberately, at this
+        # boundary — so any future caller reading `knowledge_entries` directly
+        # can't leak it to a guest.
+        escalation, scorable = [], []
+        for entry in entries:
+            is_esc = (entry.get('category') or '').startswith('esc')
+            target = escalation if is_esc else scorable
+            target.append({**entry, 'value': ''} if is_esc else entry)
+
+        if not scorable or not message_keywords:
             # No keywords extracted — return up to 3 fallback entries
-            return cls._fallback_entries(entries, 3)
+            return escalation + cls._fallback_entries(scorable, 3)
 
         scored = []
-        for entry in entries:
+        for entry in scorable:
             score = cls._score_entry(entry, message_keywords)
             if score > 0:
                 scored.append((score, entry))
 
         if not scored:
             # No matches — return fallback entries
-            return cls._fallback_entries(entries, 3)
+            return escalation + cls._fallback_entries(scorable, 3)
 
         # Sort by score descending, take top N
         scored.sort(key=lambda x: x[0], reverse=True)
-        return [entry for _, entry in scored[:max_entries]]
+        return escalation + [entry for _, entry in scored[:max_entries]]
 
     @classmethod
     def _score_entry(cls, entry: Dict[str, Any], keywords: Set[str]) -> int:

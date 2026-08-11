@@ -69,6 +69,9 @@ const translations = {
         'conversation.ai': 'UMI-Assistent',
         'conversation.empty': 'Noch keine Nachrichten',
         'conversation.loadOlder': 'Ältere Nachrichten laden',
+        'conversation.translate': 'Übersetzen',
+        'conversation.showOriginal': 'Original anzeigen',
+        'conversation.translateFailed': 'Übersetzung fehlgeschlagen',
         'conversation.sendHint': 'Strg+Enter zum Senden',
         'conversation.draft': 'Entwurf gespeichert',
         'conversation.date.today': 'Heute',
@@ -295,6 +298,8 @@ const translations = {
 
         // Smoobu Integration
         'settings.integrations.smoobu': 'Smoobu',
+        'settings.integrations.smoobu2': 'Smoobu Konto 2',
+        'settings.integrations.smoobu2.help': 'Nachrichten aller Konten werden gemeinsam synchronisiert. Webhook-URL auch in diesem Smoobu-Konto eintragen.',
         'settings.integrations.smoobu.apiKey': 'API-Schlüssel',
         'settings.integrations.smoobu.connect': 'Verbinden',
         'settings.integrations.smoobu.disconnect': 'Trennen',
@@ -329,6 +334,9 @@ const translations = {
         'inbox.menu.sent': 'Gesendet',
         'inbox.menu.sendError': 'Senden fehlgeschlagen',
         'inbox.menu.close': 'Chat schließen',
+        'inbox.menu.escalate': 'Als wichtig markieren',
+        'inbox.menu.escalateDone': 'Als wichtig markiert',
+        'inbox.menu.resolve': 'Eskalation lösen',
 
         // Statistics — Team Performance
         'nav.statistics': 'Team-Leistung',
@@ -374,6 +382,10 @@ const translations = {
         'knowledge.label.placeholder': 'z.B. WLAN-Passwort',
         'knowledge.value': 'Information',
         'knowledge.value.placeholder': 'z.B. SunnyBeach2024',
+        'knowledge.value.internal': 'Interne Notiz (nur fürs Team, UMI sieht das nie)',
+        'knowledge.triggers': 'Auslöser-Wörter',
+        'knowledge.triggers.placeholder': 'ausgesperrt, locked out, komme nicht rein',
+        'knowledge.triggers.help': 'Mit Komma trennen. Kommt eines dieser Wörter in einer Gästenachricht vor, wird der Chat eskaliert — auch wenn UMI nicht antwortet.',
         'knowledge.loading': 'Lade Einträge...',
         'knowledge.empty': 'Noch keine Einträge vorhanden',
         'knowledge.empty.hint': 'Fügen Sie Fakten hinzu, die UMI bei Gästeanfragen nutzen soll.',
@@ -438,6 +450,11 @@ const translations = {
         'knowledge.scope.general': 'Allgemein',
         'knowledge.scope.cancel': 'Abbrechen',
         'conversation.emailSource': 'via E-Mail-Abgleich',
+        'conversation.delivery.failed': 'Nicht zugestellt',
+        'conversation.delivery.retry': 'Erneut senden',
+        'conversation.delivery.retryConfirm': 'Nachricht erneut an den Gast senden? Falls die erste Zustellung doch geklappt hat, erhält der Gast sie zweimal.',
+        'conversation.delivery.retrySuccess': 'Nachricht zugestellt',
+        'conversation.delivery.retryFailed': 'Erneutes Senden fehlgeschlagen',
 
         // Approval Queue
         'conversation.approval.waiting': 'Wartet auf Freigabe',
@@ -639,6 +656,9 @@ const translations = {
         'conversation.ai': 'UMI Assistant',
         'conversation.empty': 'No messages yet',
         'conversation.loadOlder': 'Load older messages',
+        'conversation.translate': 'Translate',
+        'conversation.showOriginal': 'Show original',
+        'conversation.translateFailed': 'Translation failed',
         'conversation.sendHint': 'Ctrl+Enter to send',
         'conversation.draft': 'Draft saved',
         'conversation.date.today': 'Today',
@@ -865,6 +885,8 @@ const translations = {
 
         // Smoobu Integration
         'settings.integrations.smoobu': 'Smoobu',
+        'settings.integrations.smoobu2': 'Smoobu account 2',
+        'settings.integrations.smoobu2.help': 'Messages from all accounts sync together. Add the webhook URL in this Smoobu account too.',
         'settings.integrations.smoobu.apiKey': 'API Key',
         'settings.integrations.smoobu.connect': 'Connect',
         'settings.integrations.smoobu.disconnect': 'Disconnect',
@@ -899,6 +921,9 @@ const translations = {
         'inbox.menu.sent': 'Sent',
         'inbox.menu.sendError': 'Send failed',
         'inbox.menu.close': 'Close chat',
+        'inbox.menu.escalate': 'Mark as important',
+        'inbox.menu.escalateDone': 'Marked as important',
+        'inbox.menu.resolve': 'Resolve escalation',
 
         // Statistics — Team Performance
         'nav.statistics': 'Team Performance',
@@ -944,6 +969,10 @@ const translations = {
         'knowledge.label.placeholder': 'e.g. WiFi Password',
         'knowledge.value': 'Information',
         'knowledge.value.placeholder': 'e.g. SunnyBeach2024',
+        'knowledge.value.internal': 'Internal note (team only — UMI never sees this)',
+        'knowledge.triggers': 'Trigger words',
+        'knowledge.triggers.placeholder': 'locked out, ausgesperrt, cannot get in',
+        'knowledge.triggers.help': 'Separate with commas. If one of these appears in a guest message, the chat is escalated — even when UMI is not replying.',
         'knowledge.loading': 'Loading entries...',
         'knowledge.empty': 'No entries yet',
         'knowledge.empty.hint': 'Add facts that UMI should use when responding to guests.',
@@ -1008,6 +1037,11 @@ const translations = {
         'knowledge.scope.general': 'General',
         'knowledge.scope.cancel': 'Cancel',
         'conversation.emailSource': 'via email reconciliation',
+        'conversation.delivery.failed': 'Not delivered',
+        'conversation.delivery.retry': 'Send again',
+        'conversation.delivery.retryConfirm': 'Send this message to the guest again? If the first delivery did go through after all, the guest receives it twice.',
+        'conversation.delivery.retrySuccess': 'Message delivered',
+        'conversation.delivery.retryFailed': 'Retry failed',
 
         // Approval Queue
         'conversation.approval.waiting': 'Waiting for approval',

@@ -115,10 +115,18 @@
                     data-i18n-placeholder="knowledge.label.placeholder" placeholder="z.B. WLAN-Passwort" required maxlength="200">
             </div>
 
+            <div class="setting-item" id="entryTriggerRow" style="flex-direction: column; align-items: flex-start;">
+                <label for="entryTriggerWords" data-i18n="knowledge.triggers">Auslöser-Wörter</label>
+                <textarea id="entryTriggerWords" class="setting-textarea" rows="3" style="width: 100%;"
+                    data-i18n-placeholder="knowledge.triggers.placeholder"
+                    placeholder="ausgesperrt, locked out, komme nicht rein" maxlength="2000"></textarea>
+                <small id="entryTriggerHelp" style="color: var(--text-secondary);" data-i18n="knowledge.triggers.help">Mit Komma trennen. Kommt eines dieser Wörter in einer Gästenachricht vor, wird der Chat eskaliert — auch wenn UMI nicht antwortet.</small>
+            </div>
+
             <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
-                <label for="entryValue" data-i18n="knowledge.value">Information</label>
+                <label for="entryValue" id="entryValueLabel" data-i18n="knowledge.value">Information</label>
                 <textarea id="entryValue" class="setting-textarea" rows="4" style="width: 100%;"
-                    data-i18n-placeholder="knowledge.value.placeholder" placeholder="z.B. SunnyBeach2024" required maxlength="2000"></textarea>
+                    data-i18n-placeholder="knowledge.value.placeholder" placeholder="z.B. SunnyBeach2024" maxlength="2000"></textarea>
             </div>
 
             <div class="modal-footer">
@@ -131,5 +139,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('chatbot.static', filename='js/knowledge.js') }}?v=8"></script>
+<script src="{{ url_for('chatbot.static', filename='js/knowledge.js') }}?v=9"></script>
 {% endblock %}

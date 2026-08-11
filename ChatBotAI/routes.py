@@ -8,7 +8,8 @@ import logging
 import os
 import threading
 import time
-from functools import wraps
+import uuid
+from functools import wraps, lru_cache
 
 from flask import render_template, request, jsonify, redirect, url_for, current_app
 from flask_login import login_user, logout_user, current_user, login_required
@@ -433,6 +434,45 @@ def email_review():
 def help_page():
     """Help and documentation page"""
     return render_template('chatbot/help.html')
+
+
+@chatbot_bp.route('/viewport-check')
+def viewport_check():
+    """Throwaway diagnostic: report what the chat layout actually measures on a
+    real device. Screenshots can't tell us whether the header is clipped by a
+    safe-area inset, a too-tall container, or page scroll — this can.
+    Delete once the mobile layout is settled."""
+    return """<!doctype html><meta name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<style>
+  body{font:13px/1.5 monospace;margin:0;padding:12px;background:#111;color:#0f0}
+  b{color:#ff0} .bad{color:#f66} .ok{color:#6f6}
+  #probe{position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top,0px);background:#f0f}
+</style>
+<div id="probe"></div>
+<pre id="out">measuring…</pre>
+<script>
+const px = v => Math.round(v) + 'px';
+const cs = getComputedStyle(document.getElementById('probe'));
+const rows = {
+  'screen (physical)': screen.width + ' x ' + screen.height,
+  'window.inner': innerWidth + ' x ' + innerHeight,
+  'visualViewport': window.visualViewport
+      ? Math.round(visualViewport.width) + ' x ' + Math.round(visualViewport.height) : 'n/a',
+  '100dvh resolves to': px(parseFloat(getComputedStyle(document.documentElement).fontSize) * 0 +
+      (() => { const d = document.createElement('div'); d.style.height = '100dvh';
+               document.body.appendChild(d); const h = d.getBoundingClientRect().height;
+               d.remove(); return h; })()),
+  'safe-area-inset-top': cs.height + '   <-- 0px means Android gives us nothing',
+  'devicePixelRatio': devicePixelRatio,
+  'display-mode standalone': matchMedia('(display-mode: standalone)').matches,
+  'matches max-width:768px': matchMedia('(max-width: 768px)').matches,
+  'page scrolled by': px(scrollY),
+  'user agent': navigator.userAgent.slice(0, 90),
+};
+document.getElementById('out').innerHTML = Object.entries(rows)
+  .map(([k, v]) => '<b>' + k.padEnd(24) + '</b>: ' + v).join('\\n');
+</script>"""
 
 
 @chatbot_bp.route('/debug')
@@ -1124,11 +1164,19 @@ def api_send_message(conversation_id):
             return jsonify({'success': True, 'duplicate_skipped': True,
                             'content': content}), 200
 
+        # The platform-send paths fall back here when Smoobu/Gmail refuses the
+        # message. Stamp it so the thread shows "not delivered" with a retry —
+        # without this the bubble is indistinguishable from a delivered one and
+        # nobody learns the guest never got it.
+        failed_marker = (f"{Message.FAILED_PREFIX}{uuid.uuid4().hex}"
+                         if data.get('delivery_failed') else None)
+
         # Create owner message
         message = Message(
             conversation_id=conversation_id,
             sender_type='owner',
             content=content,
+            platform_message_id=failed_marker,
             sent_at=datetime.utcnow(),
             sent_via_app=True,
             user_id=current_user.id if current_user.is_authenticated else None
@@ -1363,8 +1411,8 @@ def api_generate_ai_response(conversation_id):
                     logger.error(f"Error sending AI response via Gmail: {e}")
             elif conversation.platform == 'smoobu' and conversation.smoobu_reservation_id:
                 try:
-                    from .services.smoobu_service import get_smoobu_service
-                    smoobu = get_smoobu_service()
+                    from .services.smoobu_service import get_smoobu_service_for
+                    smoobu = get_smoobu_service_for(conversation)
                     if smoobu and smoobu.is_configured():
                         send_result = smoobu.send_message(conversation.smoobu_reservation_id, ai_response)
                         smoobu_sent = bool(send_result)
@@ -2372,6 +2420,60 @@ def api_resolve_escalation(conversation_id):
     })
 
 
+@chatbot_bp.route('/api/conversations/<int:conversation_id>/escalate', methods=['POST'])
+@login_required
+def api_escalate_conversation(conversation_id):
+    """Manually flag a conversation as needing attention. Works regardless of
+    whether UMI is answering — the team escalates by hand too."""
+    conversation = Conversation.query.get_or_404(conversation_id)
+
+    conversation.escalated = True
+    conversation.escalated_at = datetime.utcnow()
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'escalated': True,
+        'escalated_at': conversation.escalated_at.isoformat()
+    })
+
+
+@lru_cache(maxsize=512)
+def _translate_cached(text: str, target: str) -> str:
+    """Google Translate via deep-translator (already a dependency of the review
+    portal — no key, no new package). Cached because the team re-opens the same
+    chat repeatedly; the same message must not cost a round-trip every time.
+    ponytail: in-process LRU, not a DB column. Persist it only if translations
+    ever need to be searchable."""
+    from deep_translator import GoogleTranslator
+    # GoogleTranslator rejects payloads over 5000 chars.
+    return GoogleTranslator(source='auto', target=target).translate(text[:4900])
+
+
+@chatbot_bp.route('/api/translate', methods=['POST'])
+@login_required
+def api_translate_message():
+    """Translate a single message body on demand (per-message button)."""
+    data = request.get_json(silent=True) or {}
+    text = (data.get('text') or '').strip()
+    # Target follows the UI language; anything else falls back to German.
+    target = 'en' if (data.get('target') or 'de').lower().startswith('en') else 'de'
+    if not text:
+        return jsonify({'error': 'no text'}), 400
+    try:
+        translated = _translate_cached(text, target)
+    except Exception as e:
+        logger.warning("Translation failed (%s chars, target=%s): %s", len(text), target, e)
+        return jsonify({'error': 'translation_failed'}), 502
+    translated = translated or text
+    return jsonify({
+        'translated': translated,
+        'target': target,
+        # Same text back = it was already in the target language.
+        'was_translated': translated.strip().lower() != text.lower(),
+    })
+
+
 @chatbot_bp.route('/api/messages/<int:message_id>/approve', methods=['POST'])
 @login_required
 def api_approve_message(message_id):
@@ -2415,8 +2517,8 @@ def api_approve_message(message_id):
 
     elif conversation.platform == 'smoobu' and conversation.smoobu_reservation_id:
         try:
-            from .services.smoobu_service import get_smoobu_service
-            smoobu = get_smoobu_service()
+            from .services.smoobu_service import get_smoobu_service_for
+            smoobu = get_smoobu_service_for(conversation)
             if smoobu and smoobu.is_configured():
                 send_result = smoobu.send_message(conversation.smoobu_reservation_id, message.content)
                 smoobu_sent = bool(send_result)
@@ -3919,11 +4021,23 @@ def api_gmail_reply(conversation_id):
 # SMOOBU INTEGRATION ROUTES
 # ============================================================================
 
+def _smoobu_slot_service(default_slot=1):
+    """Service for the ?slot=N account (slot 1 = the original account)."""
+    from .services.smoobu_service import (MAX_SMOOBU_ACCOUNTS, _smoobu_services)
+    try:
+        slot = int(request.args.get('slot') or (request.get_json(silent=True) or {}).get('slot')
+                   or default_slot)
+    except (TypeError, ValueError):
+        slot = default_slot
+    if slot < 1 or slot > MAX_SMOOBU_ACCOUNTS:
+        return None
+    return _smoobu_services.get(slot)
+
+
 @chatbot_bp.route('/smoobu/status')
 def smoobu_status():
-    """Get Smoobu connection status"""
-    from .services.smoobu_service import get_smoobu_service
-    smoobu = get_smoobu_service()
+    """Get Smoobu connection status for one account slot."""
+    smoobu = _smoobu_slot_service()
     if not smoobu:
         return jsonify({'configured': False, 'authenticated': False, 'api_key_masked': ''})
     return jsonify(smoobu.get_status())
@@ -3932,37 +4046,78 @@ def smoobu_status():
 @chatbot_bp.route('/smoobu/connect', methods=['POST'])
 @admin_required
 def smoobu_connect():
-    """Save Smoobu API key and verify connection"""
+    """Save a Smoobu API key for one account slot and verify the connection."""
     data = request.get_json()
     api_key = data.get('api_key', '').strip() if data else ''
+    # Smoobu's newer tokens are a pair: the label (X-API-Key) plus a secret used
+    # to sign each request. Legacy keys have no secret and stay single-header.
+    api_secret = data.get('api_secret', '').strip() if data else ''
 
     if not api_key:
         return jsonify({'error': 'API key is required'}), 400
 
+    from .services.smoobu_service import (settings_key, secret_settings_key,
+                                          get_smoobu_service_by_account)
+    smoobu = _smoobu_slot_service()
+    if not smoobu:
+        return jsonify({'error': 'Unknown Smoobu account slot'}), 400
+
     # Save to DB and invalidate the in-memory cache so the next request reads the new key
-    AISettings.set('smoobu_api_key', api_key, description='Smoobu API key')
-    from .services.smoobu_service import get_smoobu_service
-    smoobu = get_smoobu_service()
-    if smoobu:
+    AISettings.set(settings_key(smoobu.slot), api_key,
+                   description=f'Smoobu API key (slot {smoobu.slot})')
+    AISettings.set(secret_settings_key(smoobu.slot), api_secret,
+                   description=f'Smoobu HMAC secret (slot {smoobu.slot})')
+    smoobu.reload_api_key()
+
+    # Identify the account behind this key — the id webhooks arrive with.
+    account_id = smoobu.fetch_account_id()
+    if not account_id:
+        AISettings.set(settings_key(smoobu.slot), '',
+                       description=f'Smoobu API key (slot {smoobu.slot})')
+        AISettings.set(secret_settings_key(smoobu.slot), '',
+                       description=f'Smoobu HMAC secret (slot {smoobu.slot})')
+        smoobu.reload_api_key()
+        return jsonify({'error': 'Invalid API key — could not connect to Smoobu'}), 400
+
+    # Reject the same account twice: two slots sharing one account id would make
+    # webhook routing ambiguous and duplicate every sync.
+    other = next((svc for svc in _smoobu_services_all()
+                  if svc.slot != smoobu.slot and svc.is_configured()
+                  and str(svc.account_id or '') == account_id), None)
+    if other is not None:
+        AISettings.set(settings_key(smoobu.slot), '',
+                       description=f'Smoobu API key (slot {smoobu.slot})')
+        AISettings.set(secret_settings_key(smoobu.slot), '',
+                       description=f'Smoobu HMAC secret (slot {smoobu.slot})')
+        smoobu.reload_api_key()
+        return jsonify({'error': f'This Smoobu account is already connected (slot {other.slot})'}), 400
+
+    # A brand-new account starts from now: the team wants the messages that
+    # arrive from here on, not years of imported history. Reconnecting an account
+    # we already have chats for (e.g. rotating its key) keeps its existing scope.
+    from .services.smoobu_service import sync_from_settings_key
+    already_synced = Conversation.query.filter_by(smoobu_account_id=account_id).first()
+    if not already_synced and not AISettings.get(sync_from_settings_key(smoobu.slot)):
+        AISettings.set(sync_from_settings_key(smoobu.slot),
+                       datetime.utcnow().isoformat(),
+                       description=f'Smoobu sync cutoff (slot {smoobu.slot})')
         smoobu.reload_api_key()
 
-    # Verify by fetching apartments
-    if smoobu and smoobu.is_authenticated():
-        return jsonify({'success': True, 'message': 'Connected to Smoobu'})
-    else:
-        # Clear invalid key
-        AISettings.set('smoobu_api_key', '', description='Smoobu API key')
-        if smoobu:
-            smoobu.reload_api_key()
-        return jsonify({'error': 'Invalid API key — could not connect to Smoobu'}), 400
+    return jsonify({'success': True, 'message': 'Connected to Smoobu',
+                    'account_id': account_id, 'slot': smoobu.slot,
+                    'sync_from': AISettings.get(sync_from_settings_key(smoobu.slot))})
+
+
+def _smoobu_services_all():
+    from .services.smoobu_service import _smoobu_services
+    return list(_smoobu_services.values())
 
 
 @chatbot_bp.route('/smoobu/disconnect', methods=['POST'])
 @admin_required
 def smoobu_disconnect():
-    """Clear Smoobu API key"""
-    from .services.smoobu_service import get_smoobu_service
-    smoobu = get_smoobu_service()
+    """Clear the Smoobu API key of one account slot."""
+    smoobu = _smoobu_slot_service()
     if smoobu:
         smoobu.disconnect()
     return jsonify({'success': True})
@@ -4078,6 +4233,9 @@ def webhook_smoobu_discovery():
         if request.method == 'POST' and isinstance(parsed_json, dict):
             action = parsed_json.get('action')
             data = parsed_json.get('data') or {}
+            # Which Smoobu account fired this — 'user' is the same id GET /me
+            # returns for that account's API key. Routes the work to the right key.
+            account_id = parsed_json.get('user')
 
             if action == 'newMessage':
                 # Smoobu payload: {"action":"newMessage","user":...,
@@ -4089,7 +4247,7 @@ def webhook_smoobu_discovery():
                     app_obj = current_app._get_current_object()
                     threading.Thread(
                         target=_run_webhook_message_sync,
-                        args=(app_obj, str(booking_id)),
+                        args=(app_obj, str(booking_id), account_id),
                         daemon=True,
                         name=f'smoobu-webhook-{booking_id}',
                     ).start()
@@ -4113,7 +4271,7 @@ def webhook_smoobu_discovery():
                     app_obj = current_app._get_current_object()
                     threading.Thread(
                         target=_run_webhook_cancel_reservation,
-                        args=(app_obj, cancel_id),
+                        args=(app_obj, cancel_id, account_id),
                         daemon=True,
                         name=f'smoobu-webhook-cancel-{cancel_id}',
                     ).start()
@@ -4134,7 +4292,7 @@ def webhook_smoobu_discovery():
                     app_obj = current_app._get_current_object()
                     threading.Thread(
                         target=_run_webhook_update_reservation,
-                        args=(app_obj, data),
+                        args=(app_obj, data, account_id),
                         daemon=True,
                         name=f'smoobu-webhook-update-{data.get("id")}',
                     ).start()
@@ -4158,7 +4316,7 @@ def webhook_smoobu_discovery():
                     app_obj = current_app._get_current_object()
                     threading.Thread(
                         target=_run_webhook_reservation_enrich,
-                        args=(app_obj, data),
+                        args=(app_obj, data, account_id),
                         daemon=True,
                         name=f'smoobu-webhook-res-{data.get("id")}',
                     ).start()
@@ -4183,7 +4341,20 @@ def webhook_smoobu_discovery():
     return jsonify({'success': True, 'received': True}), 200
 
 
-def _run_webhook_message_sync(app, booking_id):
+def _webhook_service(account_id):
+    """Configured SmoobuService for a webhook's account id, or None.
+
+    Falls back to the primary account when the payload carries no id (older
+    Smoobu payloads / manual replays) so behaviour matches the single-account era.
+    """
+    from .services.smoobu_service import get_smoobu_service, get_smoobu_service_by_account
+    svc = get_smoobu_service_by_account(account_id) if account_id else None
+    if svc is None and not account_id:
+        svc = get_smoobu_service()
+    return svc if (svc and svc.is_configured()) else None
+
+
+def _run_webhook_message_sync(app, booking_id, account_id=None):
     """Background worker: sync messages for one Smoobu reservation.
 
     Spawned as a daemon thread by webhook_smoobu_discovery on newMessage events.
@@ -4199,10 +4370,10 @@ def _run_webhook_message_sync(app, booking_id):
     logger = logging.getLogger(__name__)
     try:
         with app.app_context():
-            from .services.smoobu_service import get_smoobu_service
-            smoobu = get_smoobu_service()
-            if not smoobu or not smoobu.is_configured():
-                logger.warning('Webhook sync skipped: Smoobu not configured (booking=%s)', booking_id)
+            smoobu = _webhook_service(account_id)
+            if not smoobu:
+                logger.warning('Webhook sync skipped: no Smoobu account %s (booking=%s)',
+                               account_id, booking_id)
                 return
             result = smoobu.sync_conversation_messages(booking_id)
             imported = result.get('imported', 0)
@@ -4214,7 +4385,7 @@ def _run_webhook_message_sync(app, booking_id):
         logger.exception('Webhook background sync failed for booking=%s', booking_id)
 
 
-def _run_webhook_cancel_reservation(app, reservation_id):
+def _run_webhook_cancel_reservation(app, reservation_id, account_id=None):
     """Background worker: mark the Conversation for one Smoobu reservation as cancelled.
 
     Spawned as a daemon thread by webhook_smoobu_discovery on cancelReservation events.
@@ -4225,11 +4396,11 @@ def _run_webhook_cancel_reservation(app, reservation_id):
     logger = logging.getLogger(__name__)
     try:
         with app.app_context():
-            from .services.smoobu_service import get_smoobu_service
-            smoobu = get_smoobu_service()
-            if not smoobu or not smoobu.is_configured():
+            smoobu = _webhook_service(account_id)
+            if not smoobu:
                 logger.warning(
-                    'Webhook cancel skipped: Smoobu not configured (res=%s)', reservation_id
+                    'Webhook cancel skipped: no Smoobu account %s (res=%s)',
+                    account_id, reservation_id
                 )
                 return
             ok = smoobu.mark_reservation_cancelled(reservation_id)
@@ -4239,7 +4410,7 @@ def _run_webhook_cancel_reservation(app, reservation_id):
         logger.exception('Webhook cancel-reservation failed for res=%s', reservation_id)
 
 
-def _run_webhook_update_reservation(app, res_data):
+def _run_webhook_update_reservation(app, res_data, account_id=None):
     """Background worker: silently refresh Conversation/Guest data from updateReservation.
 
     Spawned as a daemon thread by webhook_smoobu_discovery on updateReservation events.
@@ -4250,12 +4421,11 @@ def _run_webhook_update_reservation(app, res_data):
     logger = logging.getLogger(__name__)
     try:
         with app.app_context():
-            from .services.smoobu_service import get_smoobu_service
-            smoobu = get_smoobu_service()
-            if not smoobu or not smoobu.is_configured():
+            smoobu = _webhook_service(account_id)
+            if not smoobu:
                 logger.warning(
-                    'Webhook update skipped: Smoobu not configured (res=%s)',
-                    res_data.get('id'),
+                    'Webhook update skipped: no Smoobu account %s (res=%s)',
+                    account_id, res_data.get('id'),
                 )
                 return
             smoobu.update_reservation_from_webhook(res_data)
@@ -4265,7 +4435,7 @@ def _run_webhook_update_reservation(app, res_data):
         )
 
 
-def _run_webhook_reservation_enrich(app, res_data):
+def _run_webhook_reservation_enrich(app, res_data, account_id=None):
     """Background worker: pre-enrich Guest from a Smoobu newReservation payload.
 
     Spawned as a daemon thread by webhook_smoobu_discovery on newReservation
@@ -4277,12 +4447,11 @@ def _run_webhook_reservation_enrich(app, res_data):
     logger = logging.getLogger(__name__)
     try:
         with app.app_context():
-            from .services.smoobu_service import get_smoobu_service
-            smoobu = get_smoobu_service()
-            if not smoobu or not smoobu.is_configured():
+            smoobu = _webhook_service(account_id)
+            if not smoobu:
                 logger.warning(
-                    'Webhook reservation enrich skipped: Smoobu not configured (res=%s)',
-                    res_data.get('id'),
+                    'Webhook reservation enrich skipped: no Smoobu account %s (res=%s)',
+                    account_id, res_data.get('id'),
                 )
                 return
             guest = smoobu.process_new_reservation(res_data)
@@ -4339,14 +4508,15 @@ def api_smoobu_sync():
 @chatbot_bp.route('/api/smoobu/sync/<int:conversation_id>', methods=['POST'])
 def api_smoobu_sync_conversation(conversation_id):
     """Sync messages for a single Smoobu conversation (lightweight)"""
-    from .services.smoobu_service import get_smoobu_service
-    smoobu = get_smoobu_service()
-    if not smoobu or not smoobu.is_configured():
-        return jsonify({'error': 'Smoobu not connected'}), 400
+    from .services.smoobu_service import get_smoobu_service_for
 
     conversation = Conversation.query.get_or_404(conversation_id)
     if not conversation.smoobu_reservation_id:
         return jsonify({'error': 'Not a Smoobu conversation'}), 400
+
+    smoobu = get_smoobu_service_for(conversation)
+    if not smoobu or not smoobu.is_configured():
+        return jsonify({'error': 'Smoobu not connected'}), 400
 
     result = smoobu.sync_conversation_messages(conversation.smoobu_reservation_id)
     return jsonify(result)
@@ -4354,9 +4524,8 @@ def api_smoobu_sync_conversation(conversation_id):
 
 @chatbot_bp.route('/api/smoobu/sync-properties', methods=['POST'])
 def api_smoobu_sync_properties():
-    """Sync properties from Smoobu"""
-    from .services.smoobu_service import get_smoobu_service
-    smoobu = get_smoobu_service()
+    """Sync properties (rooms, guests, check-in times) from one Smoobu account."""
+    smoobu = _smoobu_slot_service()
     if not smoobu or not smoobu.is_configured():
         return jsonify({'error': 'Smoobu not connected'}), 400
 
@@ -4493,13 +4662,13 @@ def api_smoobu_fix_timestamps():
 @chatbot_bp.route('/api/smoobu/debug-messages/<int:conversation_id>')
 def api_smoobu_debug_messages(conversation_id):
     """Debug: show raw Smoobu API response + DB timestamps for a conversation."""
-    from .services.smoobu_service import get_smoobu_service
+    from .services.smoobu_service import get_smoobu_service_for
 
     conversation = Conversation.query.get_or_404(conversation_id)
     if not conversation.smoobu_reservation_id:
         return jsonify({'error': 'No Smoobu reservation linked'}), 400
 
-    smoobu = get_smoobu_service()
+    smoobu = get_smoobu_service_for(conversation)
     if not smoobu or not smoobu.is_configured():
         return jsonify({'error': 'Smoobu not connected'}), 400
 
@@ -4642,10 +4811,56 @@ def _guarded_smoobu_reply(conversation, content, send_fn):
         return {'message_id': owner_result.get('message_id')}
 
 
+@chatbot_bp.route('/api/messages/<int:message_id>/retry', methods=['POST'])
+def api_retry_message(message_id):
+    """Re-send an owner message whose platform send failed.
+
+    Deliberately bypasses `_recent_duplicate_owner_reply`: the stored failed copy
+    would otherwise block its own retry. The guest could in theory receive it twice
+    if the original send actually landed despite reporting failure, so this is only
+    ever reached by an explicit human click on a message marked "not delivered".
+    """
+    from .services.smoobu_service import get_smoobu_service_for
+
+    message = Message.query.get_or_404(message_id)
+    if message.delivery_state != 'failed':
+        return jsonify({'error': 'Message is not marked as failed'}), 400
+
+    conversation = Conversation.query.get_or_404(message.conversation_id)
+    if conversation.platform != 'smoobu' or not conversation.smoobu_reservation_id:
+        return jsonify({'error': 'Conversation has no Smoobu reservation to retry through'}), 400
+
+    smoobu = get_smoobu_service_for(conversation)
+    if not smoobu or not smoobu.is_configured():
+        return jsonify({'error': 'Smoobu not connected'}), 400
+
+    with _conversation_send_lock(conversation.id):
+        try:
+            send_result = smoobu.send_message(conversation.smoobu_reservation_id, message.content)
+        except Exception:
+            logger.exception("Retry send failed for message %s", message_id)
+            send_result = None
+        if not send_result:
+            return jsonify({'error': 'Failed to send message via Smoobu'}), 502
+
+        smoobu_msg_id = None
+        if isinstance(send_result, dict):
+            smoobu_msg_id = str(send_result.get('id') or send_result.get('message_id')
+                                or send_result.get('messageId') or '')
+        # Clearing the sentinel is what flips the bubble back to "delivered".
+        message.platform_message_id = (
+            f"smoobu-{conversation.smoobu_reservation_id}-{smoobu_msg_id}"
+            if smoobu_msg_id else None)
+        db.session.commit()
+
+    return jsonify({'success': True, 'delivery': message.delivery_state,
+                    'message_id': message.id})
+
+
 @chatbot_bp.route('/api/smoobu/reply/<int:conversation_id>', methods=['POST'])
 def api_smoobu_reply(conversation_id):
     """Send a reply through Smoobu API"""
-    from .services.smoobu_service import get_smoobu_service
+    from .services.smoobu_service import get_smoobu_service_for
     from .services.message_router import get_message_router
 
     conversation = Conversation.query.get_or_404(conversation_id)
@@ -4661,7 +4876,7 @@ def api_smoobu_reply(conversation_id):
     if not message_content:
         return jsonify({'error': 'Message is required'}), 400
 
-    smoobu = get_smoobu_service()
+    smoobu = get_smoobu_service_for(conversation)
     if not smoobu or not smoobu.is_configured():
         return jsonify({'error': 'Smoobu not connected'}), 400
 
@@ -4793,10 +5008,16 @@ def api_create_knowledge():
         return jsonify({'error': 'Label is required'}), 400
     if len(label) > 200:
         return jsonify({'error': 'Label must be 200 characters or less'}), 400
-    if not value:
+    # Escalation topics are category + label + trigger words; the note is
+    # optional. Every other category still needs its information text.
+    if not value and not category.startswith('esc'):
         return jsonify({'error': 'Value is required'}), 400
     if len(value) > 2000:
         return jsonify({'error': 'Value must be 2000 characters or less'}), 400
+
+    trigger_words = (data.get('trigger_words') or '').strip()
+    if len(trigger_words) > 2000:
+        return jsonify({'error': 'Trigger words must be 2000 characters or less'}), 400
 
     if property_id is not None:
         prop = Property.query.get(property_id)
@@ -4813,6 +5034,7 @@ def api_create_knowledge():
         category=category,
         label=label,
         value=value,
+        trigger_words=trigger_words or None,
         sort_order=max_order + 1
     )
     db.session.add(entry)
@@ -4846,11 +5068,18 @@ def api_update_knowledge(entry_id):
 
     if 'value' in data:
         value = data['value'].strip()
-        if not value:
+        # entry.category is already updated above when the payload changed it.
+        if not value and not entry.category.startswith('esc'):
             return jsonify({'error': 'Value is required'}), 400
         if len(value) > 2000:
             return jsonify({'error': 'Value must be 2000 characters or less'}), 400
         entry.value = value
+
+    if 'trigger_words' in data:
+        trigger_words = (data['trigger_words'] or '').strip()
+        if len(trigger_words) > 2000:
+            return jsonify({'error': 'Trigger words must be 2000 characters or less'}), 400
+        entry.trigger_words = trigger_words or None
 
     if 'property_id' in data:
         pid = data['property_id']

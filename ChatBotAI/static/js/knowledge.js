@@ -67,12 +67,12 @@ const CATEGORY_HELP = {
     wifi: 'WLAN & Internet — Netzwerkname, Passwort, Verbindungsprobleme.',
     arrival_parking: 'Anreise & Parken — Wegbeschreibung, Adresse, Parkplatz, Anfahrt mit Auto/Bahn.',
     appliances: 'Geräte & Bedienung — Heizung, Ofen, Waschmaschine, Sauna, Kaffeemaschine, TV.',
-    esc_maintenance: 'Defekte & Reparaturen — kaputte Geräte, Heizung, Wasser, Strom.',
-    esc_cleanliness: 'Sauberkeitsprobleme — unsaubere Unterkunft, Beschwerden zur Reinigung.',
-    esc_noise: 'Lärm & Nachbarschaft — laute Nachbarn, Ruhestörung, Beschwerden.',
-    esc_payment: 'Zahlungsprobleme — Rückerstattung, Kaution, falsche Beträge.',
-    esc_access: 'Zugangsprobleme — Schlüssel verloren, Code funktioniert nicht, Aussperrung.',
-    esc_emergency: 'Echte Notfälle — Gesundheit, Sicherheit, Wasserschaden, dringend.',
+    esc_maintenance: 'Eskaliert bei Defekten & Reparaturen — kaputte Geräte, Heizung, Wasser, Strom.',
+    esc_cleanliness: 'Eskaliert bei Sauberkeitsproblemen — unsaubere Unterkunft, Beschwerden zur Reinigung.',
+    esc_noise: 'Eskaliert bei Lärm & Nachbarschaft — laute Nachbarn, Ruhestörung, Beschwerden.',
+    esc_payment: 'Eskaliert bei Zahlungsproblemen — Rückerstattung, Kaution, falsche Beträge.',
+    esc_access: 'Eskaliert bei Zugangsproblemen — Schlüssel verloren, Code funktioniert nicht, Aussperrung.',
+    esc_emergency: 'Eskaliert bei echten Notfällen — Gesundheit, Sicherheit, Wasserschaden, dringend.',
     esc_other: 'Alles andere, was an das Team eskaliert werden muss.',
 };
 
@@ -216,7 +216,13 @@ const knowledgeApp = {
                 html += '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:5px;">';
                 html += '<strong>' + this.escapeHtml(entry.label) + '</strong>' + scopeBadge;
                 html += '</div>';
-                html += '<div style="color:var(--text-secondary);margin-top:4px;white-space:pre-line;">' + this.escapeHtml(entry.value) + '</div>';
+                if (entry.trigger_words) {
+                    html += '<div style="color:var(--text-secondary);margin-top:4px;font-size:12px;">'
+                        + '<i class="fas fa-bell"></i> ' + this.escapeHtml(entry.trigger_words) + '</div>';
+                }
+                if (entry.value) {
+                    html += '<div style="color:var(--text-secondary);margin-top:4px;white-space:pre-line;">' + this.escapeHtml(entry.value) + '</div>';
+                }
                 html += '</div>';
                 html += '<div style="display:flex;gap:8px;margin-left:10px;">';
                 html += '<button class="btn btn-icon" onclick="knowledgeApp.openEditModal(' + entry.id + ')" title="Edit"><i class="fas fa-pencil-alt"></i></button>';
@@ -301,7 +307,10 @@ const knowledgeApp = {
         const select = document.getElementById('entryCategory');
         const categoryRow = select.closest('.setting-item');
         const valueRow = document.getElementById('entryValue').closest('.setting-item');
+        const triggerRow = document.getElementById('entryTriggerRow');
+        const valueLabel = document.getElementById('entryValueLabel');
         const lang = (typeof i18n !== 'undefined' && i18n.currentLanguage) || 'de';
+        const t = (key, fallback) => (typeof i18n !== 'undefined' ? i18n.t(key) : fallback);
 
         const buildOptions = (cats) => {
             select.innerHTML = '';
@@ -319,12 +328,20 @@ const knowledgeApp = {
             buildOptions(['correction']);
             categoryRow.style.display = 'none';
             valueRow.style.display = '';
+            triggerRow.style.display = 'none';
+            valueLabel.textContent = t('knowledge.value', 'Information');
             select.value = 'correction';
             return;
         }
 
-        // Hide Information field for escalation (category + label is enough)
-        valueRow.style.display = this.currentTab === 'escalation' ? 'none' : '';
+        // Escalation topics: trigger words decide what escalates, and the
+        // Information field becomes a team-only note UMI never sees.
+        const isEscalation = this.currentTab === 'escalation';
+        triggerRow.style.display = isEscalation ? '' : 'none';
+        valueRow.style.display = '';
+        valueLabel.textContent = isEscalation
+            ? t('knowledge.value.internal', 'Interne Notiz (nur fürs Team)')
+            : t('knowledge.value', 'Information');
         categoryRow.style.display = '';
 
         const allowedCategories = this.currentTab === 'escalation'
@@ -356,6 +373,7 @@ const knowledgeApp = {
         document.getElementById('entryId').value = entry.id;
         document.getElementById('entryLabel').value = entry.label;
         document.getElementById('entryValue').value = entry.value;
+        document.getElementById('entryTriggerWords').value = entry.trigger_words || '';
         this.updateCategoryOptions(entry.category);
 
         if (entry.property_id) {
@@ -390,6 +408,7 @@ const knowledgeApp = {
             category: document.getElementById('entryCategory').value,
             label: document.getElementById('entryLabel').value.trim(),
             value: document.getElementById('entryValue').value.trim(),
+            trigger_words: document.getElementById('entryTriggerWords').value.trim(),
             property_id: isProperty ? parseInt(document.getElementById('entryPropertyId').value) : null,
         };
 

@@ -11,7 +11,7 @@ Central orchestrator that handles the complete message flow:
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, Tuple
 
 from sqlalchemy.exc import IntegrityError
@@ -199,6 +199,39 @@ class MessageRouter:
                     if conversation.platform == 'playtest':
                         playtest_log(conversation.id, 'memory_extraction',
                                      f'Memory extraction failed: {e}')
+
+            # Step 6.5: Booking's templated arrival-time request gets a fixed
+            # answer — no model, no latency, correct every time. If it fires,
+            # the AI must not also reply.
+            try:
+                from .quick_replies import should_autoreply, send_checkin_autoreply
+                if should_autoreply(message, conversation):
+                    if send_checkin_autoreply(message, conversation):
+                        result['quick_reply_sent'] = True
+                        result['success'] = True
+                        return result
+            except Exception:
+                logger.exception("Check-in autoreply failed for conversation %s", conversation.id)
+
+            # Step 6.6: Urgency triage — independent of who is in charge of the
+            # chat. The AI's [[ESCALATE]] marker only fires when UMI answers;
+            # with master AI off nothing would ever be flagged, so an important
+            # guest message gets the escalated flag here regardless.
+            # Recency gate: a full/historical Smoobu sync replays years of
+            # messages through here — without it, thousands of closed stays get
+            # flagged and push-notified at once.
+            try:
+                is_recent = bool(msg_ts) and (now_ts - msg_ts) < timedelta(hours=48)
+                if is_recent and not conversation.escalated:
+                    hit = self._match_escalation_topic(conversation, message_content)
+                    if hit:
+                        label, word = hit
+                        self._apply_escalation(conversation,
+                                               f'topic:{label} ({word})',
+                                               pause_ai=False)
+                        result['escalated'] = True
+            except Exception:
+                logger.exception("Urgency triage failed for conversation %s", conversation.id)
 
             # Step 7: Generate AI response if enabled
             # Master switch overrides everything — when OFF, no auto-responses anywhere
@@ -521,6 +554,31 @@ class MessageRouter:
         'con el equipo', 'te aviso', 'vuelvo a',
     )
 
+    # Guest-side urgency triage. Runs on EVERY incoming message regardless of
+    # who is in charge of the chat (UMI, a human, master AI off) — an important
+    # message must surface even when no AI ever looks at it.
+    #
+    # The trigger words live in the Eskalation area of the Wissensdatenbank so
+    # the team owns them: they can add, edit and delete topics without a code
+    # change. Empty Eskalation area = nothing escalates by trigger word, which
+    # is the deliberate trade for making the behaviour visible on screen.
+    @staticmethod
+    def _match_escalation_topic(conversation, text):
+        """(topic label, matched word) for the first Eskalation topic whose
+        trigger words appear in the message, else None.
+
+        ponytail: one SELECT per recent incoming message (~150/day) and a plain
+        substring scan. Cache the topics per property if message volume ever
+        makes this show up in a profile."""
+        if not text:
+            return None
+        lowered = text.lower()
+        for label, words in KnowledgeEntry.load_escalation_topics(conversation):
+            for word in words:
+                if word in lowered:
+                    return label, word
+        return None
+
     @staticmethod
     def _is_escalation_response(response_text: str) -> bool:
         """Backstop: did the AI write a holding / follow-up-promise reply?
@@ -536,12 +594,16 @@ class MessageRouter:
         text_lower = response_text.lower()
         return any(phrase in text_lower for phrase in MessageRouter._ESCALATION_PHRASES)
 
-    def _apply_escalation(self, conversation, reason):
+    def _apply_escalation(self, conversation, reason, pause_ai=True):
         """Flag a conversation as needing a human: set escalated, pause
-        auto-respond, notify the team. Called once per reply when escalating."""
+        auto-respond, notify the team. Called once per reply when escalating.
+
+        pause_ai=False for keyword triage: a false-positive keyword must not
+        silently switch a chat's auto-respond off for good."""
         conversation.escalated = True
         conversation.escalated_at = datetime.utcnow()
-        conversation.auto_respond = False
+        if pause_ai:
+            conversation.auto_respond = False
         db.session.commit()
         logger.info(
             f"[ESCALATION] Conversation {conversation.id} escalated "
@@ -687,8 +749,8 @@ class MessageRouter:
         reservation_info = None
         if conversation.platform == 'smoobu' and conversation.smoobu_reservation_id:
             try:
-                from .smoobu_service import get_smoobu_service
-                smoobu = get_smoobu_service()
+                from .smoobu_service import get_smoobu_service_for
+                smoobu = get_smoobu_service_for(conversation)
                 if smoobu and smoobu.is_configured():
                     reservation_info = smoobu.get_reservation(conversation.smoobu_reservation_id)
             except Exception as e:
@@ -837,8 +899,8 @@ class MessageRouter:
             smoobu_sent = False
             if conversation.platform == 'smoobu' and conversation.auto_respond and conversation.smoobu_reservation_id:
                 try:
-                    from .smoobu_service import get_smoobu_service
-                    smoobu = get_smoobu_service()
+                    from .smoobu_service import get_smoobu_service_for
+                    smoobu = get_smoobu_service_for(conversation)
                     if smoobu and smoobu.is_configured():
                         send_result = smoobu.send_message(conversation.smoobu_reservation_id, response_text)
                         smoobu_sent = bool(send_result)

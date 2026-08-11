@@ -81,6 +81,11 @@ Key environment variables:
 - `SECRET_KEY`: Flask secret key
 - `DATABASE_URL`: Database URI (default: SQLite in instance folder)
 
+## Working Style
+
+Answer short and precise. No long explanations unless the user explicitly asks
+for one.
+
 ## Key Design Decisions
 
 1. **Memory extraction runs on ALL messages** (guest and owner) because hosts often mention guest details in their responses
@@ -92,6 +97,24 @@ Key environment variables:
 4. **Services use global instances** initialized at app startup, retrieved via `get_*_service()` functions
 
 5. **AI responses include full context**: guest profile, property info, and recent conversation history
+
+6. **Multi-account Smoobu** — UMI holds more than one Smoobu API key (slot 1 = original, slot 2 = Sonnenhof). Accounts identify themselves: `GET /me` returns the account id and every webhook carries the same id in `user`. `Conversation.smoobu_account_id` / `Property.smoobu_account_id` tag which account a row belongs to (NULL = primary). Use `get_smoobu_service_for(conversation)` for anything that sends or syncs a specific chat; `get_smoobu_service()` is the primary account only; `get_smoobu_services()` fans out (daemon).
+
+7. **Smoobu auth has two schemes.** New tokens are a pair (label `usr_live_…` + secret) signed per request: canonical `METHOD
+PATH
+QUERY
+TIMESTAMP
+NONCE
+SHA256hex(body)
+API_KEY`, HMAC-SHA256 with the literal secret, base64 → `X-Signature`; PATH keeps the `/api` prefix. `SmoobuService` uses HMAC when a secret is stored for the slot, else the legacy `Api-Key` header — **which Smoobu sunsets 2026-09-25**.
+
+8. **Escalation is a manual flag too** — `POST /api/conversations/<id>/escalate` (and `/resolve`) let the team mark any chat important regardless of whether UMI is answering. Same `Conversation.escalated` flag the AI sets, so badge/filter/banner are shared.
+
+9. **The Eskalation area of the Wissensdatenbank decides what escalates** (2026-08-11). It used to be inert — and unsaveable, because the form hid a `required` field. Now an `esc*` `KnowledgeEntry` row is a topic: `label` = topic name, `trigger_words` = comma-separated phrases, `value` = internal team note. Two consumers, one source of truth:
+   - `MessageRouter._match_escalation_topic` substring-matches the words on **every** inbound guest message — works with `master_ai_enabled=false`, inside the 48h recency gate, `pause_ai=False`.
+   - `_build_guest_reply_prompt` injects the topic **labels** into both prompt tiers so UMI escalates on paraphrases too. No extra AI call.
+
+   **`value` must never reach a prompt** — it can hold phone numbers. `ai_service.py` strips `esc*` from `kb_for_template`, `context_filter.py` blanks `value` at its boundary, and `tests/test_escalation_prompt_injection.py` pins it. Prefix test is `startswith('esc')` / `LIKE 'esc%'`, never `esc_`, so the legacy `escalation` category stays covered. Migration p23 seeded the old hardcoded ~90 keywords as 9 editable topics; the hardcoded list is gone. Empty Eskalation area = nothing escalates by keyword, deliberately.
 
 ## Open Audits / Pending Triage
 
