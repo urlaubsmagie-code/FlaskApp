@@ -4914,6 +4914,35 @@ def api_smoobu_reply(conversation_id):
 # KNOWLEDGE BASE API ROUTES
 # ============================================================================
 
+def _normalize_kb_label(label):
+    """Fold a knowledge label to its comparison form.
+
+    Python, not SQL: SQLite's LOWER() is ASCII-only, so it would treat
+    'Gaestekarte' and 'gaestekarte' as different once umlauts are involved.
+    """
+    return ' '.join((label or '').split()).casefold().rstrip('.,;:!?')
+
+
+def _find_duplicate_knowledge(category, label, property_id, street, exclude_id=None):
+    """An existing entry with the same normalised label in the same scope, or None.
+
+    Scope is (category, property_id, street) matched exactly — the same fact
+    stored globally and for one room are deliberately different entries.
+    """
+    target = _normalize_kb_label(label)
+    if not target:
+        return None
+    candidates = KnowledgeEntry.query.filter_by(
+        category=category, property_id=property_id, street=street
+    ).all()
+    for entry in candidates:
+        if exclude_id is not None and entry.id == exclude_id:
+            continue
+        if _normalize_kb_label(entry.label) == target:
+            return entry
+    return None
+
+
 @chatbot_bp.route('/api/knowledge')
 def api_list_knowledge():
     """List knowledge entries with optional property filter"""
@@ -4951,7 +4980,7 @@ def api_extract_knowledge_from_message(message_id):
     if entries is None:
         return jsonify({'error': 'AI extraction failed'}), 500
     if not entries:
-        return jsonify({'saved': 0, 'message': 'No useful knowledge found in this message'}), 200
+        return jsonify({'saved': 0, 'skipped': 0, 'entries': [], 'message': 'No useful knowledge found in this message'}), 200
 
     # Resolve scope: room (default) | street | general
     data = request.get_json(silent=True) or {}
@@ -4973,19 +5002,31 @@ def api_extract_knowledge_from_message(message_id):
         return jsonify({'error': f'Invalid scope: {scope}'}), 400
 
     saved = []
+    skipped = 0
+    # Deliberate guard, not redundant with autoflush: SQLAlchemy autoflush would
+    # already surface entry n as a "duplicate" for entry n+1 via _find_duplicate_knowledge,
+    # but within-batch dedup must not silently depend on that flush timing.
+    batch_seen = set()
     for entry in entries:
+        scope_key = (entry['category'], _normalize_kb_label(entry['label']))
+        if scope_key in batch_seen or _find_duplicate_knowledge(
+                entry['category'], entry['label'], target_property_id, target_street):
+            skipped += 1
+            continue
+        batch_seen.add(scope_key)
         ke = KnowledgeEntry(
             property_id=target_property_id,
             street=target_street,
             category=entry['category'],
             label=entry['label'],
-            value=entry['value']
+            value=entry['value'],
+            source='ai',
         )
         db.session.add(ke)
         saved.append(entry)
     db.session.commit()
 
-    return jsonify({'saved': len(saved), 'entries': saved}), 201
+    return jsonify({'saved': len(saved), 'skipped': skipped, 'entries': saved}), 201
 
 
 @chatbot_bp.route('/api/knowledge', methods=['POST'])
@@ -5024,6 +5065,19 @@ def api_create_knowledge():
         if not prop:
             return jsonify({'error': 'Property not found'}), 400
 
+    # The form has no street field, so manual entries are always street=None.
+    duplicate = _find_duplicate_knowledge(category, label, property_id, None)
+    if duplicate:
+        return jsonify({
+            'error': f'Es gibt bereits einen Eintrag "{duplicate.label}" in dieser Kategorie.',
+            'existing': {
+                'id': duplicate.id,
+                'label': duplicate.label,
+                'value': duplicate.value,
+                'source': duplicate.source,
+            },
+        }), 409
+
     # Auto-increment sort_order
     max_order = db.session.query(db.func.max(KnowledgeEntry.sort_order)).filter_by(
         property_id=property_id, category=category
@@ -5052,11 +5106,14 @@ def api_update_knowledge(entry_id):
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
+    # Validate every incoming field into locals first, without touching
+    # `entry`, so a rejected update (incl. the duplicate check below) leaves
+    # the row untouched.
+    category = entry.category
     if 'category' in data:
         category = data['category'].strip()
         if category not in KnowledgeEntry.VALID_CATEGORIES:
             return jsonify({'error': 'Invalid category'}), 400
-        entry.category = category
 
     if 'label' in data:
         label = data['label'].strip()
@@ -5064,30 +5121,29 @@ def api_update_knowledge(entry_id):
             return jsonify({'error': 'Label is required'}), 400
         if len(label) > 200:
             return jsonify({'error': 'Label must be 200 characters or less'}), 400
-        entry.label = label
+    else:
+        label = entry.label
 
     if 'value' in data:
         value = data['value'].strip()
-        # entry.category is already updated above when the payload changed it.
-        if not value and not entry.category.startswith('esc'):
+        if not value and not category.startswith('esc'):
             return jsonify({'error': 'Value is required'}), 400
         if len(value) > 2000:
             return jsonify({'error': 'Value must be 2000 characters or less'}), 400
-        entry.value = value
 
     if 'trigger_words' in data:
         trigger_words = (data['trigger_words'] or '').strip()
         if len(trigger_words) > 2000:
             return jsonify({'error': 'Trigger words must be 2000 characters or less'}), 400
-        entry.trigger_words = trigger_words or None
 
+    property_id = entry.property_id
     if 'property_id' in data:
         pid = data['property_id']
         if pid is not None:
             prop = Property.query.get(pid)
             if not prop:
                 return jsonify({'error': 'Property not found'}), 400
-        entry.property_id = pid
+        property_id = pid
 
     if 'sort_order' in data:
         try:
@@ -5096,6 +5152,40 @@ def api_update_knowledge(entry_id):
             return jsonify({'error': 'sort_order must be an integer'}), 400
         if so < 0 or so > 10000:
             return jsonify({'error': 'sort_order must be between 0 and 10000'}), 400
+
+    # Renaming/moving an entry onto an existing (category, label, property)
+    # is a duplicate too. Use the incoming category/property_id (may differ
+    # from entry's) so a category or property move can't slip past. Only
+    # check when scope actually changed — legacy duplicate pairs (pre-dating
+    # this guard) must stay editable for fields like `value`, or every edit
+    # to either twin 409s forever.
+    new_scope = (category, _normalize_kb_label(label), property_id, entry.street)
+    old_scope = (entry.category, _normalize_kb_label(entry.label), entry.property_id, entry.street)
+    if new_scope != old_scope:
+        duplicate = _find_duplicate_knowledge(category, label, property_id,
+                                              entry.street, exclude_id=entry.id)
+        if duplicate:
+            return jsonify({
+                'error': f'Es gibt bereits einen Eintrag "{duplicate.label}" in dieser Kategorie.',
+                'existing': {
+                    'id': duplicate.id,
+                    'label': duplicate.label,
+                    'value': duplicate.value,
+                    'source': duplicate.source,
+                },
+            }), 409
+
+    if 'category' in data:
+        entry.category = category
+    if 'label' in data:
+        entry.label = label
+    if 'value' in data:
+        entry.value = value
+    if 'trigger_words' in data:
+        entry.trigger_words = trigger_words or None
+    if 'property_id' in data:
+        entry.property_id = pid
+    if 'sort_order' in data:
         entry.sort_order = so
 
     db.session.commit()

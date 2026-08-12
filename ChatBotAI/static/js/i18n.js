@@ -441,6 +441,9 @@ const translations = {
         // Knowledge extraction from messages
         'conversation.knowledge.extract': 'Wissen extrahieren',
         'conversation.knowledge.saved': '{count} Einträge zur Wissensdatenbank hinzugefügt',
+        'conversation.knowledge.savedWithSkipped': '{count} gespeichert, {skipped} bereits bekannt',
+        'knowledge.duplicate.open': 'Vorhandenen Eintrag öffnen',
+        'knowledge.duplicate.notionWarning': 'Achtung: Dieser Eintrag wird von Notion verwaltet. Änderungen hier werden beim nächsten Notion-Abgleich überschrieben — ändere ihn besser direkt in Notion.',
         'conversation.knowledge.nothingFound': 'Keine nützlichen Informationen in dieser Nachricht gefunden',
         'conversation.knowledge.extractFailed': 'Wissensextraktion fehlgeschlagen – bitte versuche es gleich noch einmal.',
         'knowledge.scope.title': 'Wo speichern?',
@@ -1028,6 +1031,9 @@ const translations = {
         // Knowledge extraction from messages
         'conversation.knowledge.extract': 'Extract knowledge',
         'conversation.knowledge.saved': '{count} entries added to Knowledge Base',
+        'conversation.knowledge.savedWithSkipped': '{count} saved, {skipped} already known',
+        'knowledge.duplicate.open': 'Open existing entry',
+        'knowledge.duplicate.notionWarning': 'Careful: this entry is managed by Notion. Changes made here will be overwritten on the next Notion sync — edit it in Notion instead.',
         'conversation.knowledge.nothingFound': 'No useful information found in this message',
         'conversation.knowledge.extractFailed': 'Knowledge extraction failed — please try again.',
         'knowledge.scope.title': 'Where to save?',
