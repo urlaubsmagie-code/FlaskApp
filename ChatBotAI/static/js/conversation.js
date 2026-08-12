@@ -130,6 +130,7 @@ function loadOlderMessages() {
                         </div>
                         <div class="message-text">${escapeHtml(msg.content || '')}</div>
                     </div>
+                    ${msg.sender_type === 'guest' ? translateBtnHtml() : ''}
                     ${suggestBtn}
                 `;
                 fragment.appendChild(msgDiv);
@@ -381,12 +382,15 @@ function sendMessage(e) {
     }
 }
 
-function sendLocal(content, tempId, correctionOriginal) {
+function sendLocal(content, tempId, correctionOriginal, deliveryFailed) {
     fetch(`/chatbot/api/conversations/${conversationId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             content: content,
+            // Set only when a platform send just failed, so the stored message is
+            // marked "not delivered" instead of masquerading as sent.
+            ...(deliveryFailed && { delivery_failed: true }),
             ...(correctionOriginal && { original_ai_content: correctionOriginal })
         })
     })
@@ -427,7 +431,7 @@ function sendViaGmail(content, tempId, correctionOriginal) {
     .then(response => {
         if (response.status === 401) {
             console.warn('Gmail disconnected, falling back to local send');
-            sendLocal(content, tempId, correctionOriginal);
+            sendLocal(content, tempId, correctionOriginal, true);
             return null;
         }
         return response.json();
@@ -436,7 +440,7 @@ function sendViaGmail(content, tempId, correctionOriginal) {
         if (!data) return;
         if (data.error) {
             console.warn('Gmail send failed, falling back to local:', data.error);
-            sendLocal(content, tempId, correctionOriginal);
+            sendLocal(content, tempId, correctionOriginal, true);
             return;
         }
         if (data.message_id) {
@@ -452,7 +456,7 @@ function sendViaGmail(content, tempId, correctionOriginal) {
     })
     .catch(err => {
         console.error('Gmail send error, falling back to local:', err);
-        sendLocal(content, tempId, correctionOriginal);
+        sendLocal(content, tempId, correctionOriginal, true);
     })
     .finally(() => { sendInProgress = false; });
 }
@@ -481,7 +485,7 @@ function sendViaSmoobu(content, tempId, correctionOriginal) {
         if (data.error) {
             console.warn('Smoobu send failed, falling back to local:', data.error);
             showNotification('Unsicherer Sendestatus – die Nachricht wurde möglicherweise schon zugestellt. Bitte prüfe den Chat, bevor du sie erneut sendest.', 'info', 7000);
-            sendLocal(content, tempId, correctionOriginal);
+            sendLocal(content, tempId, correctionOriginal, true);
             return;
         }
         if (data.message_id) {
@@ -498,7 +502,7 @@ function sendViaSmoobu(content, tempId, correctionOriginal) {
     .catch(err => {
         console.error('Smoobu send error, falling back to local:', err);
         showNotification('Unsicherer Sendestatus – die Nachricht wurde möglicherweise schon zugestellt. Bitte prüfe den Chat, bevor du sie erneut sendest.', 'info', 7000);
-        sendLocal(content, tempId, correctionOriginal);
+        sendLocal(content, tempId, correctionOriginal, true);
     })
     .finally(() => { sendInProgress = false; });
 }
@@ -871,8 +875,15 @@ function extractKnowledge(messageId, scope = 'room', attempt = 1) {
     .then(data => {
         if (data.error) {
             showNotification(data.error, 'error', 4000);
-        } else if (data.saved === 0) {
+        } else if (data.saved === 0 && !data.skipped) {
             showNotification(i18n.t('conversation.knowledge.nothingFound'), 'info', 3000);
+        } else if (data.skipped) {
+            showNotification(
+                i18n.t('conversation.knowledge.savedWithSkipped')
+                    .replace('{count}', data.saved)
+                    .replace('{skipped}', data.skipped),
+                data.saved > 0 ? 'success' : 'info', 4000
+            );
         } else {
             showNotification(
                 i18n.t('conversation.knowledge.saved').replace('{count}', data.saved),
@@ -997,27 +1008,47 @@ if (importEmailThreadBtn) {
 }
 
 function resolveEscalation() {
-    fetch(`/chatbot/api/conversations/${conversationId}/resolve`, {
+    setEscalation(false);
+}
+
+// Manual escalation: the team flags a chat as important whether or not UMI
+// is answering it. Same flag the AI sets, so filter/badge/banner all reuse it.
+function toggleEscalation() {
+    const btn = document.getElementById('escalationToggleBtn') || document.getElementById('mobileEscalationBtn');
+    const isEscalated = !!(btn && btn.classList.contains('btn-escalation-resolve'));
+    setEscalation(!isEscalated);
+}
+
+function setEscalation(escalate) {
+    fetch(`/chatbot/api/conversations/${conversationId}/${escalate ? 'escalate' : 'resolve'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
     })
     .then(r => r.json())
     .then(data => {
-        if (data.success) {
-            // Remove escalation UI elements
+        if (!data.success) return;
+
+        if (escalate) {
+            ensureEscalationBanner();
+        } else {
             const banner = document.getElementById('escalationBanner');
             if (banner) banner.remove();
-
-            const resolveBtn = document.getElementById('resolveEscalationBtn');
-            if (resolveBtn) resolveBtn.remove();
-
-            const mobileResolveBtn = document.getElementById('mobileResolveBtn');
-            if (mobileResolveBtn) mobileResolveBtn.remove();
-
             showNotification(i18n.t('conversation.escalation.resolved') || 'Eskalation gelöst', 'success');
         }
+
+        [['escalationToggleBtn', 'Lösen', 'Wichtig'],
+         ['mobileEscalationBtn', 'Als gelöst markieren', 'Als wichtig markieren']].forEach(([id, onLabel, offLabel]) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.toggle('btn-escalation-resolve', escalate);
+            const icon = el.querySelector('i');
+            if (icon) icon.className = 'fas ' + (escalate ? 'fa-check-circle' : 'fa-exclamation-circle');
+            const label = el.querySelector('span');
+            if (label) label.textContent = escalate ? onLabel : offLabel;
+            el.title = escalate ? onLabel : offLabel;
+        });
     })
-    .catch(err => console.error('Failed to resolve escalation:', err));
+    .catch(err => console.error('Failed to update escalation:', err));
 }
 
 // Inject the escalation banner live (no page refresh) when a conversation
@@ -1193,6 +1224,16 @@ function addMessageToUI(message, senderType) {
     }
     const emailTag = (message.platform_message_id || '').startsWith('email:')
         ? `<div class="email-source-tag">${i18n.t('conversation.emailSource')}</div>` : '';
+    // A send that never reached the platform must look different from one that did,
+    // or nobody ever learns the guest didn't get it.
+    const failedTag = message.delivery === 'failed'
+        ? `<div class="delivery-failed-tag">
+               <i class="fas fa-triangle-exclamation"></i>
+               <span>${i18n.t('conversation.delivery.failed')}</span>
+               <button class="btn-retry-send" onclick="retrySend(${message.id})">
+                   <i class="fas fa-rotate-right"></i> ${i18n.t('conversation.delivery.retry')}
+               </button>
+           </div>` : '';
     messageDiv.innerHTML = `
         <div class="message-avatar"><i class="fas ${icon}"></i></div>
         <div class="message-content">
@@ -1202,9 +1243,12 @@ function addMessageToUI(message, senderType) {
             </div>
             <div class="message-text">${escapeHtml(message.content || '')}</div>
             ${emailTag}
+            ${failedTag}
         </div>
+        ${message.sender_type === 'guest' ? translateBtnHtml() : ''}
         ${perMsgActionBtn}
     `;
+    if (message.delivery === 'failed') messageDiv.classList.add('delivery-failed');
 
     // Pending approval styling
     if (message.approval_status === 'pending') {
@@ -1495,14 +1539,23 @@ document.addEventListener('DOMContentLoaded', function() {
     })
         .then(r => (r.ok ? r.json() : null))
         .then(data => {
+            const banner = document.getElementById('bookingSearchBanner');
+            if (banner) banner.style.display = 'none';
             if (data && data.inserted > 0) {
                 // Pull the newly inserted messages in via the existing incremental
                 // poller (fetches messages after maxKnownMessageId).
                 messagePoller.stop();
                 messagePoller.start();
+                showNotification(
+                    `${data.inserted} neue Booking-Nachricht${data.inserted === 1 ? '' : 'en'} geladen`,
+                    'success', 4000);
             }
         })
-        .catch(err => console.debug('booking live-fetch skipped:', err));
+        .catch(err => {
+            const banner = document.getElementById('bookingSearchBanner');
+            if (banner) banner.style.display = 'none';
+            console.debug('booking live-fetch skipped:', err);
+        });
 });
 
 // ============================================================================
@@ -1787,3 +1840,139 @@ function playtestPollEvents() {
     })
     .catch(() => {});
 }
+
+/**
+ * Re-send a message whose platform send failed. Confirms first: the original may
+ * have reached the guest despite reporting failure, so a retry can double-send.
+ */
+function retrySend(messageId) {
+    if (!confirm(i18n.t('conversation.delivery.retryConfirm'))) return;
+    const btn = document.querySelector(`[data-message-id="${messageId}"] .btn-retry-send`);
+    if (btn) btn.disabled = true;
+    fetch(`/chatbot/api/messages/${messageId}/retry`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                showNotification(data.error, 'error');
+                if (btn) btn.disabled = false;
+                return;
+            }
+            showNotification(i18n.t('conversation.delivery.retrySuccess'), 'success');
+            const el = document.querySelector(`[data-message-id="${messageId}"]`);
+            if (el) {
+                el.classList.remove('delivery-failed');
+                const tag = el.querySelector('.delivery-failed-tag');
+                if (tag) tag.remove();
+            }
+        })
+        .catch(err => {
+            console.error('Retry failed:', err);
+            showNotification(i18n.t('conversation.delivery.retryFailed'), 'error');
+            if (btn) btn.disabled = false;
+        });
+}
+
+// =========================================================================
+// Message translation (per-message, on demand)
+// =========================================================================
+
+function translateBtnHtml() {
+    return `<button class="btn-translate" title="${i18n.t('conversation.translate')}" hidden>
+                <i class="fas fa-language"></i>
+            </button>`;
+}
+
+// Word markers, not a language library: we only need "is this already the
+// language the reader speaks?", and a wrong guess costs one useless button —
+// not a wrong translation. Umlauts/ß alone are decisive for German.
+const _LANG_MARKERS = {
+    de: /[äöüß]|\b(der|die|das|und|ist|sind|nicht|ich|wir|sie|ihr|mit|für|auf|von|dass|haben|hat|kann|können|bitte|danke|guten|uhr|wann|wie|noch|eine|einen|schon|aber|auch|sehr|gerne|frage)\b/gi,
+    en: /\b(the|and|is|are|you|we|can|could|would|please|thanks|thank|hello|hi|with|for|that|have|has|our|your|there|about|when|how)\b/gi,
+};
+
+function looksLikeUiLanguage(text) {
+    const lang = i18n.currentLanguage === 'en' ? 'en' : 'de';
+    const hits = (text.match(_LANG_MARKERS[lang]) || []).length;
+    // Two markers: one stray loanword ("Hotel", "ok") must not count as fluent.
+    return hits >= 2;
+}
+
+// Show the button only on messages the reader can't already read. Runs on the
+// Jinja-rendered bubbles at load and on anything the polling / load-older paths
+// inject later — a MutationObserver instead of a call in each render path, so a
+// future render site can't forget to opt in.
+function updateTranslateButtons(root) {
+    (root || document).querySelectorAll?.('.message.guest .btn-translate').forEach(btn => {
+        if (btn.dataset.checked) return;
+        btn.dataset.checked = '1';
+        const text = btn.closest('.message')?.querySelector('.message-text')?.textContent || '';
+        btn.hidden = looksLikeUiLanguage(text);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+    updateTranslateButtons(container);
+    new MutationObserver(() => updateTranslateButtons(container)).observe(container, {
+        childList: true, subtree: true,
+    });
+    // Language switch flips which messages count as foreign.
+    window.addEventListener('languageChanged', () => {
+        container.querySelectorAll('.btn-translate').forEach(b => delete b.dataset.checked);
+        updateTranslateButtons(container);
+    });
+
+    // One delegated listener — covers every render path without re-binding.
+    container.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.btn-translate');
+        if (!btn) return;
+        const textEl = btn.closest('.message')?.querySelector('.message-text');
+        if (!textEl) return;
+
+        // Toggle back: the translation stays on the element, so flipping
+        // between original and translation is free after the first fetch.
+        if (btn.classList.contains('showing-translation')) {
+            textEl.textContent = btn.dataset.original;
+            btn.classList.remove('showing-translation');
+            btn.title = i18n.t('conversation.translate');
+            return;
+        }
+        if (btn.dataset.translation) {
+            btn.dataset.original = textEl.textContent;
+            textEl.textContent = btn.dataset.translation;
+            btn.classList.add('showing-translation');
+            btn.title = i18n.t('conversation.showOriginal');
+            return;
+        }
+
+        const original = textEl.textContent;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        try {
+            const res = await fetch('/chatbot/api/translate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: original, target: i18n.currentLanguage })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.translated) throw new Error(data.error || 'failed');
+            if (!data.was_translated) {
+                // The marker heuristic guessed wrong — it was already readable.
+                btn.hidden = true;
+                return;
+            }
+            btn.dataset.original = original;
+            btn.dataset.translation = data.translated;
+            btn.classList.add('showing-translation');
+            textEl.textContent = data.translated;
+            btn.title = i18n.t('conversation.showOriginal');
+        } catch (err) {
+            console.error('Translation failed:', err);
+            showNotification(i18n.t('conversation.translateFailed'), 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-language"></i>';
+        }
+    });
+});

@@ -76,13 +76,12 @@
                 <i class="fas fa-check-double"></i>
                 <span class="toggle-status" id="autoApproveStatus">AUS</span>
             </button>
-            {% if conversation.escalated %}
-            <button class="btn btn-icon btn-escalation-resolve" onclick="resolveEscalation()" id="resolveEscalationBtn"
-                data-i18n-title="conversation.escalation.resolve" title="Als gelöst markieren">
-                <i class="fas fa-check-circle"></i>
-                <span class="toggle-status" data-i18n="conversation.escalation.resolve">Lösen</span>
+            <button class="btn btn-icon {% if conversation.escalated %}btn-escalation-resolve{% endif %}"
+                onclick="toggleEscalation()" id="escalationToggleBtn"
+                title="{{ 'Als gelöst markieren' if conversation.escalated else 'Als wichtig markieren' }}">
+                <i class="fas {{ 'fa-check-circle' if conversation.escalated else 'fa-exclamation-circle' }}"></i>
+                <span class="toggle-status">{{ 'Lösen' if conversation.escalated else 'Wichtig' }}</span>
             </button>
-            {% endif %}
             {% if conversation.platform == 'smoobu' and conversation.smoobu_reservation_id %}
             <button class="btn btn-icon" onclick="syncConversation()" id="syncBtn" title="Nachrichten synchronisieren">
                 <i class="fas fa-sync-alt"></i>
@@ -122,12 +121,11 @@
                 <i class="fas fa-bolt"></i>
                 <span>Auto: <span id="mobileAutoRespondStatus">{{ 'AN' if conversation.auto_respond else 'AUS' }}</span></span>
             </button>
-            {% if conversation.escalated %}
-            <button class="overflow-menu-item btn-escalation-resolve" onclick="resolveEscalation()" id="mobileResolveBtn">
-                <i class="fas fa-check-circle"></i>
-                <span data-i18n="conversation.escalation.resolve">Als gelöst markieren</span>
+            <button class="overflow-menu-item {% if conversation.escalated %}btn-escalation-resolve{% endif %}"
+                onclick="toggleEscalation()" id="mobileEscalationBtn">
+                <i class="fas {{ 'fa-check-circle' if conversation.escalated else 'fa-exclamation-circle' }}"></i>
+                <span>{{ 'Als gelöst markieren' if conversation.escalated else 'Als wichtig markieren' }}</span>
             </button>
-            {% endif %}
             {% if conversation.platform == 'smoobu' and conversation.smoobu_reservation_id %}
             <button class="overflow-menu-item" onclick="syncConversation()" id="mobileSyncBtn">
                 <i class="fas fa-sync-alt"></i>
@@ -205,6 +203,12 @@
 
     <!-- Messages Area -->
     <div class="messages-container" id="messagesContainer">
+        {% if 'booking' in (conversation.display_platform or '')|lower %}
+        <div class="booking-search-banner" id="bookingSearchBanner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <span data-i18n="conversation.booking.searching">Suche nach neuen Booking-Nachrichten…</span>
+        </div>
+        {% endif %}
         {% if conversation.escalated %}
         <div class="escalation-banner" id="escalationBanner">
             <i class="fas fa-exclamation-triangle"></i>
@@ -244,6 +248,15 @@
                 {% if message.platform_message_id and message.platform_message_id.startswith('email:') %}
                 <div class="email-source-tag" data-i18n="conversation.emailSource">via E-Mail-Abgleich</div>
                 {% endif %}
+                {% if message.delivery_state == 'failed' %}
+                <div class="delivery-failed-tag">
+                    <i class="fas fa-triangle-exclamation"></i>
+                    <span data-i18n="conversation.delivery.failed">Nicht zugestellt</span>
+                    <button class="btn-retry-send" onclick="retrySend({{ message.id }})">
+                        <i class="fas fa-rotate-right"></i> <span data-i18n="conversation.delivery.retry">Erneut senden</span>
+                    </button>
+                </div>
+                {% endif %}
                 {% if message.approval_status == 'pending' %}
                 <div class="pending-approval-label" data-i18n="conversation.approval.waiting">Warte auf Freigabe...</div>
                 <div class="pending-approval-actions">
@@ -260,6 +273,12 @@
                 {% endif %}
             </div>
             {% if message.sender_type == 'guest' %}
+            <!-- Unhidden by conversation.js only when the text isn't already in
+                 the UI language — translating German into German is noise. -->
+            <button class="btn-translate" data-i18n-title="conversation.translate"
+                title="Übersetzen" hidden>
+                <i class="fas fa-language"></i>
+            </button>
             <button class="btn-suggest-for-message" onclick="suggestForMessage({{ message.id }})"
                 data-i18n-title="conversation.ai.suggestForMessage"
                 title="UMI-Antwort für diese Nachricht"
@@ -353,5 +372,53 @@
     };
 </script>
 <script src="{{ url_for('chatbot.static', filename='js/guided-tour.js') }}?v=1"></script>
-<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=34"></script>
+<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=40"></script>
+{% if request.args.get('diag') %}
+{# Throwaway on-device layout probe: ?diag=1 on any chat. Remove with the
+   /viewport-check route once the mobile layout is settled. #}
+<script>
+(function () {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#000d;' +
+      'color:#0f0;font:11px/1.35 monospace;padding:6px;white-space:pre;pointer-events:none';
+  document.body.appendChild(box);
+  const r = s => { const e = document.querySelector(s); return e ? e.getBoundingClientRect() : null; };
+  // Which elements actually stick out below the viewport — i.e. what makes the
+  // page scrollable, which is what lets Chrome's URL bar hide and drag the
+  // header off. Static/relative only: fixed elements don't extend the document.
+  const culprits = () => {
+    const out = [];
+    document.querySelectorAll('body *').forEach(el => {
+      const b = el.getBoundingClientRect();
+      const pos = getComputedStyle(el).position;
+      if (b.height > 0 && b.bottom > innerHeight + 1 && pos !== 'fixed' && pos !== 'absolute') {
+        out.push((el.className || el.tagName).toString().split(' ')[0].slice(0, 18)
+                 + '@' + Math.round(b.bottom));
+      }
+    });
+    return out.length ? out.slice(0, 4).join(' ') : 'none';
+  };
+  const tick = () => {
+    const doc = document.documentElement;
+    const c = r('.conversation-container'), h = r('.conversation-header-bar'),
+          ta = r('.message-form textarea'), ia = r('.input-actions');
+    box.textContent = [
+      'inner ' + innerWidth + 'x' + innerHeight + '  screen ' + screen.width + 'x' + screen.height,
+      'doc scrollH ' + doc.scrollHeight + '  scrollW ' + doc.scrollWidth + '  scrollY ' + Math.round(scrollY),
+      'V-SCROLL ' + (doc.scrollHeight > innerHeight + 1) + '   H-SCROLL ' + (doc.scrollWidth > innerWidth + 1),
+      'container h=' + (c ? Math.round(c.height) : '?') + ' top=' + (c ? Math.round(c.top) : '?'),
+      'header top=' + (h ? Math.round(h.top) : '?') + ' bot=' + (h ? Math.round(h.bottom) : '?'),
+      'inputActions w=' + (ia ? Math.round(ia.width) : '?') + ' scrollW=' +
+          (document.querySelector('.input-actions') || {}).scrollWidth,
+      'textarea bot=' + (ta ? Math.round(ta.bottom) : '?') + '  (visible if <= ' + innerHeight + ')',
+      'PAST FOLD: ' + culprits(),
+    ].join('\n');
+  };
+  tick();
+  addEventListener('scroll', tick, { passive: true });
+  addEventListener('resize', tick);
+  setInterval(tick, 500);
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -421,6 +421,24 @@ const knowledgeApp = {
                 body: JSON.stringify(data),
             });
 
+            if (resp.status === 409) {
+                const err = await resp.json();
+                const openLabel = typeof i18n !== 'undefined'
+                    ? i18n.t('knowledge.duplicate.open') : 'Vorhandenen Eintrag öffnen';
+                let confirmMsg = `${err.error}\n\n${openLabel}?`;
+                if (err.existing && err.existing.source === 'notion') {
+                    const notionWarning = typeof i18n !== 'undefined'
+                        ? i18n.t('knowledge.duplicate.notionWarning')
+                        : 'Achtung: Dieser Eintrag wird von Notion verwaltet. Änderungen hier werden beim nächsten Notion-Abgleich überschrieben — ändere ihn besser direkt in Notion.';
+                    confirmMsg = `${err.error}\n\n${notionWarning}\n\n${openLabel}?`;
+                }
+                if (confirm(confirmMsg)) {
+                    this.closeModal();
+                    await this.loadEntries();
+                    this.openEditModal(err.existing.id);
+                }
+                return;
+            }
             if (!resp.ok) {
                 const err = await resp.json();
                 alert(err.error || 'Save failed');
