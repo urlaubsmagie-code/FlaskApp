@@ -10,171 +10,16 @@
     </div>
 
     <div class="settings-grid">
-        <!-- AI Settings -->
+        <!-- UMI's own behaviour (personality, tone, approval, templates) lives on
+             the UMI page — this page is admin-only, and the team needs those. -->
         <div class="settings-card">
-            <div class="card-header">
-                <h2><i class="fas fa-robot"></i> <span data-i18n="settings.ai.title">UMI-Konfiguration</span></h2>
-            </div>
             <div class="card-body">
-                <form id="aiSettingsForm">
-                    <div class="setting-item">
-                        <div class="setting-info">
-                            <label for="masterAiEnabled" data-i18n="settings.ai.masterSwitch">UMI-Hauptschalter</label>
-                            <p class="setting-description" data-i18n="settings.ai.masterSwitch.desc">Wenn AUS, werden keine automatischen Antworten gesendet — gilt für alle Konversationen</p>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="masterAiEnabled" name="master_ai_enabled"
-                                onchange="saveToggleSetting('master_ai_enabled', this.checked)"
-                                {% if settings|selectattr('key', 'equalto', 'master_ai_enabled')|map(attribute='value')|first != 'false' %}checked{% endif %}>
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="setting-item">
-                        <div class="setting-info">
-                            <label for="autoRespondNew" data-i18n="settings.ai.autoRespondNew">Auto-Antwort für neue Konversationen</label>
-                            <p class="setting-description" data-i18n="settings.ai.autoRespondNew.desc">Neue Konversationen starten mit aktivierter automatischer Antwort</p>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="autoRespondNew" name="auto_respond_new_conversations"
-                                onchange="saveToggleSetting('auto_respond_new_conversations', this.checked)"
-                                {% if settings|selectattr('key', 'equalto', 'auto_respond_new_conversations')|map(attribute='value')|first != 'false' %}checked{% endif %}>
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="setting-item">
-                        <div class="setting-info">
-                            <label for="approvalQueueEnabled" data-i18n="settings.ai.approvalQueue">UMI-Freigabe</label>
-                            <p class="setting-description" data-i18n="settings.ai.approvalQueue.desc">UMI-Antworten müssen vor dem Versand genehmigt werden</p>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="approvalQueueEnabled" name="approval_queue_enabled"
-                                onchange="saveToggleSetting('approval_queue_enabled', this.checked)"
-                                {% if settings|selectattr('key', 'equalto', 'approval_queue_enabled')|map(attribute='value')|first != 'false' %}checked{% endif %}>
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="setting-item">
-                        <div class="setting-info">
-                            <label for="autoApproveNew" data-i18n="settings.ai.autoApproveNew">Auto-Freigabe für neue Konversationen</label>
-                            <p class="setting-description" data-i18n="settings.ai.autoApproveNew.desc">Neue Konversationen starten mit aktivierter Auto-Freigabe (UMI sendet sofort)</p>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="autoApproveNew" name="auto_approve_new_conversations"
-                                onchange="saveToggleSetting('auto_approve_new_conversations', this.checked)"
-                                {% if settings|selectattr('key', 'equalto', 'auto_approve_new_conversations')|map(attribute='value')|first == 'true' %}checked{% endif %}>
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="setting-item">
-                        <div class="setting-info">
-                            <label for="inboxInstantSend" data-i18n="settings.ai.inboxInstantSend">UMI-Antwort aus dem Posteingang sofort senden</label>
-                            <p class="setting-description" data-i18n="settings.ai.inboxInstantSend.desc">Achtung: Über das ⋮-Menü im Posteingang erstellte UMI-Antworten gehen ohne Vorschau direkt an den Gast.</p>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="inboxInstantSend" name="inbox_umi_instant_send"
-                                onchange="saveToggleSetting('inbox_umi_instant_send', this.checked)"
-                                {% if settings|selectattr('key', 'equalto', 'inbox_umi_instant_send')|map(attribute='value')|first == 'true' %}checked{% endif %}>
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="setting-item">
-                        <div class="setting-info">
-                            <label data-i18n="settings.ai.bulkAutoApprove">Auto-Freigabe für alle Chats</label>
-                            <p class="setting-description" data-i18n="settings.ai.bulkAutoApprove.desc">Auto-Freigabe für alle aktiven Konversationen ein- oder ausschalten</p>
-                        </div>
-                        <div class="button-group">
-                            <button class="btn btn-sm btn-success" onclick="bulkAutoApprove(true)" data-i18n="settings.ai.bulkAutoApprove.enable">Für alle aktivieren</button>
-                            <button class="btn btn-sm btn-danger" onclick="bulkAutoApprove(false)" data-i18n="settings.ai.bulkAutoApprove.disable">Für alle deaktivieren</button>
-                        </div>
-                    </div>
-
-                    <div class="setting-item">
-                        <div class="setting-info">
-                            <label for="memoryExtraction" data-i18n="settings.ai.memoryExtraction">Erinnerungsextraktion</label>
-                            <p class="setting-description" data-i18n="settings.ai.memoryExtraction.desc">Gästeinformationen aus Nachrichten extrahieren und speichern</p>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="memoryExtraction" name="memory_extraction_enabled"
-                                {% if settings|selectattr('key', 'equalto', 'memory_extraction_enabled')|map(attribute='value')|first == 'true' %}checked{% endif %}>
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="setting-item">
-                        <div class="setting-info">
-                            <label for="responseTone" data-i18n="settings.ai.tone">Antwortton</label>
-                            <p class="setting-description" data-i18n="settings.ai.tone.desc">Ton für UMI-generierte Antworten auswählen</p>
-                        </div>
-                        <select id="responseTone" name="ai_response_tone" class="setting-select">
-                            {% set current_tone = settings|selectattr('key', 'equalto', 'ai_response_tone')|map(attribute='value')|first or 'friendly_professional' %}
-                            <option value="friendly_professional" {% if current_tone == 'friendly_professional' %}selected{% endif %} data-i18n="settings.ai.tone.friendly">Freundlich & Professionell</option>
-                            <option value="formal" {% if current_tone == 'formal' %}selected{% endif %} data-i18n="settings.ai.tone.formal">Formell</option>
-                            <option value="casual" {% if current_tone == 'casual' %}selected{% endif %} data-i18n="settings.ai.tone.casual">Locker</option>
-                            <option value="concise" {% if current_tone == 'concise' %}selected{% endif %} data-i18n="settings.ai.tone.concise">Prägnant</option>
-                        </select>
-                    </div>
-
-                    <div class="setting-item">
-                        <div class="setting-info">
-                            <label for="maxHistory" data-i18n="settings.ai.history">Konversationsverlauf</label>
-                            <p class="setting-description" data-i18n="settings.ai.history.desc">Anzahl der vorherigen Nachrichten für UMI-Kontext</p>
-                        </div>
-                        <input type="number" id="maxHistory" name="max_conversation_history"
-                            value="{{ settings|selectattr('key', 'equalto', 'max_conversation_history')|map(attribute='value')|first or '10' }}"
-                            min="1" max="50" class="setting-input">
-                    </div>
-
-                    <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
-                        <div class="setting-info" style="margin-bottom: 10px;">
-                            <label for="hostInstructions" data-i18n="settings.ai.hostInstructions">Host-Anweisungen</label>
-                            <p class="setting-description" data-i18n="settings.ai.hostInstructions.desc">Eigene Anweisungen, die UMI bei jeder Antwort berücksichtigen soll</p>
-                        </div>
-                        <textarea id="hostInstructions" name="host_instructions" class="setting-textarea" rows="5"
-                            data-i18n-placeholder="settings.ai.hostInstructions.placeholder"
-                            placeholder="z.B. WiFi-Passwort: SunnyBeach2024&#10;Erwähne unseren 10% Rabatt bei 7+ Nächten&#10;Check-in ab 15 Uhr an der Rezeption">{{ settings|selectattr('key', 'equalto', 'host_instructions')|map(attribute='value')|first or '' }}</textarea>
-                        <p class="setting-description" style="margin-top: 8px;">
-                            <span data-i18n="settings.ai.knowledgeLink">Für strukturierte Fakten (WLAN, Check-in, Umgebung) nutze die</span>
-                            <a href="{{ url_for('chatbot.knowledge_base') }}" style="color: var(--primary-color);">
-                                <span data-i18n="settings.ai.knowledgeLinkText">Wissensdatenbank →</span>
-                            </a>
-                        </p>
-                    </div>
-
-                    {% if current_user.is_admin %}
-                    <div class="setting-item">
-                        <div class="setting-info">
-                            <label for="aiTemperature" data-i18n="settings.ai.temperature">Temperatur</label>
-                            <p class="setting-description" data-i18n="settings.ai.temperature.desc">Kreativität der UMI-Antworten (0.0 = vorhersagbar, 1.0 = kreativ)</p>
-                        </div>
-                        <div class="range-with-value">
-                            <input type="range" id="aiTemperature" name="ai_temperature"
-                                min="0" max="1" step="0.1"
-                                value="{{ settings|selectattr('key', 'equalto', 'ai_temperature')|map(attribute='value')|first or '0.5' }}"
-                                oninput="document.getElementById('tempValue').textContent = this.value">
-                            <span class="range-value" id="tempValue">{{ settings|selectattr('key', 'equalto', 'ai_temperature')|map(attribute='value')|first or '0.5' }}</span>
-                        </div>
-                    </div>
-
-                    <div class="setting-item">
-                        <div class="setting-info">
-                            <label for="aiMaxTokens" data-i18n="settings.ai.maxTokens">Max. Tokens</label>
-                            <p class="setting-description" data-i18n="settings.ai.maxTokens.desc">Maximale Länge der UMI-Antworten (128-4096)</p>
-                        </div>
-                        <input type="number" id="aiMaxTokens" name="ai_max_tokens"
-                            value="{{ settings|selectattr('key', 'equalto', 'ai_max_tokens')|map(attribute='value')|first or '1024' }}"
-                            min="128" max="4096" step="128" class="setting-input">
-                    </div>
-                    {% endif %}
-
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-save"></i> <span data-i18n="settings.ai.save">Einstellungen speichern</span>
-                    </button>
-                </form>
+                <p class="help-text" data-i18n="settings.umiMoved">
+                    Persönlichkeit, Ton, Freigabe-Regeln und Schnellantwort-Vorlagen findest du jetzt auf der UMI-Seite.
+                </p>
+                <a class="btn btn-secondary" href="{{ url_for('chatbot.knowledge_base') }}?tab=personality">
+                    <i class="fas fa-robot"></i> <span data-i18n="settings.umiMoved.link">UMI öffnen</span>
+                </a>
             </div>
         </div>
 
@@ -289,23 +134,6 @@
             </div>
         </div>
 
-        <!-- Quick Reply Templates -->
-        <div class="settings-card">
-            <div class="card-header">
-                <h2><i class="fas fa-reply"></i> <span data-i18n="settings.templates.title">Schnellantwort-Vorlagen</span></h2>
-            </div>
-            <div class="card-body">
-                <div class="templates-list" id="templatesList">
-                    <!-- Populated by JavaScript -->
-                </div>
-                <p class="no-data" id="templatesEmpty" style="display:none;" data-i18n="settings.templates.empty">Noch keine Vorlagen erstellt</p>
-                <p class="help-text" data-i18n="settings.templates.help">Vorlagen sparen Zeit bei häufig gesendeten Nachrichten. Variablen: {guest_name}, {property_name}, {check_in_time}</p>
-                <button class="btn btn-secondary" onclick="openTemplateModal()">
-                    <i class="fas fa-plus"></i> <span data-i18n="settings.templates.add">Vorlage hinzufügen</span>
-                </button>
-            </div>
-        </div>
-
         <!-- User Management (admin only) -->
         {% if current_user.is_admin %}
         <div class="settings-card">
@@ -357,7 +185,7 @@
                     <p class="help-text" data-i18n="settings.integrations.gmailHelp">Abrufen importiert E-Mails in den Posteingang. Verarbeiten führt UMI auf ungelesene E-Mails aus.</p>
                 </div>
 
-                <!-- Smoobu -->
+                <!-- Smoobu account 1 -->
                 <div class="integration-item" id="smoobuIntegration">
                     <div class="integration-icon smoobu">
                         <i class="fas fa-building"></i>
@@ -366,9 +194,10 @@
                         <span class="integration-name" data-i18n="settings.integrations.smoobu">Smoobu</span>
                         <span class="integration-status" id="smoobuStatus" data-i18n="settings.integrations.notConfigured">Nicht konfiguriert</span>
                     </div>
-                    <div id="smoobuConnectForm" style="display:flex; gap:8px; align-items:center;">
-                        <input type="password" id="smoobuApiKey" placeholder="API Key" class="setting-select" style="min-width:200px;">
-                        <button class="btn btn-primary btn-sm" onclick="connectSmoobu()" data-i18n="settings.integrations.connect">Verbinden</button>
+                    <div id="smoobuConnectForm" class="integration-connect-form" style="display:flex;">
+                        <input type="password" id="smoobuApiKey" placeholder="API Key / Label" class="setting-select">
+                        <input type="password" id="smoobuApiSecret" placeholder="Verschlüsselung (optional)" class="setting-select">
+                        <button class="btn btn-primary btn-sm" onclick="connectSmoobu(1)" data-i18n="settings.integrations.connect">Verbinden</button>
                     </div>
                 </div>
 
@@ -378,17 +207,65 @@
                         <button class="btn btn-secondary btn-sm" onclick="syncSmoobuMessages()">
                             <i class="fas fa-sync-alt"></i> <span data-i18n="settings.integrations.smoobu.syncMessages">Nachrichten synchronisieren</span>
                         </button>
-                        <button class="btn btn-secondary btn-sm" onclick="syncSmoobuProperties()">
+                        <button class="btn btn-secondary btn-sm" onclick="syncSmoobuProperties(1)">
                             <i class="fas fa-home"></i> <span data-i18n="settings.integrations.smoobu.syncProperties">Unterkünfte synchronisieren</span>
                         </button>
                         <button class="btn btn-secondary btn-sm" onclick="fullSmoobuSync()">
                             <i class="fas fa-sync"></i> <span data-i18n="settings.integrations.smoobu.fullSync">Vollständige Synchronisierung</span>
                         </button>
-                        <button class="btn btn-danger btn-sm" onclick="disconnectSmoobu()">
+                        <button class="btn btn-danger btn-sm" onclick="disconnectSmoobu(1)">
                             <i class="fas fa-unlink"></i> <span data-i18n="settings.integrations.disconnect">Trennen</span>
                         </button>
                     </div>
                 </div>
+
+                <!-- Smoobu account 2 (second Smoobu login, e.g. Sonnenhof) -->
+                <div class="integration-item" id="smoobuIntegration2">
+                    <div class="integration-icon smoobu">
+                        <i class="fas fa-building"></i>
+                    </div>
+                    <div class="integration-info">
+                        <span class="integration-name" data-i18n="settings.integrations.smoobu2">Smoobu Konto 2</span>
+                        <span class="integration-status" id="smoobuStatus2" data-i18n="settings.integrations.notConfigured">Nicht konfiguriert</span>
+                    </div>
+                    <div id="smoobuConnectForm2" class="integration-connect-form" style="display:flex;">
+                        <input type="password" id="smoobuApiKey2" placeholder="API Key / Label" class="setting-select">
+                        <input type="password" id="smoobuApiSecret2" placeholder="Verschlüsselung" class="setting-select">
+                        <button class="btn btn-primary btn-sm" onclick="connectSmoobu(2)" data-i18n="settings.integrations.connect">Verbinden</button>
+                    </div>
+                </div>
+
+                <div class="smoobu-actions" id="smoobuConnectedActions2" style="display: none;">
+                    <div class="action-buttons">
+                        <button class="btn btn-secondary btn-sm" onclick="syncSmoobuProperties(2)">
+                            <i class="fas fa-home"></i> <span data-i18n="settings.integrations.smoobu.syncProperties">Unterkünfte synchronisieren</span>
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="disconnectSmoobu(2)">
+                            <i class="fas fa-unlink"></i> <span data-i18n="settings.integrations.disconnect">Trennen</span>
+                        </button>
+                    </div>
+                    <p class="help-text" data-i18n="settings.integrations.smoobu2.help">Nachrichten aller Konten werden gemeinsam synchronisiert. Webhook-URL auch in diesem Smoobu-Konto eintragen.</p>
+                </div>
+
+                {% if whatsapp_enabled %}
+                <!-- WhatsApp bridge: status, start, pairing QR (admin-only route) -->
+                <div class="integration-item" id="whatsappIntegration">
+                    <div class="integration-icon whatsapp">
+                        <i class="fab fa-whatsapp"></i>
+                    </div>
+                    <div class="integration-info">
+                        <span class="integration-name" data-i18n="settings.integrations.whatsapp">WhatsApp</span>
+                        <span class="integration-status" id="whatsappStatus" data-i18n="common.loading">Laden...</span>
+                    </div>
+                    <button class="btn btn-primary btn-sm" id="whatsappStartBtn" onclick="startWhatsAppBridge()" style="display:none;">
+                        <i class="fas fa-play"></i> <span data-i18n="settings.integrations.whatsapp.start">Bridge starten</span>
+                    </button>
+                </div>
+                <div class="whatsapp-pairing" id="whatsappPairing" style="display:none;">
+                    <img id="whatsappQr" alt="WhatsApp QR-Code" width="240" height="240">
+                    <p class="help-text" data-i18n="settings.integrations.whatsapp.scanHelp">Auf dem Handy mit der Geschäftsnummer: WhatsApp → Einstellungen → Verknüpfte Geräte → Gerät hinzufügen, dann diesen Code scannen. Er erneuert sich etwa alle 20 Sekunden.</p>
+                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -467,6 +344,30 @@ confirmation</textarea>
                 <p class="help-text" style="margin-bottom: 15px;" data-i18n="emailReview.subtitle">
                     Nachrichten aus Airbnb-/Booking-E-Mails, die Smoobu evtl. verpasst hat.
                 </p>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="checkinAutoreplyEnabled" data-i18n="settings.checkinAutoreply.enabled">Check-in-Zeit automatisch beantworten</label>
+                        <p class="setting-description" data-i18n="settings.checkinAutoreply.enabled.desc">Booking.com-Standardnachricht ("Ich möchte einen Check-in um ...") sofort mit einem festen Text beantworten — ohne KI. Nur für Nachrichten der letzten 30 Minuten.</p>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="checkinAutoreplyEnabled" name="checkin_autoreply_enabled"
+                            onchange="saveToggleSetting('checkin_autoreply_enabled', this.checked)"
+                            {% if settings|selectattr('key', 'equalto', 'checkin_autoreply_enabled')|map(attribute='value')|first == 'true' %}checked{% endif %}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item setting-item-stacked">
+                    <div class="setting-info">
+                        <label for="checkinAutoreplyText" data-i18n="settings.checkinAutoreply.text">Antworttext</label>
+                        <p class="setting-description" data-i18n="settings.checkinAutoreply.text.desc">Wird genau so an den Gast gesendet. Leer lassen für den Standardtext.</p>
+                    </div>
+                    <textarea id="checkinAutoreplyText" rows="3" class="form-control"
+                        onblur="saveTextSetting('checkin_autoreply_text', this.value)"
+                        placeholder="Vielen Dank für die Info zu Ihrer Ankunftszeit — wir haben sie notiert. Der Check-in ist ab 15:00 Uhr möglich. Sollte sich etwas ändern, geben Sie uns gerne Bescheid."
+                    >{{ settings|selectattr('key', 'equalto', 'checkin_autoreply_text')|map(attribute='value')|first or '' }}</textarea>
+                </div>
 
                 <div class="setting-item">
                     <div class="setting-info">
@@ -631,76 +532,9 @@ confirmation</textarea>
     </div>
 </div>
 
+<!-- Shared with the UMI page: the save* helpers the admin sections below use. -->
+<script src="{{ url_for('chatbot.static', filename='js/umi.js') }}?v=1"></script>
 <script>
-    // ============================================
-    // Instant-save for global AI toggles
-    // ============================================
-
-    function saveRangeSetting(key, value) {
-        const data = {};
-        data[key] = String(value);
-
-        fetch('/chatbot/api/settings', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        })
-        .then(response => response.json())
-        .then(result => {
-            if (!result.success) {
-                showNotification('Failed to save setting', 'error');
-            }
-        })
-        .catch(err => {
-            showNotification('Error: ' + err.message, 'error');
-        });
-    }
-
-    function saveToggleSetting(key, checked) {
-        const data = {};
-        data[key] = checked ? 'true' : 'false';
-
-        fetch('/chatbot/api/settings', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        })
-        .then(response => response.json())
-        .then(result => {
-            if (result.success) {
-                showNotification(checked ? 'Enabled' : 'Disabled', 'success');
-            } else {
-                showNotification('Failed to save setting', 'error');
-            }
-        })
-        .catch(err => {
-            showNotification('Error: ' + err.message, 'error');
-        });
-    }
-
-    // ============================================
-    // Bulk Auto-Approve
-    // ============================================
-
-    async function bulkAutoApprove(enabled) {
-        try {
-            const response = await fetch('/chatbot/api/settings/bulk-auto-approve', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({enabled: enabled})
-            });
-            const data = await response.json();
-            if (data.success) {
-                showNotification(
-                    `Auto-Freigabe für ${data.updated_count} Konversationen ${enabled ? 'aktiviert' : 'deaktiviert'}`,
-                    'success'
-                );
-            }
-        } catch (error) {
-            showNotification('Fehler beim Aktualisieren', 'error');
-        }
-    }
-
     {% if current_user.is_admin %}
     // ============================================
     // AI Model Management (admin only)
@@ -964,37 +798,6 @@ confirmation</textarea>
         });
     }
 
-    // Settings form submission
-    document.getElementById('aiSettingsForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-
-        const settings = {
-            memory_extraction_enabled: document.getElementById('memoryExtraction').checked ? 'true' : 'false',
-            ai_response_tone: document.getElementById('responseTone').value,
-            max_conversation_history: document.getElementById('maxHistory').value,
-            host_instructions: document.getElementById('hostInstructions').value,
-            ai_temperature: document.getElementById('aiTemperature').value,
-            ai_max_tokens: document.getElementById('aiMaxTokens').value
-        };
-
-        fetch('/chatbot/api/settings', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(settings)
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                showNotification('Settings saved successfully!', 'success');
-            } else {
-                showNotification('Failed to save settings', 'error');
-            }
-        })
-        .catch(err => {
-            showNotification('Error saving settings: ' + err.message, 'error');
-        });
-    });
-
     {% endif %}
 
     // ============================================
@@ -1144,123 +947,6 @@ confirmation</textarea>
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
-    }
-
-    // ============================================
-    // Reply Templates Management
-    // ============================================
-
-    let editingTemplateId = null;
-
-    function loadTemplates() {
-        fetch('/chatbot/api/reply-templates')
-            .then(response => response.json())
-            .then(data => {
-                const list = document.getElementById('templatesList');
-                const empty = document.getElementById('templatesEmpty');
-
-                if (!data.templates || data.templates.length === 0) {
-                    list.innerHTML = '';
-                    empty.style.display = 'block';
-                    return;
-                }
-
-                empty.style.display = 'none';
-                list.innerHTML = data.templates.map(tpl => `
-                    <div class="template-item" data-template-id="${tpl.id}">
-                        <div class="template-info">
-                            <span class="template-name">${escapeHtml(tpl.name)}</span>
-                            <span class="template-category">${escapeHtml(tpl.category)}</span>
-                            <span class="template-preview">${escapeHtml(tpl.content.substring(0, 80))}${tpl.content.length > 80 ? '...' : ''}</span>
-                        </div>
-                        <div class="template-actions">
-                            <button class="btn btn-icon btn-sm" onclick="editTemplate(${tpl.id})" title="Edit">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button class="btn btn-icon btn-sm" onclick="deleteTemplate(${tpl.id})" title="Delete">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                    </div>
-                `).join('');
-            })
-            .catch(err => console.error('Failed to load templates:', err));
-    }
-
-    function openTemplateModal(templateData) {
-        editingTemplateId = templateData ? templateData.id : null;
-        const modal = document.getElementById('templateModal');
-        const form = document.getElementById('templateForm');
-        const title = modal.querySelector('.modal-header h2');
-
-        title.textContent = editingTemplateId ? 'Edit Template' : 'Add Template';
-        form.reset();
-
-        if (templateData) {
-            document.getElementById('tplName').value = templateData.name || '';
-            document.getElementById('tplCategory').value = templateData.category || 'general';
-            document.getElementById('tplContent').value = templateData.content || '';
-        }
-
-        modal.showModal();
-    }
-
-    function editTemplate(templateId) {
-        fetch('/chatbot/api/reply-templates')
-            .then(r => r.json())
-            .then(data => {
-                const tpl = data.templates.find(t => t.id === templateId);
-                if (tpl) openTemplateModal(tpl);
-            });
-    }
-
-    function deleteTemplate(templateId) {
-        if (!confirm('Are you sure you want to delete this template?')) return;
-
-        fetch(`/chatbot/api/reply-templates/${templateId}`, { method: 'DELETE' })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    showNotification('Template deleted', 'success');
-                    loadTemplates();
-                }
-            })
-            .catch(err => showNotification('Error: ' + err.message, 'error'));
-    }
-
-    function saveTemplate() {
-        const data = {
-            name: document.getElementById('tplName').value.trim(),
-            category: document.getElementById('tplCategory').value.trim() || 'general',
-            content: document.getElementById('tplContent').value.trim()
-        };
-
-        if (!data.name || !data.content) {
-            showNotification('Name and content are required', 'error');
-            return;
-        }
-
-        const url = editingTemplateId
-            ? `/chatbot/api/reply-templates/${editingTemplateId}`
-            : '/chatbot/api/reply-templates';
-        const method = editingTemplateId ? 'PUT' : 'POST';
-
-        fetch(url, {
-            method: method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        })
-        .then(r => r.json())
-        .then(result => {
-            if (result.error) {
-                showNotification('Error: ' + result.error, 'error');
-            } else {
-                showNotification(editingTemplateId ? 'Template updated' : 'Template added', 'success');
-                document.getElementById('templateModal').close();
-                loadTemplates();
-            }
-        })
-        .catch(err => showNotification('Error: ' + err.message, 'error'));
     }
 
     {% if current_user.is_admin %}
@@ -1728,16 +1414,26 @@ confirmation</textarea>
     // Smoobu Integration
     // =========================================================================
 
-    function checkSmoobuStatus() {
-        fetch('/chatbot/smoobu/status')
+    // Slot 1 is the original Smoobu account; slot 2+ are extra logins (Sonnenhof).
+    // Element ids carry the slot suffix for slot 2+, so one set of functions
+    // drives every account.
+    const smoobuEl = (base, slot) => document.getElementById(slot > 1 ? base + slot : base);
+
+    function checkSmoobuStatus(slot) {
+        if (!slot) { checkSmoobuStatus(1); checkSmoobuStatus(2); return; }
+        fetch(`/chatbot/smoobu/status?slot=${slot}`)
             .then(r => r.json())
             .then(data => {
-                const statusEl = document.getElementById('smoobuStatus');
-                const connectForm = document.getElementById('smoobuConnectForm');
-                const connectedActions = document.getElementById('smoobuConnectedActions');
+                const statusEl = smoobuEl('smoobuStatus', slot);
+                const connectForm = smoobuEl('smoobuConnectForm', slot);
+                const connectedActions = smoobuEl('smoobuConnectedActions', slot);
+                if (!statusEl) return;
 
                 if (data.authenticated) {
-                    statusEl.textContent = (i18n.t('settings.integrations.connected') || 'Connected') + (data.api_key_masked ? ` (${data.api_key_masked})` : '');
+                    const acct = (data.account_id ? ` #${data.account_id}` : '')
+                        + (data.auth === 'legacy' ? ' — Legacy-Key' : '');
+                    statusEl.textContent = (i18n.t('settings.integrations.connected') || 'Connected')
+                        + acct + (data.api_key_masked ? ` (${data.api_key_masked})` : '');
                     statusEl.className = 'integration-status connected';
                     connectForm.style.display = 'none';
                     connectedActions.style.display = 'block';
@@ -1751,8 +1447,12 @@ confirmation</textarea>
             .catch(err => console.error('Smoobu status check failed:', err));
     }
 
-    function connectSmoobu() {
-        const apiKey = document.getElementById('smoobuApiKey').value.trim();
+    function connectSmoobu(slot) {
+        slot = slot || 1;
+        const input = smoobuEl('smoobuApiKey', slot);
+        const secretInput = smoobuEl('smoobuApiSecret', slot);
+        const apiKey = input.value.trim();
+        const apiSecret = secretInput ? secretInput.value.trim() : '';
         if (!apiKey) {
             showNotification(i18n.t('settings.integrations.smoobu.apiKey') + ' required', 'error');
             return;
@@ -1761,14 +1461,15 @@ confirmation</textarea>
         fetch('/chatbot/smoobu/connect', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ api_key: apiKey })
+            body: JSON.stringify({ api_key: apiKey, api_secret: apiSecret, slot: slot })
         })
         .then(r => r.json())
         .then(data => {
             if (data.success) {
                 showNotification(i18n.t('settings.integrations.smoobu.connected') || 'Connected to Smoobu', 'success');
-                document.getElementById('smoobuApiKey').value = '';
-                checkSmoobuStatus();
+                input.value = '';
+                if (secretInput) secretInput.value = '';
+                checkSmoobuStatus(slot);
             } else {
                 showNotification(data.error || 'Connection failed', 'error');
             }
@@ -1779,15 +1480,20 @@ confirmation</textarea>
         });
     }
 
-    function disconnectSmoobu() {
+    function disconnectSmoobu(slot) {
+        slot = slot || 1;
         if (!confirm(i18n.t('common.confirm') + '?')) return;
 
-        fetch('/chatbot/smoobu/disconnect', { method: 'POST' })
+        fetch('/chatbot/smoobu/disconnect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slot: slot })
+        })
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
                     showNotification('Smoobu disconnected', 'success');
-                    checkSmoobuStatus();
+                    checkSmoobuStatus(slot);
                 }
             })
             .catch(err => console.error('Smoobu disconnect failed:', err));
@@ -1869,13 +1575,14 @@ confirmation</textarea>
             });
     }
 
-    function syncSmoobuProperties() {
+    function syncSmoobuProperties(slot) {
+        slot = slot || 1;
         const btn = event.target.closest('button');
         const originalHtml = btn.innerHTML;
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + (i18n.t('settings.integrations.smoobu.syncing') || 'Syncing...');
 
-        fetch('/chatbot/api/smoobu/sync-properties', { method: 'POST' })
+        fetch(`/chatbot/api/smoobu/sync-properties?slot=${slot}`, { method: 'POST' })
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -1906,7 +1613,9 @@ confirmation</textarea>
 
         try {
             // Step 1: Sync properties
-            await fetch('/chatbot/api/smoobu/sync-properties', { method: 'POST' });
+            // Properties are per account — refresh every connected one.
+            await fetch('/chatbot/api/smoobu/sync-properties?slot=1', { method: 'POST' });
+            await fetch('/chatbot/api/smoobu/sync-properties?slot=2', { method: 'POST' });
 
             // Step 2: Sync messages
             const syncRes = await fetch('/chatbot/api/smoobu/sync', { method: 'POST' });
@@ -1934,12 +1643,60 @@ confirmation</textarea>
 
     // Check Smoobu status on page load
     checkSmoobuStatus();
+
+    // WhatsApp bridge. Polls only while not linked: the QR rotates every ~20s,
+    // so a stale image fails the scan. Stops once connected.
+    let whatsappPoll = null;
+    function checkWhatsApp() {
+        const statusEl = document.getElementById('whatsappStatus');
+        if (!statusEl) return;
+        fetch('/chatbot/api/whatsapp/pairing')
+            .then(r => r.json())
+            .then(data => {
+                const running = !data.error;
+                document.getElementById('whatsappStartBtn').style.display = running ? 'none' : '';
+                document.getElementById('whatsappPairing').style.display = data.qr ? 'block' : 'none';
+                if (data.qr) document.getElementById('whatsappQr').src = data.qr;
+                if (data.connected) {
+                    const number = (data.user || '').split(/[:@]/)[0];
+                    statusEl.textContent = i18n.t('settings.integrations.connected') + (number ? ` (+${number})` : '');
+                    statusEl.className = 'integration-status connected';
+                } else {
+                    statusEl.textContent = !running ? i18n.t('settings.integrations.whatsapp.notRunning')
+                        : data.qr ? i18n.t('settings.integrations.whatsapp.scan')
+                        : i18n.t('settings.integrations.whatsapp.connecting');
+                    statusEl.className = 'integration-status';
+                }
+                clearTimeout(whatsappPoll);
+                if (!data.connected) whatsappPoll = setTimeout(checkWhatsApp, 5000);
+            })
+            .catch(err => {
+                console.error('WhatsApp status check failed:', err);
+                clearTimeout(whatsappPoll);
+                whatsappPoll = setTimeout(checkWhatsApp, 10000);
+            });
+    }
+
+    function startWhatsAppBridge() {
+        const btn = document.getElementById('whatsappStartBtn');
+        btn.disabled = true;
+        fetch('/chatbot/api/whatsapp/start', { method: 'POST' })
+            .then(r => r.json().then(data => ({ ok: r.ok, data })))
+            .then(({ ok, data }) => {
+                if (!ok) throw new Error(data.error || 'Start failed');
+                showNotification(i18n.t('settings.integrations.whatsapp.started'), 'success');
+                setTimeout(checkWhatsApp, 3000);
+            })
+            .catch(err => showNotification(err.message, 'error'))
+            .finally(() => { btn.disabled = false; });
+    }
+
+    checkWhatsApp();
     {% endif %}
 
     // Load settings on page load
     document.addEventListener('DOMContentLoaded', function() {
         loadProperties();
-        loadTemplates();
         {% if current_user.is_admin %}
         loadEmailFilterSettings();
         loadNotionSettings();
@@ -1951,6 +1708,22 @@ confirmation</textarea>
 <style>
     .integration-status.connected {
         color: #22c55e;
+    }
+    .integration-icon.whatsapp {
+        background: #25D366;
+        color: #fff;
+    }
+    .whatsapp-pairing {
+        margin: 0 0 16px;
+        text-align: center;
+    }
+    .whatsapp-pairing img {
+        display: block;
+        margin: 8px auto;
+        max-width: 100%;
+        height: auto;
+        background: #fff;   /* the QR needs a light ground to scan, also in dark mode */
+        border-radius: 8px;
     }
     .integration-email {
         display: block;
@@ -1978,8 +1751,28 @@ confirmation</textarea>
     }
     .action-buttons {
         display: flex;
+        flex-wrap: wrap;
         gap: 8px;
         margin-bottom: 8px;
+    }
+    /* Integration rows carry an icon, a label and up to three controls — on a
+       narrow screen (installed PWA) they must wrap, not overflow sideways. */
+    .integration-item {
+        flex-wrap: wrap;
+    }
+    .integration-info {
+        flex: 1 1 140px;
+        min-width: 0;
+    }
+    .integration-connect-form {
+        flex: 1 1 100%;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    .integration-connect-form .setting-select {
+        flex: 1 1 160px;
+        min-width: 0;
     }
     .setting-textarea {
         width: 100%;
@@ -2411,48 +2204,6 @@ confirmation</textarea>
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="document.getElementById('propertyModal').close()">
-                <span data-i18n="common.cancel">Abbrechen</span>
-            </button>
-            <button type="submit" class="btn btn-primary">
-                <i class="fas fa-save"></i> <span data-i18n="common.save">Speichern</span>
-            </button>
-        </div>
-    </form>
-</dialog>
-
-<!-- Template Modal -->
-<dialog class="settings-modal" id="templateModal">
-    <div class="modal-header">
-        <h2>Add Template</h2>
-        <button class="btn-close" onclick="document.getElementById('templateModal').close()">
-            <i class="fas fa-times"></i>
-        </button>
-    </div>
-    <form id="templateForm" onsubmit="event.preventDefault(); saveTemplate();">
-        <div class="modal-body">
-            <div class="form-group">
-                <label for="tplName" data-i18n="settings.templates.name">Name *</label>
-                <input type="text" id="tplName" required placeholder="z.B. WiFi-Info, Check-in Anleitung">
-            </div>
-            <div class="form-group">
-                <label for="tplCategory" data-i18n="settings.templates.category">Kategorie</label>
-                <select id="tplCategory">
-                    <option value="general">Allgemein</option>
-                    <option value="check_in">Check-in</option>
-                    <option value="check_out">Check-out</option>
-                    <option value="house_rules">Hausregeln</option>
-                    <option value="directions">Wegbeschreibung</option>
-                    <option value="wifi">WiFi</option>
-                    <option value="amenities">Ausstattung</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="tplContent" data-i18n="settings.templates.content">Inhalt *</label>
-                <textarea id="tplContent" rows="6" required placeholder="Hallo {guest_name}, ...&#10;&#10;Variablen: {guest_name}, {property_name}, {check_in_time}"></textarea>
-            </div>
-        </div>
-        <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" onclick="document.getElementById('templateModal').close()">
                 <span data-i18n="common.cancel">Abbrechen</span>
             </button>
             <button type="submit" class="btn btn-primary">

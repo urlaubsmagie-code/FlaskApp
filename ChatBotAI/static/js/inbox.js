@@ -65,6 +65,8 @@ function createConversationCard(conv) {
     // row touch (sync, read, AI summary), so grouping by it interleaved the headers.
     card.dataset.lastMessageAt = conv.last_message_at || '';
     card.dataset.platform = conv.platform;
+    card.dataset.channel = conv.channel || '';
+    card.dataset.account = conv.smoobu_account_id || '';
     card.dataset.status = conv.status;
     card.dataset.guestId = conv.guest_id || '';
     card.dataset.isRead = conv.is_read ? 'true' : 'false';
@@ -402,16 +404,25 @@ function insertDateGroupHeaders() {
 // Filter and Search (using FilterState module)
 // =========================================================================
 
-document.querySelectorAll('[data-filter-platform]').forEach(btn => {
+const filterDropdown = document.getElementById('filterDropdown');
+
+document.querySelectorAll('[data-filter-channel]').forEach(btn => {
     btn.addEventListener('click', function() {
-        filterState.setPlatform(this.dataset.filterPlatform || null);
+        filterState.setChannel(this.dataset.filterChannel || null);
+        filterDropdown.open = false;
     });
 });
 
-document.querySelectorAll('[data-filter-status]').forEach(btn => {
+document.querySelectorAll('[data-filter-account]').forEach(btn => {
     btn.addEventListener('click', function() {
-        filterState.setStatus(this.dataset.filterStatus || null);
+        filterState.setAccount(this.dataset.filterAccount || null);
+        filterDropdown.open = false;
     });
+});
+
+// <details> doesn't close on outside tap by itself.
+document.addEventListener('click', (e) => {
+    if (filterDropdown.open && !filterDropdown.contains(e.target)) filterDropdown.open = false;
 });
 
 const guestFilterEl = document.getElementById('guestFilter');
@@ -461,9 +472,6 @@ document.getElementById('searchClearBtn').addEventListener('click', function() {
 async function fetchSearchResults(query) {
     const params = new URLSearchParams({ q: query });
 
-    if (filterState.state.platform) {
-        params.set('platform', filterState.state.platform);
-    }
     if (filterState.state.status) {
         params.set('status', filterState.state.status);
     }
@@ -479,6 +487,10 @@ async function fetchSearchResults(query) {
 }
 
 function renderSearchResults(data) {
+    // Stale response: the user cleared or changed the query while it was in flight.
+    const currentQuery = (document.getElementById('searchInput').value || '').trim();
+    if (data.query !== currentQuery) return;
+
     const container = document.getElementById('conversationList');
     const emptyState = document.getElementById('searchEmptyState');
     const normalEmpty = container.querySelector('.empty-state:not(.search-empty)');
@@ -630,7 +642,11 @@ function clearSearchMode() {
 }
 
 function clearSearch() {
-    document.getElementById('searchInput').value = '';
+    // Kill any in-flight debounce, otherwise it fires after the clear and
+    // re-renders the results the user just dismissed.
+    if (searchTimeout) { clearTimeout(searchTimeout); searchTimeout = null; }
+    const input = document.getElementById('searchInput');
+    if (input) input.value = '';
     const clearBtn = document.getElementById('searchClearBtn');
     if (clearBtn) clearBtn.classList.remove('visible');
     clearSearchMode();
@@ -698,7 +714,7 @@ function loadMoreConversations() {
 
     loadMorePage++;
 
-    fetch(`/chatbot/api/conversations?page=${loadMorePage}&per_page=50`)
+    fetch(`/chatbot/api/conversations?page=${loadMorePage}&per_page=50${serverFilterParams()}`)
     .then(r => r.json())
     .then(data => {
         const container = document.getElementById('conversationList');
@@ -764,32 +780,60 @@ let lastKnownUnread = null;
 
 async function fullInboxFetch(signal) {
     const st = filterState.getState();
-    // Unread is a server-side filter that must return ALL unread conversations, not
-    // just page 1 — otherwise old unread stay hidden behind "Load More". Use a high
-    // per_page in unread mode. ponytail: 500 covers any realistic backlog; raise it if
-    // an inbox ever legitimately exceeds 500 unread at once.
-    const perPage = st.unread ? 500 : 50;
-    let url = `/chatbot/api/conversations?per_page=${perPage}`;
+    // Unread and Eskaliert are server-side filters that must return the WHOLE set,
+    // not just page 1 — otherwise the old ones (escalations run months back) stay
+    // hidden behind "Mehr laden", which is exactly the pile nobody was seeing.
+    // ponytail: 500 covers any realistic backlog; raise it if a filter ever
+    // legitimately exceeds 500 conversations at once.
+    const fullSet = st.unread || st.status === 'escalated' || st.status === 'pending_approval';
+    const perPage = fullSet ? 500 : 50;
+    let url = `/chatbot/api/conversations?per_page=${perPage}${serverFilterParams()}`;
     if (st.status === 'escalated') url += '&escalated=true';
+    if (st.status === 'pending_approval') url += '&status=pending_approval';
     if (st.unread) url += '&unread=true';
     const response = await fetch(url, { signal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
+    // The fetch returns the complete set in full-set mode, so "Mehr laden" would
+    // page over a list that is already whole. One place decides it, for every
+    // path that can enter or leave these filters.
+    const loadMoreEl = document.getElementById('loadMoreContainer');
+    if (loadMoreEl) loadMoreEl.style.display = fullSet ? 'none' : '';
     updateInboxList(data.conversations);
-    updateInboxBadgeFromData(data.conversations);
     loadStats();
 }
 
 // The "Ungelesen" filter is server-backed (see fullInboxFetch): toggling it must
 // re-fetch so ALL unread conversations load, not just the ones already on screen.
 // "Load More" is hidden while the filter is on because the fetch returns the full set.
-function toggleUnreadFilter() {
-    filterState.toggleUnread();
-    const unread = filterState.getState().unread;
-    const loadMoreContainer = document.getElementById('loadMoreContainer');
-    if (loadMoreContainer) loadMoreContainer.style.display = unread ? 'none' : '';
+// Side effects of the unread filter live on the state hook so EVERY path that flips it
+// — the toggle button, the badge ✕, and "Filter löschen" — refetches the correct list.
+// Channel and account are server-side filters (the inbox is paginated), so any change
+// must replace the list rather than hide cards. Same reasoning as the unread filter.
+function serverFilterParams() {
+    const st = filterState.getState();
+    return (st.channel ? `&channel=${encodeURIComponent(st.channel)}` : '')
+         + (st.account ? `&account=${encodeURIComponent(st.account)}` : '');
+}
+
+filterState.onServerFilterChange = () => {
+    loadMorePage = 1;  // the refetch replaces the list; keep Load More paging honest
+    fullInboxFetch().catch(err => console.error('Filter refresh failed:', err));
+};
+
+filterState.onUnreadChange = (unread) => {
     loadMorePage = 1;  // full refetch replaces the list; keep Load More paging consistent
     fullInboxFetch().catch(err => console.error('Unread filter refresh failed:', err));
+};
+
+function toggleUnreadFilter() {
+    filterState.toggleUnread();
+}
+
+// The Eskaliert / UMI-Freigabe tiles are the status filter: tapping one a second
+// time clears it instead of stranding the team in it.
+function toggleStatusFilter(status) {
+    filterState.setStatus(filterState.state.status === status ? null : status);
 }
 
 const inboxPoller = new PollingManager({
@@ -903,7 +947,8 @@ function initGmailAutoSync() {
                             { method: 'POST', signal }
                         );
                         if (response.status === 401) {
-                            throw new Error('GMAIL_DISCONNECTED');
+                            const body = await response.json().catch(() => ({}));
+                            throw new Error(body.session_expired ? 'SESSION_EXPIRED' : 'GMAIL_DISCONNECTED');
                         }
                         if (!response.ok) throw new Error(`HTTP ${response.status}`);
                         return response.json();
@@ -974,28 +1019,8 @@ function syncGmailNow() {
 // Smoobu Auto-Sync
 // =========================================================================
 
-let smoobuPoller = null;
-
-function initSmoobuAutoSync() {
-    // Reveal the manual Smoobu Sync button if Smoobu is connected.
-    // The 60s frontend auto-sync poller was removed: each /api/smoobu/sync
-    // call takes 2+ minutes for large accounts, so a 60s poll per open tab
-    // was holding Waitress threads continuously and causing remote users to
-    // see 2-3 minute page loads. The server-side daemon already syncs every
-    // 2 minutes, and the inbox's regular polling surfaces new messages.
-    fetch('/chatbot/smoobu/status')
-        .then(r => r.json())
-        .then(status => {
-            if (status.authenticated) {
-                const btn = document.getElementById('syncSmoobuBtn');
-                if (btn) btn.style.display = '';
-            }
-        })
-        .catch(err => {
-            console.debug('Smoobu status check failed:', err);
-        });
-}
-
+// No frontend Smoobu poller: the server daemon syncs, and the button's
+// visibility is rendered server-side (inbox.html).
 function syncSmoobuNow() {
     // Fire-and-forget: the server hands the sync to a daemon thread and
     // returns immediately. New messages appear via the inbox's regular
@@ -1042,7 +1067,22 @@ function loadStats() {
         .then(data => {
             document.getElementById('statConversations').textContent = data.total_conversations || 0;
             document.getElementById('statUnread').textContent = data.unread_count || 0;
+            setInboxBadge(data.unread_count || 0);  // badge and tile: one number
             document.getElementById('statMessagesToday').textContent = data.messages_today || 0;
+
+            // Open escalations get their own stat tile. Without one nobody
+            // noticed them: 19 were open, the oldest three months old. Always
+            // shown — a standing "0" is the team's "nothing pending" signal —
+            // and only red when there is actually something to handle.
+            const escItem = document.getElementById('statEscalatedItem');
+            if (escItem) {
+                const n = data.escalated_count || 0;
+                document.getElementById('statEscalated').textContent = n;
+                escItem.classList.toggle('has-escalations', n > 0);
+            }
+            const approvals = data.pending_approval_count || 0;
+            document.getElementById('statApproval').textContent = approvals;
+            document.getElementById('statApprovalItem').classList.toggle('has-approvals', approvals > 0);
 
             const unreadEl = document.getElementById('statUnread').closest('.stat-item');
             if (data.unread_count > 0) {
@@ -1121,12 +1161,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 100);
     }
 
-    // If the inbox loaded with the unread filter active (persisted/bookmarked URL),
-    // fetch the full unread set from the server instead of filtering only page 1.
-    if (filterState.state.unread) {
-        const loadMoreContainer = document.getElementById('loadMoreContainer');
-        if (loadMoreContainer) loadMoreContainer.style.display = 'none';
-        fullInboxFetch().catch(err => console.error('Unread filter initial load failed:', err));
+    // If the inbox loaded with a full-set filter active (persisted/bookmarked
+    // URL), fetch the whole set from the server instead of filtering page 1.
+    // fullInboxFetch hides "Mehr laden" itself.
+    if (filterState.state.unread || filterState.state.status === 'escalated'
+        || filterState.state.status === 'pending_approval') {
+        fullInboxFetch().catch(err => console.error('Filter initial load failed:', err));
     }
 
     populateGuestDropdown();
@@ -1137,7 +1177,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Stagger external service sync to avoid blocking page load
     setTimeout(() => initGmailAutoSync(), 3000);
-    setTimeout(() => initSmoobuAutoSync(), 6000);
 });
 
 // ============================================================================
@@ -1236,6 +1275,11 @@ function buildCardMenuHtml(card) {
                     : t('inbox.menu.umiReply', 'UMI-Antwort'));
     }
 
+    // Manual escalation — independent of UMI, the team marks chats important too.
+    html += cardMenuItem('escalate', escalated ? 'fa-check-circle' : 'fa-exclamation-triangle',
+        escalated ? t('inbox.menu.resolve', 'Eskalation lösen')
+                  : t('inbox.menu.escalate', 'Als wichtig markieren'));
+
     if (status !== 'closed') {
         html += '<div class="card-menu-sep"></div>';
         html += cardMenuItem('close', 'fa-times-circle',
@@ -1251,6 +1295,7 @@ function handleCardMenuAction(action) {
     if (action === 'read') return cardToggleRead(convId, card);
     if (action === 'auto') return cardToggleAuto(convId, card);
     if (action === 'umi') return cardUmiReply(convId, card);
+    if (action === 'escalate') return cardToggleEscalation(convId, card);
     if (action === 'close') { closeCardMenu(); closeConversation(_noopEvent(), convId); }
 }
 
@@ -1280,6 +1325,36 @@ function cardToggleRead(convId, card) {
                 card.insertBefore(s, card.firstChild);
             }
             if (typeof loadStats === 'function') loadStats();
+        })
+        .catch(() => showNotification(i18n.t('common.error') || 'Fehler', 'error'))
+        .finally(closeCardMenu);
+}
+
+function cardToggleEscalation(convId, card) {
+    const wasEscalated = card.dataset.escalated === 'true';
+    const url = `/chatbot/api/conversations/${convId}/${wasEscalated ? 'resolve' : 'escalate'}`;
+    fetch(url, { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) { showNotification(d.error || (i18n.t('common.error') || 'Fehler'), 'error'); return; }
+            const nowEscalated = !!d.escalated;
+            card.dataset.escalated = nowEscalated ? 'true' : 'false';
+            card.classList.toggle('escalated', nowEscalated);
+            const existing = card.querySelector('.escalation-badge');
+            const metaEl = card.querySelector('.conversation-meta');
+            if (nowEscalated && !existing && metaEl) {
+                const badge = document.createElement('span');
+                badge.className = 'escalation-badge';
+                badge.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${i18n.t('inbox.needsAttention') || 'Braucht Aufmerksamkeit'}`;
+                metaEl.insertBefore(badge, card.querySelector('.status-badge'));
+            } else if (!nowEscalated && existing) {
+                existing.remove();
+            }
+            filterState.applyFilters();
+            showNotification(
+                nowEscalated ? (i18n.t('inbox.menu.escalateDone') || 'Als wichtig markiert')
+                             : (i18n.t('conversation.escalation.resolved') || 'Eskalation gelöst'),
+                'success');
         })
         .catch(() => showNotification(i18n.t('common.error') || 'Fehler', 'error'))
         .finally(closeCardMenu);
@@ -1418,19 +1493,9 @@ GuidedTour.buildSteps = function () {
         });
     }
     steps.push({
-        selector: '.filter-group[aria-label="Filter by platform"]',
+        selector: '#filterDropdown',
         titleKey: 'tour.inbox.platform',
         textKey: 'tour.inbox.platform.desc'
-    });
-    steps.push({
-        selector: '.filter-group[aria-label="Filter by status"]',
-        titleKey: 'tour.inbox.status',
-        textKey: 'tour.inbox.status.desc'
-    });
-    steps.push({
-        selector: '[data-filter-unread]',
-        titleKey: 'tour.inbox.unread',
-        textKey: 'tour.inbox.unread.desc'
     });
     steps.push({
         selector: '.search-box',
@@ -1444,3 +1509,68 @@ GuidedTour.buildSteps = function () {
     });
     return steps;
 };
+
+
+// Inbox-wide sweep: pull Booking guest messages straight out of Gmail into the
+// chats they provably belong to. Separate from the review queue on purpose — it
+// inserts only exact reservation/date matches and queues nothing.
+// The server runs it in the background (a full sweep exceeds Cloudflare's 100s
+// limit), so we poll for the result instead of waiting on the request.
+function sweepBookingEmails() {
+    const btn = document.getElementById('emailSweepBtn');
+    const originalHtml = btn ? btn.innerHTML : '';
+    const busy = (on) => {
+        if (!btn) return;
+        btn.disabled = on;
+        btn.innerHTML = on
+            ? '<i class="fas fa-spinner fa-spin"></i> Suche…'
+            : originalHtml;
+    };
+
+    busy(true);
+    fetch('/chatbot/api/email/sweep', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: 30 }),
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                busy(false);
+                showNotification(data.error || 'E-Mail-Suche fehlgeschlagen', 'error', 4000);
+                return;
+            }
+            showNotification('Suche läuft — Nachrichten erscheinen nach und nach.', 'info', 4000);
+            pollSweep();
+        })
+        .catch(() => {
+            busy(false);
+            showNotification('E-Mail-Suche fehlgeschlagen', 'error', 4000);
+        });
+
+    let tries = 0;
+    function pollSweep() {
+        // ~5 minutes at 5s. A sweep that outlives that keeps running server-side;
+        // the messages still land, the button just stops reporting on it.
+        if (++tries > 60) { busy(false); return; }
+        setTimeout(() => {
+            fetch('/chatbot/api/email/sweep')
+                .then(r => r.json())
+                .then(s => {
+                    if (s.running) { pollSweep(); return; }
+                    busy(false);
+                    const n = (s.last && s.last.auto_inserted) || 0;
+                    if (n > 0) {
+                        showNotification(
+                            `${n} Nachricht${n === 1 ? '' : 'en'} aus E-Mails übernommen`,
+                            'success', 5000);
+                        inboxPoller.stop();
+                        inboxPoller.start();
+                    } else {
+                        showNotification('Keine fehlenden Nachrichten gefunden', 'info', 4000);
+                    }
+                })
+                .catch(() => busy(false));
+        }, 5000);
+    }
+}

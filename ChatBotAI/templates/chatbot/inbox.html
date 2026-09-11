@@ -6,16 +6,30 @@
 <div class="inbox-container">
     <!-- Header -->
     <div class="page-header">
-        <h1><i class="fas fa-inbox"></i> <span data-i18n="inbox.title">Posteingang</span></h1>
+        <div>
+            <h1><i class="fas fa-inbox"></i> <span data-i18n="inbox.title">Posteingang</span></h1>
+            <div class="inbox-meta">
+                <span id="statConversations">-</span> <span data-i18n="inbox.stats.conversations">Konversationen</span>
+                · <span id="statMessagesToday">-</span> <span data-i18n="inbox.stats.messagesToday">Gastnachrichten heute</span>
+            </div>
+        </div>
+        <!-- ponytail: visibility decided server-side from config, not a live API probe —
+             the probe made these two buttons pop in seconds after the rest. -->
         <div class="header-actions">
             <button class="btn btn-secondary" id="markAllReadBtn" onclick="markAllRead()">
                 <i class="fas fa-check-double"></i> <span data-i18n="inbox.markAllRead">Alle gelesen</span>
             </button>
-            <button class="btn btn-secondary" id="syncSmoobuBtn" onclick="syncSmoobuNow()" style="display: none;">
+            {% if smoobu_connected %}
+            <button class="btn btn-secondary" id="syncSmoobuBtn" onclick="syncSmoobuNow()">
                 <i class="fas fa-building"></i> <span data-i18n="inbox.syncSmoobu">Smoobu Sync</span>
             </button>
-            <button class="btn btn-secondary" id="syncGmailBtn" onclick="syncGmailNow()" style="display: none;">
+            {% endif %}
+            <button class="btn btn-secondary" id="syncGmailBtn" onclick="syncGmailNow()"{% if not gmail_connected %} style="display: none;"{% endif %}>
                 <i class="fas fa-envelope"></i> <span data-i18n="inbox.syncGmail">Sync Gmail</span>
+            </button>
+            <button class="btn btn-secondary" id="emailSweepBtn" onclick="sweepBookingEmails()"
+                    title="Booking-Nachrichten direkt aus den E-Mails in die Chats holen">
+                <i class="fas fa-envelope-open-text"></i> <span data-i18n="inbox.emailSweep">E-Mails holen</span>
             </button>
             <button class="btn btn-secondary" onclick="refreshConversations()">
                 <i class="fas fa-sync-alt"></i> <span data-i18n="common.refresh">Aktualisieren</span>
@@ -27,49 +41,25 @@
     </div>
 
     <!-- Stats Card -->
+    <!-- Every tile IS its filter button (tap again to clear). Always visible: a
+         standing "0" tells the team nothing is pending, and the row keeps its shape. -->
     <div class="stats-card" id="statsCard">
-        <div class="stat-item">
-            <span class="stat-value" id="statConversations">-</span>
-            <span class="stat-label" data-i18n="inbox.stats.conversations">Konversationen</span>
-        </div>
-        <div class="stat-item stat-highlight">
+        <div class="stat-item stat-filter" data-stat-filter="unread" onclick="toggleUnreadFilter()" title="Alle ungelesenen anzeigen">
             <span class="stat-value" id="statUnread">-</span>
             <span class="stat-label" data-i18n="inbox.stats.unread">Ungelesen</span>
         </div>
-        <div class="stat-item">
-            <span class="stat-value" id="statMessagesToday">-</span>
-            <span class="stat-label" data-i18n="inbox.stats.messagesToday">Nachrichten heute</span>
+        <div class="stat-item stat-filter" data-stat-filter="escalated" id="statEscalatedItem" onclick="toggleStatusFilter('escalated')" title="Alle eskalierten Chats anzeigen">
+            <span class="stat-value" id="statEscalated">-</span>
+            <span class="stat-label" data-i18n="inbox.stats.escalated">Eskaliert</span>
+        </div>
+        <div class="stat-item stat-filter" data-stat-filter="pending_approval" id="statApprovalItem" onclick="toggleStatusFilter('pending_approval')" title="UMI-Antworten, die auf Freigabe warten">
+            <span class="stat-value" id="statApproval">-</span>
+            <span class="stat-label" data-i18n="inbox.filter.pendingApproval">UMI-Freigabe</span>
         </div>
     </div>
 
     <!-- Filters -->
     <div class="filter-bar">
-        <!-- Platform Filter Group -->
-        <div class="filter-group" role="group" aria-label="Filter by platform">
-            <button class="filter-btn active" data-filter-platform="" data-i18n="inbox.filter.all">Alle</button>
-            <button class="filter-btn" data-filter-platform="email">
-                <i class="fas fa-envelope"></i> <span data-i18n="platform.email">E-Mail</span>
-            </button>
-            <button class="filter-btn" data-filter-platform="smoobu">
-                <i class="fas fa-building"></i> <span data-i18n="platform.smoobu">Smoobu</span>
-            </button>
-        </div>
-
-        <!-- Status Filter Group -->
-        <div class="filter-group" role="group" aria-label="Filter by status">
-            <button class="filter-btn active" data-filter-status="" data-i18n="inbox.filter.all">Alle</button>
-            <button class="filter-btn" data-filter-status="active" data-i18n="inbox.filter.active">Aktiv</button>
-            <button class="filter-btn" data-filter-status="pending_owner" data-i18n="inbox.filter.pending">Ausstehend</button>
-            <button class="filter-btn" data-filter-status="closed" data-i18n="inbox.filter.closed">Geschlossen</button>
-            <button class="filter-btn" data-filter-status="escalated" data-i18n="inbox.filter.escalated">Eskaliert</button>
-            <button class="filter-btn" data-filter-status="pending_approval" data-i18n="inbox.filter.pendingApproval">UMI-Freigabe</button>
-        </div>
-
-        <!-- Unread Toggle -->
-        <button class="filter-btn" data-filter-unread onclick="toggleUnreadFilter()">
-            <i class="fas fa-envelope"></i> <span data-i18n="inbox.filter.unread">Ungelesen</span>
-        </button>
-
         <div class="search-box">
             <i class="fas fa-search"></i>
             <input type="text" data-i18n-placeholder="inbox.search" placeholder="Konversationen durchsuchen..." id="searchInput">
@@ -77,6 +67,42 @@
                 <i class="fas fa-times"></i>
             </button>
         </div>
+
+        <details class="filter-dropdown" id="filterDropdown">
+        <summary class="btn btn-secondary"><i class="fas fa-sliders-h"></i> <span data-i18n="inbox.filter.button">Filter</span></summary>
+        <div class="filter-dropdown-panel">
+        <!-- Channel Filter Group (server-side, see apply_source_filters) -->
+        <div class="filter-group" role="group" aria-label="Filter by channel">
+            <button class="filter-btn active" data-filter-channel="" data-i18n="inbox.filter.all">Alle</button>
+            <button class="filter-btn" data-filter-channel="booking">
+                <i class="fas fa-bed"></i> <span data-i18n="platform.booking">Booking.com</span>
+            </button>
+            <button class="filter-btn" data-filter-channel="airbnb">
+                <i class="fab fa-airbnb"></i> <span data-i18n="platform.airbnb">Airbnb</span>
+            </button>
+            <button class="filter-btn" data-filter-channel="direct">
+                <i class="fas fa-house-user"></i> <span data-i18n="platform.direct">Direkt</span>
+            </button>
+            {% if whatsapp_enabled %}
+            <button class="filter-btn" data-filter-channel="whatsapp">
+                <i class="fab fa-whatsapp"></i> <span data-i18n="platform.whatsapp">WhatsApp</span>
+            </button>
+            {% endif %}
+        </div>
+
+        {% if smoobu_accounts %}
+        <!-- Smoobu Account Filter Group -->
+        <div class="filter-group" role="group" aria-label="Filter by Smoobu account">
+            <button class="filter-btn active" data-filter-account="" data-i18n="inbox.filter.all">Alle</button>
+            {% for account_id, label in smoobu_accounts %}
+            <button class="filter-btn" data-filter-account="{{ account_id }}">
+                <i class="fas fa-building"></i> {{ label }}
+            </button>
+            {% endfor %}
+        </div>
+        {% endif %}
+        </div>
+        </details>
     </div>
 
     <!-- Active Filter Indicators -->
@@ -91,7 +117,7 @@
     <div class="conversation-list" id="conversationList">
         {% if conversations %}
             {% for conv in conversations %}
-            <a href="{{ url_for('chatbot.conversation_view', conversation_id=conv.id) }}" class="conversation-card{% if not conv.is_read %} unread{% endif %}" data-conversation-id="{{ conv.id }}" data-updated-at="{{ conv.updated_at.isoformat() if conv.updated_at else '' }}" data-last-message-at="{{ conv.last_message_at.isoformat() if conv.last_message_at else '' }}" data-platform="{{ conv.platform }}" data-status="{{ conv.status }}" data-guest-id="{{ conv.guest_id }}" data-is-read="{{ 'true' if conv.is_read else 'false' }}" data-ai-enabled="{{ 'true' if conv.ai_enabled else 'false' }}" data-auto-respond="{{ 'true' if conv.auto_respond else 'false' }}" data-escalated="{{ 'true' if conv.escalated else 'false' }}" data-last-sender="{{ conv.last_message.sender_type if conv.last_message else '' }}">
+            <a href="{{ url_for('chatbot.conversation_view', conversation_id=conv.id) }}" class="conversation-card{% if not conv.is_read %} unread{% endif %}" data-conversation-id="{{ conv.id }}" data-updated-at="{{ conv.updated_at.isoformat() if conv.updated_at else '' }}" data-last-message-at="{{ conv.last_message_at.isoformat() if conv.last_message_at else '' }}" data-platform="{{ conv.platform }}" data-channel="{{ conv.channel }}" data-account="{{ conv.smoobu_account_id or '' }}" data-status="{{ conv.status }}" data-guest-id="{{ conv.guest_id }}" data-is-read="{{ 'true' if conv.is_read else 'false' }}" data-ai-enabled="{{ 'true' if conv.ai_enabled else 'false' }}" data-auto-respond="{{ 'true' if conv.auto_respond else 'false' }}" data-escalated="{{ 'true' if conv.escalated else 'false' }}" data-last-sender="{{ conv.last_message.sender_type if conv.last_message else '' }}">
                 {% if not conv.is_read %}
                 <span class="sr-only">Unread</span>
                 {% endif %}
@@ -177,7 +203,7 @@
     };
 </script>
 <script src="{{ url_for('chatbot.static', filename='js/polling.js') }}?v=8"></script>
-<script src="{{ url_for('chatbot.static', filename='js/filter-state.js') }}?v=11"></script>
+<script src="{{ url_for('chatbot.static', filename='js/filter-state.js') }}?v=17"></script>
 <script src="{{ url_for('chatbot.static', filename='js/guided-tour.js') }}?v=1"></script>
-<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=33"></script>
+<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=43"></script>
 {% endblock %}

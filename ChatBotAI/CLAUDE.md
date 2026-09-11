@@ -116,6 +116,38 @@ API_KEY`, HMAC-SHA256 with the literal secret, base64 → `X-Signature`; PATH ke
 
    **`value` must never reach a prompt** — it can hold phone numbers. `ai_service.py` strips `esc*` from `kb_for_template`, `context_filter.py` blanks `value` at its boundary, and `tests/test_escalation_prompt_injection.py` pins it. Prefix test is `startswith('esc')` / `LIKE 'esc%'`, never `esc_`, so the legacy `escalation` category stays covered. Migration p23 seeded the old hardcoded ~90 keywords as 9 editable topics; the hardcoded list is gone. Empty Eskalation area = nothing escalates by keyword, deliberately.
 
+10. **The whole Wissensdatenbank goes into the prompt on the rich tier** (2026-09-04).
+   It used to be filtered three times over — `context_filter` top-5, then `ai_service`
+   top-3, then each value truncated to 80 chars — so of ~18k characters of KB only
+   ~1.3% reached the model, and an 80-char cut landed mid-IBAN. Against the prompt's
+   "never guess, escalate instead" rule that produced "ich frage das Team" for
+   questions the KB answered.
+   - `ContextFilter.KB_FULL_BUDGET_CHARS` (45000, raised from 30000 on 2026-09-10 for
+     the Notion import) is the switch: under it every entry goes in, score-ordered;
+     over it the top-N keyword scorer returns.
+   - COMPACT tier (small local models) keeps the top-3 / 80-char budget.
+   - Escalation entries stay labels-only in both tiers — `value` may hold phone
+     numbers, blanked at the `context_filter` boundary.
+   - `trigger_words` now scores in KB retrieval (+3) and the field is editable on the
+     Wissen tab, not just Eskalation. It only matters above the budget.
+   - **Consequence to fix before auto-send:** internal team notes (invoicing process,
+     an internal print address, office hours) now reach the model that writes to
+     guests. Harmless while `master_ai_enabled=false` and nothing sends unattended;
+     needs a guest-facing/internal flag before that changes.
+
+11. **UMI answers everything the guest sent since our last reply**, not just the newest
+   message — `pending_guest_question()` in `models.py`, used by ai-suggest,
+   ai-response, the debug preview and `message_router`. A question followed by a
+   "???" nudge used to produce a reply to the nudge, with the real question absent
+   from the prompt and therefore no matching KB entry either. The per-message
+   lightbulb is deliberately excluded: it targets one chosen message.
+
+12. **Inbox filters are server-side** — Kanal (Booking.com / Airbnb / Direkt) and Konto
+   (Smoobu account) via `apply_source_filters()` in `routes.py`, applied to both
+   `/api/conversations` and the Jinja first paint. The inbox is paginated 50/page, so
+   a DOM-only filter hides everything behind "Load More". Channel comes from the
+   guest's `booking_channel` detail via `Conversation.channel`.
+
 ## Open Audits / Pending Triage
 
 ### Deep Scan — 2026-05-21 (read-only, no code changed)

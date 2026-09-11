@@ -16,7 +16,7 @@ from typing import Optional, Dict, Any, Tuple
 
 from sqlalchemy.exc import IntegrityError
 
-from ..models import db, Guest, Conversation, Message, Property, AISettings, KnowledgeEntry
+from ..models import db, Guest, Conversation, Message, Property, AISettings, KnowledgeEntry, pending_guest_question
 from .ai_service import get_ai_service
 from .memory_service import get_memory_service, MemoryService
 
@@ -27,6 +27,14 @@ from .playtest_events import playtest_log
 
 class MessageRouter:
     """Central message routing and processing service"""
+
+    # How recent an inbound message must be for UNATTENDED handling — urgency
+    # triage and auto-respond. Historical Smoobu syncs, webhook backfills and
+    # the email reconcile all replay old messages through
+    # process_incoming_message(), which cannot tell a live message from a
+    # replayed one. Without this, one press of the full-sync button escalates
+    # thousands of finished stays, or worse, writes to those guests.
+    RECENT_WINDOW = timedelta(hours=48)
 
     def __init__(self):
         self.ai_service = None
@@ -213,6 +221,10 @@ class MessageRouter:
             except Exception:
                 logger.exception("Check-in autoreply failed for conversation %s", conversation.id)
 
+            # Live message, or history being replayed? Both unattended paths
+            # below depend on the answer, so decide it once.
+            is_recent = bool(msg_ts) and (now_ts - msg_ts) < self.RECENT_WINDOW
+
             # Step 6.6: Urgency triage — independent of who is in charge of the
             # chat. The AI's [[ESCALATE]] marker only fires when UMI answers;
             # with master AI off nothing would ever be flagged, so an important
@@ -221,7 +233,6 @@ class MessageRouter:
             # messages through here — without it, thousands of closed stays get
             # flagged and push-notified at once.
             try:
-                is_recent = bool(msg_ts) and (now_ts - msg_ts) < timedelta(hours=48)
                 if is_recent and not conversation.escalated:
                     hit = self._match_escalation_topic(conversation, message_content)
                     if hit:
@@ -238,7 +249,14 @@ class MessageRouter:
             master_ai = AISettings.get('master_ai_enabled', 'true') == 'true'
             # auto_respond parameter = caller explicitly requests it (e.g. test routes)
             # conversation.auto_respond = per-conversation toggle set by user
-            should_auto_respond = master_ai and (auto_respond or conversation.auto_respond) and conversation.ai_enabled
+            # The per-conversation flag is the UNATTENDED path: nobody is asking
+            # for this reply, a message merely arrived — so it is gated on the
+            # message being recent, for the same reason the triage above is.
+            # An explicit auto_respond=True from the caller (the ⋮ "UMI-Antwort"
+            # button, the test routes) is a person deliberately asking for a
+            # reply on a chosen message and is never age-gated.
+            unattended = conversation.auto_respond and is_recent
+            should_auto_respond = master_ai and (auto_respond or unattended) and conversation.ai_enabled
             if should_auto_respond:
                 ai_result = self._generate_ai_response(conversation, message)
                 if ai_result:
@@ -267,7 +285,9 @@ class MessageRouter:
             content: str,
             extract_memory: bool = True,
             platform_message_id: Optional[str] = None,
-            sent_via_app: bool = False
+            sent_via_app: bool = False,
+            sent_at: Optional[datetime] = None,
+            mark_read: bool = False
     ) -> Dict[str, Any]:
         """
         Process an outgoing message from the owner.
@@ -277,6 +297,8 @@ class MessageRouter:
             content: Message text
             extract_memory: Whether to extract guest info from this message
             platform_message_id: Optional platform message ID for duplicate detection
+            sent_at: When it was really sent (defaults to now)
+            mark_read: The reply was written outside UMI, so the chat is handled
 
         Returns:
             Dict with message details
@@ -296,14 +318,19 @@ class MessageRouter:
                 return result
 
             # Store owner message
-            message, _ = self._store_message(
+            message, is_new = self._store_message(
                 conversation_id=conversation_id,
                 sender_type='owner',
                 content=content,
                 platform_message_id=platform_message_id,
+                sent_at=sent_at,
                 sent_via_app=sent_via_app
             )
             result['message_id'] = message.id
+            if not is_new:
+                # Already stored and processed by whichever path got here first.
+                result['success'] = True
+                return result
 
             if conversation.platform == 'playtest':
                 playtest_log(conversation.id, 'owner_message_stored',
@@ -312,11 +339,28 @@ class MessageRouter:
             # Update conversation timestamps. updated_at = tripwire, bumped
             # every time. last_message_at = sort key, set to this message's
             # real sent_at.
+            # Who sent it. Every UMI send path lands here, and none passed the
+            # sender, so Team-Leistung credited the chat's assignee instead.
+            # No request (daemon auto-reply) = no person, deliberately.
+            if sent_via_app:
+                from flask import has_request_context
+                from flask_login import current_user
+                if has_request_context() and current_user.is_authenticated:
+                    message.user_id = current_user.id
+
             now_ts = datetime.utcnow()
             conversation.updated_at = now_ts
             msg_sent_at = message.sent_at or now_ts
-            if not conversation.last_message_at or msg_sent_at > conversation.last_message_at:
+            is_newest = not conversation.last_message_at or msg_sent_at >= conversation.last_message_at
+            if is_newest:
                 conversation.last_message_at = msg_sent_at
+            # Same rule the Smoobu sync applies to replies made outside UMI —
+            # but only when this reply is the newest message, so a late-arriving
+            # reply cannot hide a guest message that came after it.
+            if mark_read and is_newest:
+                conversation.is_read = True
+                if not conversation.last_read_message_id or message.id > conversation.last_read_message_id:
+                    conversation.last_read_message_id = message.id
             db.session.commit()
 
             # Extract memory from owner message (owners often mention guest details)
@@ -333,6 +377,40 @@ class MessageRouter:
             result['error'] = str(e)
             db.session.rollback()
 
+        return result
+
+    def process_external_owner_message(
+            self,
+            platform: str,
+            platform_conversation_id: str,
+            content: str,
+            platform_user_id: Optional[str] = None,
+            sender_phone: Optional[str] = None,
+            subject: Optional[str] = None,
+            platform_message_id: Optional[str] = None,
+            sent_at: Optional[datetime] = None
+    ) -> Dict[str, Any]:
+        """Store a reply the team sent outside UMI (e.g. typed on the WhatsApp phone).
+
+        The team can start a chat from the phone, so guest and conversation are
+        found or created exactly as for an incoming guest message.
+        """
+        self._get_services()
+        try:
+            guest = self._find_or_create_guest(
+                phone=sender_phone, platform=platform, platform_id=platform_user_id)
+            conversation = self._find_or_create_conversation(
+                guest_id=guest.id, platform=platform,
+                platform_id=platform_conversation_id, subject=subject)
+        except Exception as e:
+            logger.error(f"Error resolving conversation for external owner message: {e}")
+            db.session.rollback()
+            return {'success': False, 'message_id': None, 'conversation_id': None, 'error': str(e)}
+
+        result = self.process_owner_message(
+            conversation_id=conversation.id, content=content, extract_memory=True,
+            platform_message_id=platform_message_id, sent_at=sent_at, mark_read=True)
+        result['conversation_id'] = conversation.id
         return result
 
     def generate_ai_response_for_conversation(
@@ -755,6 +833,11 @@ class MessageRouter:
                     reservation_info = smoobu.get_reservation(conversation.smoobu_reservation_id)
             except Exception as e:
                 logger.warning(f"Failed to fetch Smoobu reservation: {e}")
+        if not reservation_info:
+            # No live data (fetch failed, or not a Smoobu chat) — the locally
+            # synced guest count still decides du vs ihr in the reply.
+            from .ai_service import local_reservation_info
+            reservation_info = local_reservation_info(conversation)
 
         # Load knowledge base entries for AI context (exclude corrections)
         knowledge_entries = []
@@ -766,28 +849,21 @@ class MessageRouter:
         # Load past corrections for AI context
         corrections = []
         try:
-            correction_query = KnowledgeEntry.query.filter_by(category='correction')
-            if conversation.property_id:
-                property_corrections = correction_query.filter_by(
-                    property_id=conversation.property_id
-                ).order_by(KnowledgeEntry.created_at.desc()).limit(7).all()
-
-                global_corrections = KnowledgeEntry.query.filter_by(
-                    category='correction', property_id=None
-                ).order_by(KnowledgeEntry.created_at.desc()).limit(3).all()
-
-                corrections = [c.to_dict() for c in property_corrections + global_corrections]
-            else:
-                corrections = [c.to_dict() for c in
-                               correction_query.filter_by(property_id=None)
-                               .order_by(KnowledgeEntry.created_at.desc()).limit(10).all()]
+            corrections = KnowledgeEntry.load_corrections_for(conversation)
         except Exception as e:
             logger.warning(f"Failed to load corrections: {e}")
+
+        # Answer everything the guest sent since our last reply, not just the message
+        # that triggered this run — a question followed by a "???" nudge used to
+        # produce a reply to the nudge alone, with the real question nowhere in the
+        # prompt (and so no matching knowledge entry either).
+        _newest, question_text = pending_guest_question(conversation)
+        question_text = question_text or trigger_message.content
 
         # Apply context filter
         from .context_filter import ContextFilter
         filtered = ContextFilter.filter(
-            latest_message=trigger_message.content,
+            latest_message=question_text,
             conversation_history=[m.to_dict() for m in messages],
             knowledge_entries=knowledge_entries,
             guest_profile=profile,
@@ -805,7 +881,7 @@ class MessageRouter:
         response_text = self.ai_service.generate_guest_response(
             guest_profile=filtered.guest_profile,
             conversation_history=[m.to_dict() for m in messages],
-            latest_message=trigger_message.content,
+            latest_message=question_text,
             property_info=filtered.property_info,
             tone=tone,
             host_instructions=host_instructions,

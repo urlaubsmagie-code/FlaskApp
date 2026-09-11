@@ -473,6 +473,35 @@ def test_resolve_channel_from_guest_detail(app):
     assert resolve_channel(c) == 'airbnb'
 
 
+def test_resolve_channel_skips_secondary_smoobu_account(app):
+    AISettings.set('smoobu_account_id', '385537')
+    g = Guest(name='Z'); db.session.add(g); db.session.flush()
+    c = Conversation(guest_id=g.id, platform='booking',
+                     smoobu_account_id=1782807)
+    db.session.add(c); db.session.commit()
+    assert resolve_channel(c) is None
+
+
+def test_resolve_channel_keeps_stamped_primary_account(app):
+    """The multi-account sync stamps the PRIMARY id onto conversations too.
+    Excluding every tagged chat killed email reconcile for 26 days."""
+    AISettings.set('smoobu_account_id', '385537')
+    g = Guest(name='P'); db.session.add(g); db.session.flush()
+    c = Conversation(guest_id=g.id, platform='booking',
+                     smoobu_account_id='385537')
+    db.session.add(c); db.session.commit()
+    assert resolve_channel(c) == 'booking'
+
+
+def test_resolve_channel_without_primary_setting_excludes_nothing(app):
+    AISettings.set('smoobu_account_id', '')
+    g = Guest(name='Q'); db.session.add(g); db.session.flush()
+    c = Conversation(guest_id=g.id, platform='booking',
+                     smoobu_account_id='999999')
+    db.session.add(c); db.session.commit()
+    assert resolve_channel(c) == 'booking'
+
+
 # ---------------------------------------------------------------------------
 # Task 8: Orchestrator reconcile_from_email
 # ---------------------------------------------------------------------------
@@ -595,47 +624,9 @@ def client(app):
     return c
 
 
-def _seed_pending_candidate():
-    g = Guest(name='Carolin Janowski'); db.session.add(g); db.session.flush()
-    conv = Conversation(guest_id=g.id, platform='booking'); db.session.add(conv); db.session.flush()
-    cand = EmailBackfillCandidate(
-        gmail_message_id='gb1', platform='booking', parsed_name='Carolin Janowski',
-        parsed_text='Alles klar danke', parsed_timestamp=datetime(2026, 6, 9, 11, 24),
-        guessed_conversation_id=conv.id, confidence=0.55, status='pending')
-    db.session.add(cand); db.session.commit()
-    return cand.id, conv.id
-
-
-def test_confirm_inserts_message_and_marks_confirmed(app, client):
-    cand_id, conv_id = _seed_pending_candidate()
-    resp = client.post(f'/chatbot/api/email-review/{cand_id}/confirm')
-    assert resp.status_code == 200
-    msgs = Message.query.filter_by(conversation_id=conv_id).all()
-    assert len(msgs) == 1
-    assert msgs[0].platform_message_id == 'email:gb1'
-    assert EmailBackfillCandidate.query.get(cand_id).status == 'confirmed'
-
-
-def test_reject_marks_rejected_without_insert(app, client):
-    cand_id, conv_id = _seed_pending_candidate()
-    resp = client.post(f'/chatbot/api/email-review/{cand_id}/reject')
-    assert resp.status_code == 200
-    assert Message.query.filter_by(conversation_id=conv_id).count() == 0
-    assert EmailBackfillCandidate.query.get(cand_id).status == 'rejected'
-
-
-def test_pending_count(app, client):
-    _seed_pending_candidate()
-    resp = client.get('/chatbot/api/email-review/pending-count')
-    assert resp.status_code == 200
-    assert resp.get_json()['count'] == 1
-
-
-def test_email_review_page_renders(app, client):
-    _seed_pending_candidate()
-    resp = client.get('/chatbot/email-review')
-    assert resp.status_code == 200
-    assert b'Alles klar danke' in resp.data  # the candidate's parsed_text shows on the page
+def test_email_review_page_is_gone(app, client):
+    """Booking messages go straight into the chats; the separate review page was removed."""
+    assert client.get('/chatbot/email-review').status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -867,7 +858,8 @@ def test_live_fetch_matches_by_stored_buchungsnummer(app):
     email = _email(id='gbref', sender_email='5843975682-x@guest.booking.com',
                    date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
                    authentication_results=[BOOKING_AR_DIRECT])
-    gmail = FakeGmail({'from:guest.booking.com "Carolin Janowski" newer_than:30d': [email]})
+    # Ref known -> the query is the reservation number, with no date window.
+    gmail = FakeGmail({'from:guest.booking.com "5843975682"': [email]})
 
     stats = fetch_booking_for_conversation(gmail, conv.id)
     assert stats['auto_inserted'] == 1
@@ -898,7 +890,8 @@ def test_live_fetch_rescues_misfiled_candidate(app):
     email = _email(id='gbref', sender_email='5843975682-x@guest.booking.com',
                    date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
                    authentication_results=[BOOKING_AR_DIRECT])
-    gmail = FakeGmail({'from:guest.booking.com "Carolin Janowski" newer_than:30d': [email]})
+    # Ref known -> the query is the reservation number, with no date window.
+    gmail = FakeGmail({'from:guest.booking.com "5843975682"': [email]})
 
     stats = fetch_booking_for_conversation(gmail, right_conv.id)
     assert stats['auto_inserted'] == 1
@@ -957,7 +950,8 @@ def test_live_fetch_matches_by_smoobu_reference_id(app, monkeypatch):
     email = _email(id='gbsmoobu', sender_email='5843975682-x@guest.booking.com',
                    date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
                    authentication_results=[BOOKING_AR_DIRECT])
-    gmail = FakeGmail({'from:guest.booking.com "Carolin Janowski" newer_than:30d': [email]})
+    # Ref known -> the query is the reservation number, with no date window.
+    gmail = FakeGmail({'from:guest.booking.com "5843975682"': [email]})
     stats = fetch_booking_for_conversation(gmail, conv.id)
     assert stats['auto_inserted'] == 1
 
@@ -1087,3 +1081,205 @@ def test_live_fetch_repeat_guest_ignores_stale_note(app, monkeypatch):
     stats = fetch_booking_for_conversation(gmail, old_conv.id)
     assert stats['auto_inserted'] == 0
     assert Message.query.filter_by(conversation_id=old_conv.id).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# Scan-path exact matching (2026-08-05): the fuzzy scorer's apartment soft-veto
+# (-0.50) cancels the Booking exact-name bonus (+0.50), so the correct chat
+# scored 0.0 and 137 real guest messages were filed onto a stranger in the
+# apartment the email named. The scan now takes an exact Buchungsnummer hit first.
+# ---------------------------------------------------------------------------
+from ChatBotAI.services.email_reconcile import exact_match_from_views, _name_key
+from ChatBotAI.models import GuestDetail
+
+
+def _booking_guest(name, ref, check_in, check_out):
+    """A Booking guest whose Smoobu note carries the Buchungsnummer, plus one chat."""
+    g = Guest(name=name)
+    db.session.add(g); db.session.commit()
+    db.session.add(GuestDetail(guest_id=g.id, detail_type='special_request',
+                               detail_key='guest_note',
+                               detail_value=f'Buchungsnummer: {ref}'))
+    conv = Conversation(guest_id=g.id, platform='booking',
+                        check_in=check_in, check_out=check_out)
+    db.session.add(conv); db.session.commit()
+    return g, conv
+
+
+def _notif(name, ref, check_in, check_out, property_name='Biberburg'):
+    return ParsedNotification(
+        platform='booking', gmail_id='gx', thread_id='tx', guest_name=name,
+        message_text='Where can i park my car?', sent_at=datetime(2026, 6, 18, 10, 0),
+        property_name=property_name, check_in=check_in, check_out=check_out,
+        booking_ref=ref,
+    )
+
+
+def test_scan_exact_match_beats_same_apartment_stranger(app):
+    """The real 2026-06 failure: Vaghela Hardik's message landed on Steven Aslan,
+    who had the same dates in the apartment the email named."""
+    _, right = _booking_guest('Vaghela Hardik', '5473272534', _d(2026, 6, 18), _d(2026, 6, 21))
+    _, wrong = _booking_guest('Steven Aslan', '9999999999', _d(2026, 6, 18), _d(2026, 6, 21))
+    views = [{'conversation_id': right.id, 'guest_name': 'Vaghela Hardik'},
+             {'conversation_id': wrong.id, 'guest_name': 'Steven Aslan'}]
+
+    notif = _notif('Vaghela Hardik', '5473272534', _d(2026, 6, 18), _d(2026, 6, 21))
+    assert exact_match_from_views(notif, views).id == right.id
+
+
+def test_scan_exact_match_survives_swapped_name_order(app):
+    """Booking and Smoobu disagree on name order; the Buchungsnummer still decides."""
+    _, conv = _booking_guest('Hardik Vaghela', '5473272534', _d(2026, 6, 18), _d(2026, 6, 21))
+    views = [{'conversation_id': conv.id, 'guest_name': 'Hardik Vaghela'}]
+
+    notif = _notif('Vaghela Hardik', '5473272534', _d(2026, 6, 18), _d(2026, 6, 21))
+    assert exact_match_from_views(notif, views).id == conv.id
+    assert _name_key('Vaghela Hardik') == _name_key('Hardik  VAGHELA')
+
+
+def test_scan_exact_match_refuses_to_guess_when_ambiguous(app):
+    """Two chats for the same name both matching = no auto-insert, ever."""
+    g = Guest(name='Repeat Guest')
+    db.session.add(g); db.session.commit()
+    a = Conversation(guest_id=g.id, platform='booking',
+                     check_in=_d(2026, 6, 18), check_out=_d(2026, 6, 21))
+    b = Conversation(guest_id=g.id, platform='booking',
+                     check_in=_d(2026, 6, 18), check_out=_d(2026, 6, 21))
+    db.session.add_all([a, b]); db.session.commit()
+    views = [{'conversation_id': a.id, 'guest_name': 'Repeat Guest'},
+             {'conversation_id': b.id, 'guest_name': 'Repeat Guest'}]
+
+    notif = _notif('Repeat Guest', None, _d(2026, 6, 18), _d(2026, 6, 21))
+    assert exact_match_from_views(notif, views, smoobu_service=None) is None
+
+
+def test_scan_exact_match_none_when_nothing_lines_up(app):
+    """No Buchungsnummer and dates that don't match = queue for review, not a guess."""
+    _, conv = _booking_guest('Vaghela Hardik', '5473272534', _d(2026, 6, 18), _d(2026, 6, 21))
+    views = [{'conversation_id': conv.id, 'guest_name': 'Vaghela Hardik'}]
+
+    notif = _notif('Vaghela Hardik', None, _d(2026, 7, 1), _d(2026, 7, 4))
+    assert exact_match_from_views(notif, views) is None
+
+
+# ---------------------------------------------------------------------------
+# Per-chat button: reservation-number-first Gmail query
+# ---------------------------------------------------------------------------
+
+def test_live_query_uses_booking_ref_without_date_window():
+    """With a Buchungsnummer the search is exact, so the daemon's 30-day window
+    must not cap it — that window is what hid the older silent chats."""
+    from ChatBotAI.services.email_reconcile import _live_booking_query
+    q = _live_booking_query('4526198734', 'Anna Meier', 30)
+    assert '"4526198734"' in q
+    assert 'newer_than' not in q
+    assert 'from:guest.booking.com' in q
+
+
+def test_live_query_falls_back_to_name_with_window():
+    from ChatBotAI.services.email_reconcile import _live_booking_query
+    q = _live_booking_query(None, 'Anna Meier', 30)
+    assert '"Anna Meier"' in q
+    assert 'newer_than:30d' in q
+
+
+def test_live_query_strips_quotes_from_terms():
+    from ChatBotAI.services.email_reconcile import _live_booking_query
+    q = _live_booking_query(None, 'An"na', 30)
+    assert 'An"na' not in q
+    assert '"Anna"' in q
+
+
+# ---------------------------------------------------------------------------
+# A pending review row must not hide a provable message forever
+# ---------------------------------------------------------------------------
+
+from ChatBotAI.services.message_router import get_message_router
+
+def test_scan_inserts_exact_match_even_when_a_candidate_row_exists(app):
+    """The daemon used to skip any email that had ever been queued, so messages
+    parked below the threshold stayed invisible until a human opened the chat."""
+    import ChatBotAI.services.email_reconcile as er
+    AISettings.set('email_autoinsert_booking', 'true')
+    g = Guest(name='Carolin Janowski'); db.session.add(g); db.session.flush()
+    db.session.add(GuestDetail(guest_id=g.id, detail_type='special_request',
+        detail_key='guest_note', detail_value='Buchungsnummer: 5843975682'))
+    conv = Conversation(guest_id=g.id, platform='booking',
+                        check_in=_d(2026, 6, 12), check_out=_d(2026, 6, 14))
+    db.session.add(conv); db.session.flush()
+    db.session.add(EmailBackfillCandidate(
+        gmail_message_id='gcand', platform='booking', parsed_name='Carolin Janowski',
+        parsed_text='hi', parsed_timestamp=datetime(2026, 6, 9, 11, 24),
+        guessed_conversation_id=conv.id, confidence=0.20, status='pending'))
+    db.session.commit()
+
+    email = _email(id='gcand', sender_email='5843975682-x@guest.booking.com',
+                   date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
+                   authentication_results=[BOOKING_AR_DIRECT])
+    stats = er._new_stats()
+    er._handle_notification_email(email, 'booking', er._candidate_views('booking'),
+                                  er.get_reconcile_config(), get_message_router(), stats)
+
+    assert stats['auto_inserted'] == 1
+    assert Message.query.filter_by(conversation_id=conv.id).count() == 1
+    # the review row is resolved, so a later flush cannot duplicate it elsewhere
+    assert EmailBackfillCandidate.query.filter_by(gmail_message_id='gcand').first().status == 'confirmed'
+
+
+def test_scan_still_respects_a_rejected_candidate(app):
+    import ChatBotAI.services.email_reconcile as er
+    AISettings.set('email_autoinsert_booking', 'true')
+    g = Guest(name='Carolin Janowski'); db.session.add(g); db.session.flush()
+    db.session.add(GuestDetail(guest_id=g.id, detail_type='special_request',
+        detail_key='guest_note', detail_value='Buchungsnummer: 5843975682'))
+    conv = Conversation(guest_id=g.id, platform='booking',
+                        check_in=_d(2026, 6, 12), check_out=_d(2026, 6, 14))
+    db.session.add(conv); db.session.flush()
+    db.session.add(EmailBackfillCandidate(
+        gmail_message_id='grej', platform='booking', parsed_name='Carolin Janowski',
+        parsed_text='hi', parsed_timestamp=datetime(2026, 6, 9, 11, 24),
+        guessed_conversation_id=conv.id, confidence=0.20, status='rejected'))
+    db.session.commit()
+
+    email = _email(id='grej', sender_email='5843975682-x@guest.booking.com',
+                   date='Mon, 09 Jun 2026 13:24:00 +0200', body=BOOKING_BODY,
+                   authentication_results=[BOOKING_AR_DIRECT])
+    stats = er._new_stats()
+    er._handle_notification_email(email, 'booking', er._candidate_views('booking'),
+                                  er.get_reconcile_config(), get_message_router(), stats)
+    assert stats['auto_inserted'] == 0
+    assert Message.query.filter_by(conversation_id=conv.id).count() == 0
+
+
+def test_recovered_message_surfaces_in_the_inbox(app):
+    """An inserted message must lift the chat and mark it unread, or nobody sees
+    it — _store_message() alone writes the row and nothing else."""
+    import ChatBotAI.services.email_reconcile as er
+    g = Guest(name='Late Guest'); db.session.add(g); db.session.flush()
+    old = datetime(2026, 6, 1, 8, 0)
+    conv = Conversation(guest_id=g.id, platform='booking',
+                        last_message_at=old, is_read=True)
+    db.session.add(conv); db.session.commit()
+
+    newer = datetime(2026, 6, 9, 11, 24)
+    # the recovered message itself — surfacing reads the chat's real contents
+    db.session.add(Message(conversation_id=conv.id, sender_type='guest',
+                           content='Hallo, eine Frage...', sent_at=newer,
+                           platform_message_id='email:gsurf'))
+    db.session.commit()
+    er.surface_in_inbox(conv.id, newer)
+    db.session.refresh(conv)
+    assert conv.last_message_at == newer
+    assert conv.is_read is False
+
+
+def test_surface_never_moves_the_chat_backwards(app):
+    import ChatBotAI.services.email_reconcile as er
+    g = Guest(name='Old Mail'); db.session.add(g); db.session.flush()
+    recent = datetime(2026, 6, 20, 9, 0)
+    conv = Conversation(guest_id=g.id, platform='booking', last_message_at=recent)
+    db.session.add(conv); db.session.commit()
+
+    er.surface_in_inbox(conv.id, datetime(2026, 6, 1, 8, 0))   # backfilled old mail
+    db.session.refresh(conv)
+    assert conv.last_message_at == recent

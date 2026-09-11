@@ -24,7 +24,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('chatbot.static', filename='css/style.css') }}?v=68">
+    <link rel="stylesheet" href="{{ url_for('chatbot.static', filename='css/style.css') }}?v=77">
 
     {% block extra_css %}{% endblock %}
 </head>
@@ -66,15 +66,8 @@
                 </li>
                 <li class="nav-item">
                     <a href="{{ url_for('chatbot.knowledge_base') }}" class="nav-link {% if request.endpoint == 'chatbot.knowledge_base' %}active{% endif %}">
-                        <i class="fas fa-book"></i>
-                        <span data-i18n="nav.knowledge">Wissensdatenbank</span>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{{ url_for('chatbot.email_review') }}" class="nav-link {% if request.endpoint == 'chatbot.email_review' %}active{% endif %}">
-                        <i class="fas fa-envelope-open-text"></i>
-                        <span data-i18n="nav.emailReview">E-Mail-Abgleich</span>
-                        <span id="emailReviewBadge" class="nav-badge" style="display:none"></span>
+                        <i class="fas fa-robot"></i>
+                        <span data-i18n="nav.knowledge">UMI</span>
                     </a>
                 </li>
                 <li class="nav-item">
@@ -170,6 +163,16 @@
                     <span class="status-dot"></span>
                     <span class="status-text">AI Status: Checking...</span>
                 </div>
+
+                {% if whatsapp_enabled %}
+                <div class="ai-status" id="whatsappStatusBadge" title="WhatsApp"
+                     {% if current_user.is_authenticated and current_user.is_admin %}
+                     onclick="location.href='{{ url_for('chatbot.settings') }}#whatsappIntegration'" style="cursor: pointer;"
+                     {% endif %}>
+                    <span class="status-dot"></span>
+                    <span class="status-text"><i class="fab fa-whatsapp"></i> WhatsApp …</span>
+                </div>
+                {% endif %}
             </div>
         </nav>
 
@@ -231,24 +234,12 @@
     </script>
 
     <!-- Scripts -->
-    <script src="{{ url_for('chatbot.static', filename='js/i18n.js') }}?v=41"></script>
-    <script src="{{ url_for('chatbot.static', filename='js/app.js') }}?v=13"></script>
+    <script src="{{ url_for('chatbot.static', filename='js/i18n.js') }}?v=57"></script>
+    <script src="{{ url_for('chatbot.static', filename='js/app.js') }}?v=16"></script>
     <script src="{{ url_for('chatbot.static', filename='js/pwa-install.js') }}?v=1"></script>
     {% block extra_js %}{% endblock %}
 
     <script>
-    (function refreshEmailReviewBadge() {
-      fetch('/chatbot/api/email-review/pending-count')
-        .then(function(r) { return r.ok ? r.json() : {count: 0}; })
-        .then(function(d) {
-          var b = document.getElementById('emailReviewBadge');
-          if (!b) return;
-          if (d.count > 0) { b.textContent = d.count; b.style.display = ''; }
-          else { b.style.display = 'none'; }
-        }).catch(function() {});
-      setTimeout(refreshEmailReviewBadge, 60000);
-    })();
-
     window.openProblemModal = function (conversationId) {
       var modal = document.getElementById('problemReportModal');
       if (!modal) return;
@@ -361,6 +352,34 @@
                     statusEl.querySelector('.status-text').textContent = 'AI Offline';
                 });
         }
+
+        // WhatsApp badge. Unlike the AI check it repeats: the bridge drops on a PC
+        // restart or a closed window, and the team should see that without reloading.
+        (function () {
+            const badge = document.getElementById('whatsappStatusBadge');
+            if (!badge) return;
+            const text = badge.querySelector('.status-text');
+            function show(online, reason) {
+                badge.classList.toggle('online', online);
+                badge.classList.toggle('offline', !online);
+                text.innerHTML = '<i class="fab fa-whatsapp"></i> WhatsApp ' + (online ? 'Online' : 'Offline');
+                badge.title = reason;
+            }
+            function check() {
+                if (document.hidden) return;
+                fetch('{{ url_for("chatbot.api_whatsapp_status") }}')
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.connected) show(true, 'WhatsApp ist verbunden');
+                        else if (data.error) show(false, 'WhatsApp-Bridge läuft nicht – in den Einstellungen starten');
+                        else show(false, 'WhatsApp ist nicht gekoppelt – in den Einstellungen koppeln');
+                    })
+                    .catch(() => show(false, 'WhatsApp-Status nicht abrufbar'));
+            }
+            check();
+            setInterval(check, 60000);
+            document.addEventListener('visibilitychange', check);
+        })();
     </script>
 </body>
 </html>

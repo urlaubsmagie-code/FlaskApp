@@ -1,19 +1,29 @@
 /**
  * FilterState - Centralized filter state management with URL synchronization
  *
- * Manages platform and status filters for the inbox, persisting state in URL
+ * Manages channel, account and status filters for the inbox, persisting state in URL
  * for bookmarking and browser navigation support.
  */
 
 class FilterState {
     constructor() {
         this.state = {
-            platform: null,  // null = all, or 'email'|'whatsapp'|'airbnb'|'booking'
+            channel: null,   // null = all, or 'booking'|'airbnb'|'direct'|'whatsapp'
+            account: null,   // null = all, or a Smoobu account id
             status: null,    // null = all, or 'active'|'pending_owner'|'closed'
             guest: null,     // null = all, or guest ID string
             search: null,    // null = no search, or query string
             unread: false    // true = show only unread conversations
         };
+
+        // Fired whenever the unread filter flips (any path). inbox.js sets this to
+        // re-fetch the server-backed unread set / restore the normal list.
+        this.onUnreadChange = null;
+
+        // Same idea for channel/account: both are server-side filters (the inbox is
+        // paginated), so every path that changes them — button, badge X, "Filter
+        // löschen", browser back — must refetch. Hook it here, not per call site.
+        this.onServerFilterChange = null;
 
         // Load initial state from URL
         this.loadFromURL();
@@ -23,6 +33,7 @@ class FilterState {
             this.loadFromURL();
             this.applyFilters();
             this.updateUI();
+            if (this.onServerFilterChange) this.onServerFilterChange();
             // Sync search input with URL state
             const searchInput = document.getElementById('searchInput');
             if (searchInput) {
@@ -36,7 +47,8 @@ class FilterState {
      */
     loadFromURL() {
         const params = new URLSearchParams(window.location.search);
-        this.state.platform = params.get('platform') || null;
+        this.state.channel = params.get('channel') || null;
+        this.state.account = params.get('account') || null;
         this.state.status = params.get('status') || null;
         this.state.guest = params.get('guest') || null;
         this.state.search = params.get('q') || null;
@@ -50,11 +62,18 @@ class FilterState {
     saveToURL() {
         const url = new URL(window.location.href);
 
-        // Set or delete platform param
-        if (this.state.platform) {
-            url.searchParams.set('platform', this.state.platform);
+        // Set or delete channel param
+        if (this.state.channel) {
+            url.searchParams.set('channel', this.state.channel);
         } else {
-            url.searchParams.delete('platform');
+            url.searchParams.delete('channel');
+        }
+
+        // Set or delete account param
+        if (this.state.account) {
+            url.searchParams.set('account', this.state.account);
+        } else {
+            url.searchParams.delete('account');
         }
 
         // Set or delete status param
@@ -90,14 +109,27 @@ class FilterState {
     }
 
     /**
-     * Set platform filter
-     * @param {string|null} platform - Platform to filter by, or null for all
+     * Set booking-channel filter (server-side)
+     * @param {string|null} channel - 'booking'|'airbnb'|'direct'|'whatsapp', or null for all
      */
-    setPlatform(platform) {
-        this.state.platform = platform || null;
+    setChannel(channel) {
+        this.state.channel = channel || null;
         this.saveToURL();
         this.applyFilters();
         this.updateUI();
+        if (this.onServerFilterChange) this.onServerFilterChange();
+    }
+
+    /**
+     * Set Smoobu account filter (server-side)
+     * @param {string|null} account - Smoobu account id, or null for all
+     */
+    setAccount(account) {
+        this.state.account = account || null;
+        this.saveToURL();
+        this.applyFilters();
+        this.updateUI();
+        if (this.onServerFilterChange) this.onServerFilterChange();
     }
 
     /**
@@ -105,10 +137,20 @@ class FilterState {
      * @param {string|null} status - Status to filter by, or null for all
      */
     setStatus(status) {
+        const serverBacked = s => s === 'escalated' || s === 'pending_approval';
+        const wasServerBacked = serverBacked(this.state.status);
         this.state.status = status || null;
         this.saveToURL();
         this.applyFilters();
         this.updateUI();
+        // 'escalated' and 'pending_approval' are server-backed: the inbox is
+        // paginated, and escalations run months back, so DOM-filtering page 1
+        // showed one of nineteen. Entering AND leaving must refetch — leaving
+        // has to restore the normal paginated list.
+        if ((serverBacked(this.state.status) || wasServerBacked)
+            && this.onServerFilterChange) {
+            this.onServerFilterChange();
+        }
     }
 
     /**
@@ -137,6 +179,7 @@ class FilterState {
         this.saveToURL();
         this.applyFilters();
         this.updateUI();
+        if (this.onUnreadChange) this.onUnreadChange(this.state.unread);
     }
 
     /**
@@ -146,13 +189,23 @@ class FilterState {
     setSearch(query) {
         this.state.search = query || null;
         this.saveToURL();
-        // Don't call applyFilters - search handler does server fetch
+        // Don't call applyFilters - search handler does server fetch.
+        // updateUI IS needed: it repaints the badge row, so the search chip
+        // appears while typing and — the actual bug — disappears when its own
+        // X clears the search instead of lingering until a page reload.
+        this.updateUI();
     }
 
     /**
      * Clear search (shorthand)
      */
     clearSearch() {
+        // inbox.js owns the search-mode DOM (injected cards, snippets, empty
+        // state). Delegate so every X does the same full cleanup.
+        if (typeof window.clearSearch === 'function') {
+            window.clearSearch();
+            return;
+        }
         this.setSearch(null);
     }
 
@@ -160,21 +213,25 @@ class FilterState {
      * Reset all filters to default (no filtering)
      */
     reset() {
-        this.state.platform = null;
+        const wasUnread = this.state.unread;
+        const hadServerFilter = !!(this.state.channel || this.state.account
+                                   || this.state.status === 'escalated'
+                                   || this.state.status === 'pending_approval');
+        this.state.channel = null;
+        this.state.account = null;
         this.state.status = null;
         this.state.guest = null;
         this.state.search = null;
         this.state.unread = false;
+        // Also tear down search mode, otherwise injected result cards survive
+        // "Filter löschen" and the inbox keeps showing the search results.
+        if (typeof window.clearSearch === 'function') window.clearSearch();
         this.saveToURL();
         this.applyFilters();
         this.updateUI();
-    }
-
-    /**
-     * Clear platform filter (shorthand)
-     */
-    clearPlatform() {
-        this.setPlatform(null);
+        if (wasUnread && this.onUnreadChange) this.onUnreadChange(false);
+        // onUnreadChange already refetches; only refetch here when it didn't run.
+        else if (hadServerFilter && this.onServerFilterChange) this.onServerFilterChange();
     }
 
     /**
@@ -186,7 +243,7 @@ class FilterState {
 
     /**
      * Apply current filters to conversation cards
-     * Combines platform, status, and search filters
+     * Combines channel, account, status, and search filters
      */
     applyFilters() {
         const cards = document.querySelectorAll('.conversation-card');
@@ -194,7 +251,8 @@ class FilterState {
         const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
 
         cards.forEach(card => {
-            const matchesPlatform = !this.state.platform || card.dataset.platform === this.state.platform;
+            const matchesChannel = !this.state.channel || card.dataset.channel === this.state.channel;
+            const matchesAccount = !this.state.account || card.dataset.account === this.state.account;
             const matchesStatus = !this.state.status
                 || (this.state.status === 'escalated' ? card.dataset.escalated === 'true'
                     : this.state.status === 'pending_approval' ? card.dataset.hasPendingApproval === 'true'
@@ -203,7 +261,7 @@ class FilterState {
             const matchesSearch = !searchTerm || card.textContent.toLowerCase().includes(searchTerm);
             const matchesUnread = !this.state.unread || card.dataset.isRead === 'false';
 
-            card.style.display = (matchesPlatform && matchesStatus && matchesGuest && matchesSearch && matchesUnread) ? 'flex' : 'none';
+            card.style.display = (matchesChannel && matchesAccount && matchesStatus && matchesGuest && matchesSearch && matchesUnread) ? 'flex' : 'none';
         });
 
         // Hide date group headers that have no visible cards after them
@@ -227,27 +285,27 @@ class FilterState {
      * - Update active filter indicators
      */
     updateUI() {
-        // Update platform filter buttons
-        document.querySelectorAll('[data-filter-platform]').forEach(btn => {
-            const filterValue = btn.dataset.filterPlatform;
-            const isActive = (filterValue === '' && !this.state.platform) ||
-                            (filterValue === this.state.platform);
+        // Update channel filter buttons
+        document.querySelectorAll('[data-filter-channel]').forEach(btn => {
+            const filterValue = btn.dataset.filterChannel;
+            const isActive = (filterValue === '' && !this.state.channel) ||
+                            (filterValue === this.state.channel);
             btn.classList.toggle('active', isActive);
         });
 
-        // Update status filter buttons
-        document.querySelectorAll('[data-filter-status]').forEach(btn => {
-            const filterValue = btn.dataset.filterStatus;
-            const isActive = (filterValue === '' && !this.state.status) ||
-                            (filterValue === this.state.status);
+        // Update account filter buttons
+        document.querySelectorAll('[data-filter-account]').forEach(btn => {
+            const filterValue = btn.dataset.filterAccount;
+            const isActive = (filterValue === '' && !this.state.account) ||
+                            (filterValue === this.state.account);
             btn.classList.toggle('active', isActive);
         });
 
-        // Update unread filter button
-        const unreadBtn = document.querySelector('[data-filter-unread]');
-        if (unreadBtn) {
-            unreadBtn.classList.toggle('active', this.state.unread);
-        }
+        // Stat tiles double as the unread / status filter buttons
+        document.querySelectorAll('[data-stat-filter]').forEach(tile => {
+            const f = tile.dataset.statFilter;
+            tile.classList.toggle('active', f === 'unread' ? this.state.unread : this.state.status === f);
+        });
 
         // Sync guest dropdown selection
         const guestDropdown = document.getElementById('guestFilter');
@@ -271,9 +329,14 @@ class FilterState {
         // Clear existing badges
         container.innerHTML = '';
 
-        // Add platform badge if filtered
-        if (this.state.platform) {
-            container.appendChild(this.createFilterBadge('platform', this.state.platform));
+        // Add channel badge if filtered
+        if (this.state.channel) {
+            container.appendChild(this.createFilterBadge('channel', this.state.channel));
+        }
+
+        // Add account badge if filtered
+        if (this.state.account) {
+            container.appendChild(this.createFilterBadge('account', this.state.account));
         }
 
         // Add status badge if filtered
@@ -297,7 +360,7 @@ class FilterState {
         }
 
         // Show/hide clear all button
-        const hasActiveFilters = this.state.platform || this.state.status || this.state.guest || this.state.search || this.state.unread;
+        const hasActiveFilters = this.state.channel || this.state.account || this.state.status || this.state.guest || this.state.search || this.state.unread;
         if (clearBtn) {
             clearBtn.style.display = hasActiveFilters ? 'inline-flex' : 'none';
         }
@@ -305,7 +368,7 @@ class FilterState {
 
     /**
      * Create a filter badge element
-     * @param {string} type - 'platform' or 'status'
+     * @param {string} type - 'channel', 'account', 'status', ...
      * @param {string} value - The filter value
      * @returns {HTMLElement} The badge element
      */
@@ -329,8 +392,10 @@ class FilterState {
         const closeBtn = badge.querySelector('button');
         closeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (type === 'platform') {
-                this.clearPlatform();
+            if (type === 'channel') {
+                this.setChannel(null);
+            } else if (type === 'account') {
+                this.setAccount(null);
             } else if (type === 'status') {
                 this.clearStatus();
             } else if (type === 'guest') {
@@ -339,8 +404,6 @@ class FilterState {
                 this.toggleUnread();
             } else if (type === 'search') {
                 this.clearSearch();
-                const searchInput = document.getElementById('searchInput');
-                if (searchInput) searchInput.value = '';
             }
         });
 
@@ -349,15 +412,21 @@ class FilterState {
 
     /**
      * Format filter value for display
-     * @param {string} type - 'platform' or 'status'
+     * @param {string} type - 'channel', 'account', 'status', ...
      * @param {string} value - The raw filter value
      * @returns {string} Formatted display value
      */
     formatFilterValue(type, value) {
-        if (type === 'platform') {
-            // Capitalize first letter (email -> Email)
-            return value.charAt(0).toUpperCase() + value.slice(1);
+        if (type === 'channel') {
+            return { booking: 'Booking.com', airbnb: 'Airbnb', direct: 'Direkt' }[value]
+                || value.charAt(0).toUpperCase() + value.slice(1);
+        } else if (type === 'account') {
+            // Label comes from the button the server rendered for this account id
+            const btn = document.querySelector(`[data-filter-account="${value}"]`);
+            return btn ? btn.textContent.trim() : value;
         } else if (type === 'status') {
+            if (value === 'escalated') return 'Eskaliert';
+            if (value === 'pending_approval') return 'UMI-Freigabe';
             // Replace underscores with spaces, title case (pending_owner -> Pending Owner)
             return value
                 .split('_')
@@ -396,7 +465,7 @@ class FilterState {
      * @returns {boolean} True if any filter is set
      */
     hasActiveFilters() {
-        return !!(this.state.platform || this.state.status || this.state.guest || this.state.search || this.state.unread);
+        return !!(this.state.channel || this.state.account || this.state.status || this.state.guest || this.state.search || this.state.unread);
     }
 }
 

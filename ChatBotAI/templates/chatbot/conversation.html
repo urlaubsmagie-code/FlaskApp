@@ -83,18 +83,18 @@
                 <span class="toggle-status">{{ 'Lösen' if conversation.escalated else 'Wichtig' }}</span>
             </button>
             {% if conversation.platform == 'smoobu' and conversation.smoobu_reservation_id %}
-            <button class="btn btn-icon" onclick="syncConversation()" id="syncBtn" title="Nachrichten synchronisieren">
-                <i class="fas fa-sync-alt"></i>
-            </button>
+            {# ponytail: plain link, Smoobu redirects through its own login if needed #}
+            <a class="btn btn-icon" id="smoobuBookingBtn" target="_blank" rel="noopener"
+               href="https://login.smoobu.com/de/booking/edit/{{ conversation.smoobu_reservation_id }}"
+               title="In Smoobu öffnen (Gast- und Buchungsdaten)">
+                <i class="fas fa-up-right-from-square"></i>
+            </a>
             {% endif %}
-            <button class="btn btn-icon" onclick="recoverEmails()" id="recoverEmailsBtn" data-i18n-title="conversation.recoverEmails" title="E-Mails für diesen Chat suchen">
-                <i class="fas fa-envelope-open-text"></i>
-            </button>
-            <button class="btn btn-icon" id="import-email-thread-btn" title="E-Mail-Verlauf (Gast + wir) in diesen Chat übernehmen">
-                <i class="fas fa-mail-bulk"></i>
-            </button>
             <button class="btn btn-icon" id="problemReportBtn" onclick="openProblemModal({{ conversation.id }})" data-i18n-title="problem.report" title="Problem melden">
                 <i class="fas fa-exclamation-triangle"></i>
+            </button>
+            <button class="btn btn-icon" onclick="markUnreadAndLeave()" id="markUnreadBtn" data-i18n-title="conversation.markUnread" title="Als ungelesen markieren und zurück">
+                <i class="fas fa-envelope"></i>
             </button>
             <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="btn btn-icon" data-i18n-title="conversation.guest.profile" title="Gästeprofil anzeigen">
                 <i class="fas fa-user"></i>
@@ -127,18 +127,15 @@
                 <span>{{ 'Als gelöst markieren' if conversation.escalated else 'Als wichtig markieren' }}</span>
             </button>
             {% if conversation.platform == 'smoobu' and conversation.smoobu_reservation_id %}
-            <button class="overflow-menu-item" onclick="syncConversation()" id="mobileSyncBtn">
-                <i class="fas fa-sync-alt"></i>
-                <span>Synchronisieren</span>
-            </button>
+            <a class="overflow-menu-item" target="_blank" rel="noopener"
+               href="https://login.smoobu.com/de/booking/edit/{{ conversation.smoobu_reservation_id }}">
+                <i class="fas fa-up-right-from-square"></i>
+                <span>In Smoobu öffnen</span>
+            </a>
             {% endif %}
-            <button class="overflow-menu-item" id="mobileRecoverEmailsBtn" onclick="document.getElementById('mobileOverflowMenu').classList.remove('open'); recoverEmails();">
-                <i class="fas fa-envelope-open-text"></i>
-                <span>E-Mails suchen</span>
-            </button>
-            <button class="overflow-menu-item" id="mobileImportEmailBtn" onclick="document.getElementById('mobileOverflowMenu').classList.remove('open'); document.getElementById('import-email-thread-btn').click();">
-                <i class="fas fa-mail-bulk"></i>
-                <span>E-Mail-Verlauf übernehmen</span>
+            <button class="overflow-menu-item" onclick="markUnreadAndLeave()" id="mobileMarkUnreadBtn">
+                <i class="fas fa-envelope"></i>
+                <span data-i18n="conversation.markUnread">Als ungelesen markieren</span>
             </button>
             <a href="{{ url_for('chatbot.guest_profile', guest_id=guest.id) }}" class="overflow-menu-item">
                 <i class="fas fa-user"></i>
@@ -291,6 +288,11 @@
                 title="Wissen extrahieren">
                 <i class="fas fa-graduation-cap"></i>
             </button>
+            <button class="btn-save-example" onclick="openKnowledgeScopePopup({{ message.id }}, 'example')"
+                data-i18n-title="conversation.example.save"
+                title="Als Antwort-Beispiel speichern">
+                <i class="fas fa-comment-dots"></i>
+            </button>
             {% endif %}
         </div>
         {% endfor %}
@@ -360,6 +362,7 @@
         platform: {{ conversation.platform|tojson }},
         gmailConnected: {{ 'true' if gmail_connected else 'false' }},
         smoobuConnected: {{ 'true' if smoobu_connected else 'false' }},
+        whatsappConnected: {{ 'true' if whatsapp_connected else 'false' }},
         currentPropertyId: {{ conversation.property_id|tojson if conversation.property_id else 'null' }},
         guestName: {{ (guest.name or "Guest")|tojson }},
         guestNotifyName: {{ (guest.name or guest.email or "New Message")|tojson }},
@@ -372,7 +375,7 @@
     };
 </script>
 <script src="{{ url_for('chatbot.static', filename='js/guided-tour.js') }}?v=1"></script>
-<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=40"></script>
+<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=49"></script>
 {% if request.args.get('diag') %}
 {# Throwaway on-device layout probe: ?diag=1 on any chat. Remove with the
    /viewport-check route once the mobile layout is settled. #}

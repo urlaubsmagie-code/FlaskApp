@@ -90,14 +90,9 @@ function showNotification(message, type = 'info', duration = 3000) {
         <button class="toast-close" onclick="this.parentElement.classList.remove('show');setTimeout(()=>{this.parentElement.remove();_repositionToasts();},300);" aria-label="Close">&times;</button>
     `;
 
-    // Stack above existing toasts
-    const existingToasts = document.querySelectorAll('.notification-toast');
-    const offset = existingToasts.length * 56;
-    const baseOffset = window.innerWidth <= 768 ? 76 : 20;
-    toast.style.bottom = `${baseOffset + offset}px`;
-
-    // Add to page
+    // Add to page, then stack — _repositionToasts measures real heights.
     document.body.appendChild(toast);
+    _repositionToasts();
 
     // Animate in
     setTimeout(() => toast.classList.add('show'), 10);
@@ -113,10 +108,43 @@ function showNotification(message, type = 'info', duration = 3000) {
 }
 
 function _repositionToasts() {
-    document.querySelectorAll('.notification-toast').forEach((t, i) => {
-        const baseOffset = window.innerWidth <= 768 ? 76 : 20;
-        t.style.bottom = `${baseOffset + i * 56}px`;
+    const toasts = [...document.querySelectorAll('.notification-toast')];
+    if (!toasts.length) return;
+
+    const header = document.querySelector('.conversation-header-bar, .page-header');
+    // Clamp floor: a .page-header scrolls away with the page, and an unclamped
+    // negative offset would drag the toast off the top of the screen.
+    const headerBottom = Math.max(12, header ? header.getBoundingClientRect().bottom + 8 : 12);
+    const composer = document.querySelector('.message-input-container');
+
+    // Heights are measured, never assumed: a message that wraps to two lines on
+    // a narrow phone is taller than any fixed step and would overlap its neighbour.
+    if (composer) {
+        // In a chat, stack upward from just above the composer + UMI buttons.
+        // Anchored to the composer's real top edge rather than the viewport, so
+        // the phone keyboard pushes the toast up with it instead of hiding it —
+        // and the buttons underneath stay visible and clickable.
+        let anchor = composer.getBoundingClientRect().top - 8;
+        for (let i = toasts.length - 1; i >= 0; i--) {
+            const top = anchor - toasts[i].offsetHeight;
+            toasts[i].style.top = `${Math.max(headerBottom, top)}px`;
+            anchor = top - 8;
+        }
+        return;
+    }
+
+    // Pages without a composer (inbox, profile, …): hang under the header.
+    let offset = 0;
+    toasts.forEach(t => {
+        t.style.top = `${headerBottom + offset}px`;
+        offset += t.offsetHeight + 8;
     });
+}
+
+// The on-screen keyboard resizes the visual viewport and moves the composer;
+// re-anchor so an open toast follows it instead of being left behind.
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', _repositionToasts);
 }
 
 /**
@@ -441,16 +469,12 @@ function isConversationRelevantToMe(conv) {
 }
 
 /**
- * Update inbox badge from conversation data
+ * Set the sidebar inbox badge + tab title. The count is the server's total of
+ * unread chats — the same number as the inbox "Ungelesen" tile. It used to be
+ * counted from page 1 of the list (50 chats) minus chats assigned to others,
+ * so it showed 11 next to a tile reading 33.
  */
-function updateInboxBadgeFromData(conversations) {
-    if (!conversations) return;
-    let count = 0;
-    conversations.forEach(conv => {
-        if (!conv.is_read && isConversationRelevantToMe(conv)) {
-            count++;
-        }
-    });
+function setInboxBadge(count) {
     const badge = document.getElementById('inboxBadge');
     if (badge) {
         badge.textContent = count;
@@ -496,9 +520,9 @@ function updateOnlineUsers() {
  * Fetch conversations and update badge (for non-inbox pages)
  */
 function updateInboxBadge() {
-    fetch('/chatbot/api/conversations?per_page=50')
+    fetch('/chatbot/api/conversations/last-updated')
         .then(r => r.json())
-        .then(data => updateInboxBadgeFromData(data.conversations))
+        .then(data => setInboxBadge(data.unread || 0))
         .catch(() => { /* silent */ });
 }
 
@@ -874,54 +898,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Apply avatar colors
     applyAvatarColors();
 
-    // Add notification toast styles if not present
-    if (!document.querySelector('#notification-styles')) {
-        const style = document.createElement('style');
-        style.id = 'notification-styles';
-        style.textContent = `
-            .notification-toast {
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                padding: 12px 20px;
-                background: #1e293b;
-                color: white;
-                border-radius: 8px;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                transform: translateX(120%);
-                transition: transform 0.3s ease;
-                z-index: 9999;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            }
-            .notification-toast.show {
-                transform: translateX(0);
-            }
-            .notification-toast.success {
-                background: #166534;
-            }
-            .notification-toast.error {
-                background: #991b1b;
-            }
-            .notification-toast.info {
-                background: #1e40af;
-            }
-            .toast-close {
-                background: none;
-                border: none;
-                color: rgba(255,255,255,0.7);
-                font-size: 18px;
-                cursor: pointer;
-                padding: 0 0 0 8px;
-                line-height: 1;
-            }
-            .toast-close:hover {
-                color: #fff;
-            }
-        `;
-        document.head.appendChild(style);
-    }
+    // Toast styles live in style.css. They used to be injected here as a <style>
+    // block appended to <head>, which silently outranked the stylesheet and kept
+    // the toast bottom-anchored over the composer no matter what style.css said.
 
     // --- Mobile: sync language selector with sidebar ---
     const mobileLangSelector = document.getElementById('mobileLanguageSelector');

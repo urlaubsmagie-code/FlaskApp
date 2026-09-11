@@ -4,6 +4,7 @@ Defines all URL endpoints for the messaging system
 """
 
 import difflib
+import hmac
 import logging
 import os
 import threading
@@ -13,7 +14,7 @@ from functools import wraps, lru_cache
 
 from flask import render_template, request, jsonify, redirect, url_for, current_app
 from flask_login import login_user, logout_user, current_user, login_required
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def admin_required(f):
@@ -32,7 +33,7 @@ from sqlalchemy.orm import joinedload
 from . import chatbot_bp
 
 logger = logging.getLogger(__name__)
-from .models import db, User, UserSession, Guest, GuestDetail, Conversation, Message, Property, AISettings, ReplyTemplate, KnowledgeEntry, EmailBackfillCandidate, ProblemReport, preload_last_messages, preload_unread_counts, preload_display_platforms
+from .models import db, User, UserSession, Guest, GuestDetail, Conversation, Message, Property, AISettings, ReplyTemplate, KnowledgeEntry, EmailBackfillCandidate, ProblemReport, preload_last_messages, preload_unread_counts, preload_display_platforms, pending_guest_question
 from .services.ai_service import get_ai_service
 from .services.memory_service import get_memory_service
 from .services.message_router import get_message_router
@@ -123,6 +124,20 @@ def require_login():
 
     # If not authenticated, check if setup is needed or redirect to login
     if not current_user.is_authenticated:
+        # API callers get JSON, never a redirect. fetch() follows a 302 to the
+        # login page, gets 200 + HTML, and every caller's r.json() then throws —
+        # surfacing an expired session as whatever generic error that caller
+        # happens to show ("Wissensextraktion fehlgeschlagen"). 401 + JSON lets
+        # the frontend say "session expired" and stops the pointless retry.
+        if '/api/' in request.path:
+            # Logged so an expired session is visible without waiting for someone
+            # to report it. Absence of these lines during a reported failure means
+            # the request never reached us — proxy/network, not auth.
+            logger.warning('API call rejected, not authenticated: %s %s (ua=%.60s)',
+                           request.method, request.path,
+                           request.headers.get('User-Agent', '-'))
+            return jsonify({'error': 'Sitzung abgelaufen — bitte neu anmelden.',
+                            'session_expired': True}), 401
         # Use EXISTS for efficiency instead of COUNT (stops at first row)
         has_users = db.session.query(User.id).first() is not None
         if not has_users:
@@ -250,20 +265,89 @@ def logout():
 # PAGE ROUTES (HTML Templates)
 # ============================================================================
 
+# ---------------------------------------------------------------------------
+# Inbox source filters: booking channel (Booking.com / Airbnb / Direkt) and
+# Smoobu account. Server-side on purpose — the inbox is paginated, so filtering
+# only the cards already on screen leaves the rest hidden behind "Load More"
+# (the exact trap the unread filter fell into).
+# ---------------------------------------------------------------------------
+
+# channel -> (Conversation.platform values, GuestDetail.booking_channel LIKE)
+_CHANNEL_FILTERS = {
+    'booking': (('booking', 'booking.com'), '%booking.com%'),
+    'airbnb': (('airbnb',), '%airbnb%'),
+    'direct': ((), '%direct%'),
+    'whatsapp': (('whatsapp',), '%whatsapp%'),
+}
+
+
+def apply_source_filters(query, channel=None, account=None):
+    """Add channel/account filters to a Conversation query. Unknown values are ignored.
+
+    Both list paths (Jinja first paint and /api/conversations) go through here.
+    """
+    if channel in _CHANNEL_FILTERS:
+        platforms, like = _CHANNEL_FILTERS[channel]
+        guests = db.session.query(GuestDetail.guest_id).filter(
+            GuestDetail.detail_key == 'booking_channel',
+            GuestDetail.detail_value.ilike(like),
+        )
+        query = query.filter(db.or_(
+            Conversation.platform.in_(platforms),
+            Conversation.guest_id.in_(guests),
+        ))
+    if account:
+        cond = Conversation.smoobu_account_id == str(account)
+        if str(account) == str(AISettings.get('smoobu_account_id') or ''):
+            # Rows written before multi-account carry a NULL tag = primary account.
+            cond = db.or_(cond, Conversation.smoobu_account_id.is_(None))
+        query = query.filter(cond)
+    return query
+
+
+def smoobu_account_choices():
+    """[(account_id, label)] for the inbox account filter; empty when only one account."""
+    from .services.smoobu_service import get_smoobu_services
+    # ponytail: labels are cosmetic. Override per slot with a
+    # smoobu_account_label_<slot> setting if the names ever change.
+    defaults = {1: 'Urlaubsmagie', 2: 'Sonnenhof'}
+    choices = []
+    for svc in get_smoobu_services():
+        if not svc.account_id:
+            continue
+        label = (AISettings.get(f'smoobu_account_label_{svc.slot}')
+                 or defaults.get(svc.slot) or f'Konto {svc.slot}')
+        choices.append((str(svc.account_id), label))
+    return choices if len(choices) > 1 else []
+
+
 @chatbot_bp.route('/')
 def index():
     """Main inbox/dashboard view - shows first page of conversations"""
-    conversations = Conversation.query.options(
-        joinedload(Conversation.guest),
-        joinedload(Conversation.property)
-    ).filter(Conversation.platform != 'playtest').order_by(Conversation.last_message_at.desc()).limit(50).all()
-    total_conversations = Conversation.query.count()
+    channel = request.args.get('channel')
+    account = request.args.get('account')
+    query = apply_source_filters(
+        Conversation.query.options(
+            joinedload(Conversation.guest),
+            joinedload(Conversation.property)
+        ).filter(Conversation.platform != 'playtest'),
+        channel, account)
+    conversations = query.order_by(Conversation.last_message_at.desc()).limit(50).all()
+    total_conversations = query.count()
     preload_last_messages(conversations)
     preload_unread_counts(conversations)
     preload_display_platforms(conversations)
     instant_send = AISettings.get('inbox_umi_instant_send', 'false') == 'true'
+    from .services.smoobu_service import get_smoobu_services
+    from .services.gmail_service import get_gmail_service
     return render_template('chatbot/inbox.html', conversations=conversations,
                            total_conversations=total_conversations,
+                           # ponytail: config presence, not a live check — a dead key still
+                           # shows the button; clicking it reports the error.
+                           smoobu_connected=any(s.is_configured() for s in get_smoobu_services()),
+                           gmail_connected=os.path.exists(get_gmail_service().token_file),
+                           smoobu_accounts=smoobu_account_choices(),
+                           whatsapp_enabled=bool(os.environ.get('WHATSAPP_BRIDGE_URL')),
                            inbox_instant_send=instant_send)
 
 
@@ -308,6 +392,7 @@ def conversation_view(conversation_id):
     # Check platform connection status (only for the relevant platform)
     gmail_connected = False
     smoobu_connected = False
+    whatsapp_connected = False
     if conversation.platform == 'email':
         try:
             from .services.gmail_service import get_gmail_service
@@ -320,6 +405,15 @@ def conversation_view(conversation_id):
             from .services.smoobu_service import get_smoobu_service
             smoobu = get_smoobu_service()
             smoobu_connected = smoobu is not None and smoobu.is_configured()
+        except Exception:
+            pass
+    elif conversation.platform == 'whatsapp':
+        try:
+            from .services.whatsapp_service import get_whatsapp_service
+            # is_configured() only, not get_status(): a live HTTP call to the
+            # sidecar on every page render would put a dead bridge in the way
+            # of reading the chat. The send path reports a down bridge itself.
+            whatsapp_connected = get_whatsapp_service().is_configured()
         except Exception:
             pass
 
@@ -337,6 +431,7 @@ def conversation_view(conversation_id):
         guest=guest,
         gmail_connected=gmail_connected,
         smoobu_connected=smoobu_connected,
+        whatsapp_connected=whatsapp_connected,
         has_older=has_older,
         total_messages=total_messages,
         approval_queue_enabled=approval_queue_enabled,
@@ -391,43 +486,18 @@ def settings():
     """AI settings configuration page"""
     all_settings = AISettings.query.all()
     properties = Property.query.all()
-    return render_template('chatbot/settings.html', settings=all_settings, properties=properties)
+    return render_template('chatbot/settings.html', settings=all_settings, properties=properties,
+                           whatsapp_enabled=bool(os.environ.get('WHATSAPP_BRIDGE_URL')))
 
 
 @chatbot_bp.route('/knowledge')
 @login_required
 def knowledge_base():
-    """Knowledge Base management page"""
+    """UMI page: knowledge, examples, escalation topics, personality, templates."""
     properties = Property.query.order_by(Property.name).all()
-    return render_template('chatbot/knowledge.html', properties=properties)
-
-
-@chatbot_bp.route('/email-review')
-@login_required
-def email_review():
-    """Review tray for low-confidence email-backfill candidates."""
-    from .services.guest_matching import normalize_name
-    # Highest-confidence first so the easy confirms are at the top and the
-    # uncertain / mismatched ones (which need scrutiny) sort to the bottom.
-    candidates = EmailBackfillCandidate.query.filter_by(status='pending').order_by(
-        EmailBackfillCandidate.confidence.desc(),
-        EmailBackfillCandidate.created_at.desc()).all()
-    rows = []
-    for c in candidates:
-        conv = Conversation.query.get(c.guessed_conversation_id) if c.guessed_conversation_id else None
-        guest = Guest.query.get(conv.guest_id) if conv else None
-        prop = Property.query.get(conv.property_id) if conv and conv.property_id else None
-        # Flag a likely-wrong match: the parsed sender shares NO name token with
-        # the target conversation's guest (e.g. "Michał Śliperski" matched into
-        # "Alexander Falenski"). Surfaced as a warning so it isn't blind-confirmed.
-        name_mismatch = False
-        if guest and c.parsed_name:
-            pn = set((normalize_name(c.parsed_name) or '').split())
-            gn = set((normalize_name(guest.name) or '').split())
-            name_mismatch = bool(pn and gn and not (pn & gn))
-        rows.append({'candidate': c, 'conversation': conv, 'guest': guest,
-                     'property': prop, 'name_mismatch': name_mismatch})
-    return render_template('chatbot/email_review.html', rows=rows)
+    # The Persönlichkeit tab renders the AI settings form — same rows as /settings.
+    return render_template('chatbot/knowledge.html', properties=properties,
+                           settings=AISettings.query.all())
 
 
 @chatbot_bp.route('/help')
@@ -823,12 +893,18 @@ def api_get_conversations():
         query = query.filter_by(status=status)
     escalated = request.args.get('escalated')
     if escalated == 'true':
-        query = query.filter_by(escalated=True)
+        # Open escalations only — the same set the inbox badge counts, so
+        # clicking a badge showing 19 shows exactly 19. A closed chat is
+        # handled, whatever its stale escalated flag says.
+        query = query.filter(Conversation.escalated == True,
+                             Conversation.status != 'closed')
     # Unread filter is server-side so the inbox shows ALL unread conversations, not
     # just the unread ones on the currently loaded page (the client-side filter alone
     # hid old unread behind "Load More").
     if request.args.get('unread') == 'true':
         query = query.filter(Conversation.is_read == False)
+    query = apply_source_filters(query, request.args.get('channel'),
+                                 request.args.get('account'))
 
     pagination = query.order_by(Conversation.last_message_at.desc()).paginate(
         page=page, per_page=per_page, error_out=False
@@ -1105,8 +1181,12 @@ def api_mark_conversation_read(conversation_id):
     last_message_id = data.get('last_message_id')
 
     if not last_message_id:
-        # Fall back to the latest message in the conversation
-        latest = conversation.messages.order_by(Message.sent_at.desc()).first()
+        # Highest message ID — unread is derived by ID (recompute_is_read), and
+        # backfilled/email-recovered messages carry an old sent_at with a new ID.
+        # Message.query, not conversation.messages: the dynamic relationship
+        # appends to its own order_by and would hand back the OLDEST message.
+        latest = Message.query.filter_by(conversation_id=conversation.id).order_by(
+            Message.id.desc()).first()
         last_message_id = latest.id if latest else None
 
     changed = False
@@ -1271,18 +1351,16 @@ def api_generate_ai_response(conversation_id):
             return jsonify({'error': 'No messages in conversation'}), 400
 
         # Query latest guest message directly (bypass relationship default ordering)
-        latest_guest_message = Message.query.filter(
-            Message.conversation_id == conversation.id,
-            Message.sender_type == 'guest',
-            db.or_(Message.approval_status.is_(None), Message.approval_status == 'approved')
-        ).order_by(Message.sent_at.desc()).first()
+        latest_guest_message, question_text = pending_guest_question(conversation)
 
         if not latest_guest_message:
             return jsonify({'error': 'No guest message to respond to'}), 400
 
         # Check if the latest guest message is a pure acknowledgment (Ok, Gut, etc.)
-        if ai_service.is_acknowledgment(latest_guest_message.content):
-            logger.info(f"[AI SKIP] Acknowledgment detected in auto-response: '{latest_guest_message.content[:50]}'")
+        # Checked against the full pending text, not just the newest message: an
+        # "Ok" after an unanswered question must not skip the question.
+        if ai_service.is_acknowledgment(question_text):
+            logger.info(f"[AI SKIP] Acknowledgment detected in auto-response: '{question_text[:50]}'")
             return jsonify({'skipped': True, 'reason': 'acknowledgment',
                            'message': 'No response needed — guest acknowledged your message.'}), 200
 
@@ -1306,19 +1384,7 @@ def api_generate_ai_response(conversation_id):
         # Load corrections
         corrections = []
         try:
-            correction_query = KnowledgeEntry.query.filter_by(category='correction')
-            if conversation.property_id:
-                property_corrections = correction_query.filter_by(
-                    property_id=conversation.property_id
-                ).order_by(KnowledgeEntry.created_at.desc()).limit(7).all()
-                global_corrections = KnowledgeEntry.query.filter_by(
-                    category='correction', property_id=None
-                ).order_by(KnowledgeEntry.created_at.desc()).limit(3).all()
-                corrections = [c.to_dict() for c in property_corrections + global_corrections]
-            else:
-                corrections = [c.to_dict() for c in
-                               correction_query.filter_by(property_id=None)
-                               .order_by(KnowledgeEntry.created_at.desc()).limit(10).all()]
+            corrections = KnowledgeEntry.load_corrections_for(conversation)
         except Exception as e:
             logger.warning(f"Failed to load corrections: {e}")
 
@@ -1328,7 +1394,7 @@ def api_generate_ai_response(conversation_id):
         # Apply context filter
         from .services.context_filter import ContextFilter
         filtered = ContextFilter.filter(
-            latest_message=latest_guest_message.content,
+            latest_message=question_text,
             conversation_history=[m.to_dict() for m in messages],
             knowledge_entries=knowledge_entries,
             guest_profile=profile,
@@ -1342,7 +1408,7 @@ def api_generate_ai_response(conversation_id):
         ai_response = ai_service.generate_guest_response(
             guest_profile=filtered.guest_profile,
             conversation_history=[m.to_dict() for m in messages],
-            latest_message=latest_guest_message.content,
+            latest_message=question_text,
             property_info=filtered.property_info,
             tone=tone,
             host_instructions=host_instructions,
@@ -1444,22 +1510,7 @@ def api_generate_ai_response(conversation_id):
         return jsonify({'error': f'AI generation failed: {str(e)}'}), 500
 
 
-def _local_reservation_info(conversation):
-    """Build reservation context for the AI prompt from locally-stored conversation
-    fields, avoiding a blocking live Smoobu get_reservation() call on the hot path
-    (that call added ~11s of prep — see [SUGGEST TIMING]). Guest counts are synced
-    onto the conversation by the Smoobu reservation sync + webhook. Returns None if
-    nothing is known."""
-    ci, co = conversation.check_in, conversation.check_out
-    adults, children = conversation.adults, conversation.children
-    if not (ci or co or adults or children):
-        return None
-    return {
-        'check_in': ci.isoformat() if ci else None,
-        'check_out': co.isoformat() if co else None,
-        'adults': adults,
-        'children': children,
-    }
+from .services.ai_service import local_reservation_info as _local_reservation_info
 
 
 def _ai_timing_log(line: str):
@@ -1516,23 +1567,21 @@ def api_suggest_ai_response(conversation_id):
             return jsonify({'error': 'No messages in conversation'}), 400
 
         # Query latest guest message directly (bypass relationship default ordering)
-        latest_guest_message = Message.query.filter(
-            Message.conversation_id == conversation.id,
-            Message.sender_type == 'guest',
-            db.or_(Message.approval_status.is_(None), Message.approval_status == 'approved')
-        ).order_by(Message.sent_at.desc()).first()
-        logger.info(f"[AI SUGGEST] latest_guest_message: id={latest_guest_message.id if latest_guest_message else None}, sent_at={latest_guest_message.sent_at if latest_guest_message else None}, content='{latest_guest_message.content[:60] if latest_guest_message else ''}...'")
+        latest_guest_message, question_text = pending_guest_question(conversation)
+        logger.info(f"[AI SUGGEST] answering everything since our last reply: newest_id={latest_guest_message.id if latest_guest_message else None}, chars={len(question_text)}, text='{question_text[:80]}...'")
 
         if not latest_guest_message:
             return jsonify({'error': 'No guest message to respond to'}), 400
 
         # Check if the latest guest message is a pure acknowledgment (Ok, Gut, etc.)
-        if ai_service.is_acknowledgment(latest_guest_message.content):
-            logger.info(f"[AI SKIP] Acknowledgment detected: '{latest_guest_message.content[:50]}' — no response needed")
+        # Checked against the full pending text, not just the newest message: an
+        # "Ok" after an unanswered question must not skip the question.
+        if ai_service.is_acknowledgment(question_text):
+            logger.info(f"[AI SKIP] Acknowledgment detected: '{question_text[:50]}' — no response needed")
             result = {'suggestion': None, 'skipped': True, 'reason': 'acknowledgment'}
             if include_debug:
                 result['debug_context'] = {
-                    'latest_guest_message': latest_guest_message.content,
+                    'latest_guest_message': question_text,
                     'skip_reason': 'Message is a pure acknowledgment (e.g. Ok, Gut, Alright) — no response needed',
                 }
             return jsonify(result)
@@ -1559,19 +1608,7 @@ def api_suggest_ai_response(conversation_id):
         # Load corrections
         corrections = []
         try:
-            correction_query = KnowledgeEntry.query.filter_by(category='correction')
-            if conversation.property_id:
-                property_corrections = correction_query.filter_by(
-                    property_id=conversation.property_id
-                ).order_by(KnowledgeEntry.created_at.desc()).limit(7).all()
-                global_corrections = KnowledgeEntry.query.filter_by(
-                    category='correction', property_id=None
-                ).order_by(KnowledgeEntry.created_at.desc()).limit(3).all()
-                corrections = [c.to_dict() for c in property_corrections + global_corrections]
-            else:
-                corrections = [c.to_dict() for c in
-                               correction_query.filter_by(property_id=None)
-                               .order_by(KnowledgeEntry.created_at.desc()).limit(10).all()]
+            corrections = KnowledgeEntry.load_corrections_for(conversation)
         except Exception as e:
             logger.warning(f"Failed to load corrections: {e}")
 
@@ -1581,7 +1618,7 @@ def api_suggest_ai_response(conversation_id):
         # Apply context filter
         from .services.context_filter import ContextFilter
         filtered = ContextFilter.filter(
-            latest_message=latest_guest_message.content,
+            latest_message=question_text,
             conversation_history=[m.to_dict() for m in messages],
             knowledge_entries=knowledge_entries,
             guest_profile=profile,
@@ -1596,7 +1633,7 @@ def api_suggest_ai_response(conversation_id):
         ai_response = ai_service.generate_guest_response(
             guest_profile=filtered.guest_profile,
             conversation_history=[m.to_dict() for m in messages],
-            latest_message=latest_guest_message.content,
+            latest_message=question_text,
             property_info=filtered.property_info,
             tone=tone,
             host_instructions=host_instructions,
@@ -1631,7 +1668,7 @@ def api_suggest_ai_response(conversation_id):
         # Include debug context if requested (shows what the AI received)
         if include_debug:
             result['debug_context'] = {
-                'latest_guest_message': latest_guest_message.content,
+                'latest_guest_message': question_text,
                 'messages_count': len(messages),
                 'messages_used': [
                     {'sender': m.sender_type, 'preview': m.content[:100]} for m in messages
@@ -1719,21 +1756,9 @@ def api_suggest_for_message(conversation_id):
         # Past corrections
         corrections = []
         try:
-            correction_query = KnowledgeEntry.query.filter_by(category='correction')
-            if conversation.property_id:
-                property_corrections = correction_query.filter_by(
-                    property_id=conversation.property_id
-                ).order_by(KnowledgeEntry.created_at.desc()).limit(7).all()
-                global_corrections = KnowledgeEntry.query.filter_by(
-                    category='correction', property_id=None
-                ).order_by(KnowledgeEntry.created_at.desc()).limit(3).all()
-                corrections = [c.to_dict() for c in property_corrections + global_corrections]
-            else:
-                corrections = [c.to_dict() for c in
-                               correction_query.filter_by(property_id=None)
-                               .order_by(KnowledgeEntry.created_at.desc()).limit(10).all()]
+            corrections = KnowledgeEntry.load_corrections_for(conversation)
         except Exception as e:
-            logger.warning(f"Failed to load corrections for per-message suggest: {e}")
+            logger.warning(f"Failed to load corrections: {e}")
 
         conversation_summary = conversation.ai_summary
 
@@ -2409,8 +2434,11 @@ def api_resolve_escalation(conversation_id):
     """Resolve an escalated conversation. Does NOT re-enable auto-respond."""
     conversation = Conversation.query.get_or_404(conversation_id)
 
+    # escalated_at is deliberately KEPT. Clearing it erased the only evidence a
+    # chat was ever flagged, so "detection never fired" and "fired and someone
+    # handled it" looked identical afterwards — untestable in production.
+    # escalated_at set + escalated False now reads as "escalated, resolved".
     conversation.escalated = False
-    conversation.escalated_at = None
     db.session.commit()
 
     return jsonify({
@@ -2440,14 +2468,16 @@ def api_escalate_conversation(conversation_id):
 
 @lru_cache(maxsize=512)
 def _translate_cached(text: str, target: str) -> str:
-    """Google Translate via deep-translator (already a dependency of the review
-    portal — no key, no new package). Cached because the team re-opens the same
-    chat repeatedly; the same message must not cost a round-trip every time.
+    """Translate a message body. See services/translate.py for why not deep-translator.
+
+    Cached because the team re-opens the same chat repeatedly; the same message
+    must not cost a round-trip every time. Failures raise and are never cached,
+    so a transient Google hiccup doesn't poison the entry.
     ponytail: in-process LRU, not a DB column. Persist it only if translations
-    ever need to be searchable."""
-    from deep_translator import GoogleTranslator
-    # GoogleTranslator rejects payloads over 5000 chars.
-    return GoogleTranslator(source='auto', target=target).translate(text[:4900])
+    ever need to be searchable.
+    """
+    from .services.translate import translate_text
+    return translate_text(text, target)
 
 
 @chatbot_bp.route('/api/translate', methods=['POST'])
@@ -2764,12 +2794,22 @@ def api_delete_property(property_id):
 # DASHBOARD STATISTICS API
 # ============================================================================
 
+def _berlin_midnight_utc(days_ago=0):
+    """00:00 Europe/Berlin `days_ago` days back, as naive UTC (how timestamps are
+    stored). UTC midnight made "today" start at 02:00 local time."""
+    from zoneinfo import ZoneInfo
+    from datetime import timedelta
+    local = (datetime.now(ZoneInfo('Europe/Berlin'))
+             .replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days_ago))
+    return local.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 @chatbot_bp.route('/api/stats', methods=['GET'])
 def api_get_stats():
     """Get dashboard statistics — combines counts into fewer queries"""
     from sqlalchemy import func
 
-    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = _berlin_midnight_utc()
 
     # Single query for conversation counts
     conv_stats = db.session.query(
@@ -2779,229 +2819,139 @@ def api_get_stats():
         )).label('unread'),
         func.count(func.distinct(sa_case(
             (Conversation.status == 'active', Conversation.guest_id), else_=None
-        ))).label('active_guests')
-    ).first()
+        ))).label('active_guests'),
+        # Open escalations. Counted here so the inbox filter can carry a live
+        # badge — escalations had no owner and no visible count, so the oldest
+        # sat unanswered for months.
+        func.sum(sa_case(
+            ((Conversation.escalated == True) & (Conversation.status != 'closed'), 1),
+            else_=0
+        )).label('escalated')
+    # Playtest chats are excluded from /api/conversations, so counting them here
+    # produced numbers the inbox could never show — a badge reading 1 over an
+    # empty list. Every stat must describe the same set of conversations the
+    # list does.
+    ).filter(Conversation.platform != 'playtest').first()
 
-    messages_today = Message.query.filter(Message.sent_at >= today).count()
+    # Guest messages only — team replies would inflate "how busy was today".
+    messages_today = Message.query.filter(
+        Message.sent_at >= today,
+        Message.sender_type == 'guest',
+        Message.conversation_id.in_(
+            db.session.query(Conversation.id).filter(Conversation.platform != 'playtest')
+        )
+    ).count()
     total_guests = Guest.query.count()
+    # Same set /api/conversations?status=pending_approval returns, so the tile
+    # count matches the list it opens.
+    pending_approval = db.session.query(func.count(func.distinct(Message.conversation_id))).filter(
+        Message.approval_status == 'pending',
+        Message.conversation_id.in_(
+            db.session.query(Conversation.id).filter(Conversation.platform != 'playtest')
+        )
+    ).scalar()
 
     return jsonify({
+        'pending_approval_count': int(pending_approval or 0),
         'total_conversations': conv_stats.total,
         'unread_count': int(conv_stats.unread or 0),
         'messages_today': messages_today,
         'active_guests': int(conv_stats.active_guests or 0),
+        'escalated_count': int(conv_stats.escalated or 0),
         'total_guests': total_guests
     })
 
 
 @chatbot_bp.route('/api/stats/detailed', methods=['GET'])
 def api_get_detailed_stats():
-    """Get team performance statistics for the statistics dashboard"""
+    """Team-Leistung.
+
+    Team-wide numbers include replies written in Smoobu: ~98% of the team's
+    replies never pass through UMI, and Smoobu doesn't say who wrote them. So
+    per-person numbers are limited to what UMI itself sees — online time and
+    replies sent from UMI.
+    """
     from sqlalchemy import func
     from datetime import timedelta
+    from statistics import median
+    from zoneinfo import ZoneInfo
 
+    berlin = ZoneInfo('Europe/Berlin')
     now = datetime.utcnow()
     week_ago = now - timedelta(days=7)
-    month_ago = now - timedelta(days=30)
+    today_local = datetime.now(berlin).date()
 
-    # --- Team totals (overview) ---
-    # Only count messages sent through the app (not synced from external platforms)
-    total_conversations = Conversation.query.count()
-    conversations_week = Conversation.query.filter(Conversation.created_at >= week_ago).count()
-    total_owner_messages = Message.query.filter_by(sender_type='owner', sent_via_app=True).count()
-    owner_messages_week = Message.query.filter(
-        Message.sender_type == 'owner',
+    # One pass over the last 7 calendar days feeds the chart, the reply time and
+    # the waiting count.
+    rows = db.session.query(Message.conversation_id, Message.sender_type, Message.sent_at).filter(
+        Message.sent_at >= _berlin_midnight_utc(6),
+        Message.conversation_id.in_(
+            db.session.query(Conversation.id).filter(Conversation.platform != 'playtest')),
+    ).order_by(Message.sent_at).all()
+
+    daily = {(today_local - timedelta(days=i)).isoformat(): {'guest': 0, 'team': 0}
+             for i in range(6, -1, -1)}
+    reply_minutes = []
+    waiting = {}  # conversation -> its oldest guest message nobody has answered yet
+    for conv_id, sender, sent_at in rows:
+        if sender not in ('guest', 'owner', 'ai'):
+            continue
+        side = 'guest' if sender == 'guest' else 'team'
+        day = sent_at.replace(tzinfo=timezone.utc).astimezone(berlin).date().isoformat()
+        if day in daily:
+            daily[day][side] += 1
+        if side == 'guest':
+            waiting.setdefault(conv_id, sent_at)
+        elif conv_id in waiting:
+            minutes = (sent_at - waiting.pop(conv_id)).total_seconds() / 60
+            # ponytail: a message >24h after the guest's is treated as new outreach
+            # (guest "Danke!", days later check-in info), not a reply — ~1 in 4 on
+            # live data, and it dragged the median from ~4.5h to ~12h. Upgrade path:
+            # ignore guest messages that need no answer, if that ever gets detected.
+            if minutes <= 24 * 60:
+                reply_minutes.append(minutes)
+
+    escalated = db.session.query(func.count(Conversation.id)).filter(
+        Conversation.platform != 'playtest',
+        Conversation.escalated == True,
+        Conversation.status != 'closed',
+    ).scalar()
+
+    # --- Per person ---
+    umi_sent = dict(db.session.query(Message.user_id, func.count(Message.id)).filter(
+        Message.user_id.isnot(None),
         Message.sent_via_app == True,
-        Message.sent_at >= week_ago
-    ).count()
-    total_guests = Guest.query.count()
-    avg_response = _compute_avg_response_time()
+        Message.sent_at >= week_ago,
+    ).group_by(Message.user_id).all())
 
-    overview = {
-        'total_conversations': total_conversations,
-        'conversations_this_week': conversations_week,
-        'total_owner_messages': total_owner_messages,
-        'owner_messages_this_week': owner_messages_week,
-        'total_guests': total_guests,
-        'avg_response_minutes': avg_response,
-    }
-
-    # --- Per-user detailed stats (batched queries to avoid N+1) ---
-    users = User.query.all()
-    user_ids = [u.id for u in users]
-    weekday_names = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
-
-    # Batch: assigned conversation counts per user (total and active) — 1 query
-    conv_counts = db.session.query(
-        Conversation.user_id,
-        func.count(Conversation.id).label('total'),
-        func.sum(sa_case((Conversation.status == 'active', 1), else_=0)).label('active')
-    ).filter(Conversation.user_id.in_(user_ids)).group_by(Conversation.user_id).all()
-    conv_map = {r.user_id: {'total': r.total, 'active': r.active} for r in conv_counts}
-
-    # Batch: owner message counts per user (total, week, month) — only app-sent messages
-    msg_counts = db.session.query(
-        Conversation.user_id,
-        func.count(Message.id).label('total'),
-        func.sum(sa_case((Message.sent_at >= week_ago, 1), else_=0)).label('week'),
-        func.sum(sa_case((Message.sent_at >= month_ago, 1), else_=0)).label('month')
-    ).join(Conversation, Message.conversation_id == Conversation.id).filter(
-        Conversation.user_id.in_(user_ids),
-        Message.sender_type == 'owner',
-        Message.sent_via_app == True
-    ).group_by(Conversation.user_id).all()
-    msg_map = {r.user_id: {'total': r.total, 'week': r.week, 'month': r.month} for r in msg_counts}
-
-    # Batch: last activity per user (only app-sent) — 1 query
-    last_activity_q = db.session.query(
-        Conversation.user_id,
-        func.max(Message.sent_at).label('last_at')
-    ).join(Conversation, Message.conversation_id == Conversation.id).filter(
-        Conversation.user_id.in_(user_ids),
-        Message.sender_type == 'owner',
-        Message.sent_via_app == True
-    ).group_by(Conversation.user_id).all()
-    last_activity_map = {r.user_id: r.last_at for r in last_activity_q}
-
-    # Batch: daily breakdown for all users (last 7 days, only app-sent) — 1 query
-    week_start = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
-    daily_counts = db.session.query(
-        Conversation.user_id,
-        func.date(Message.sent_at).label('day'),
-        func.count(Message.id).label('count')
-    ).join(Conversation, Message.conversation_id == Conversation.id).filter(
-        Conversation.user_id.in_(user_ids),
-        Message.sender_type == 'owner',
-        Message.sent_via_app == True,
-        Message.sent_at >= week_start
-    ).group_by(Conversation.user_id, func.date(Message.sent_at)).all()
-
-    # Build daily map: {user_id: {date_str: count}}
-    daily_map = {}
-    for r in daily_counts:
-        if r.user_id not in daily_map:
-            daily_map[r.user_id] = {}
-        day_str = str(r.day)
-        daily_map[r.user_id][day_str] = r.count
-
-    # Batch: online time per user (last 7 days) — sum of session durations
-    sessions_week = UserSession.query.filter(
-        UserSession.user_id.in_(user_ids),
-        UserSession.started_at >= week_ago
-    ).all()
-    # Build map: {user_id: total_minutes}
-    online_map = {}
-    for s in sessions_week:
+    today_start = _berlin_midnight_utc()
+    online_week, online_today = {}, {}
+    for s in UserSession.query.filter(UserSession.started_at >= week_ago).all():
         mins = (s.last_active_at - s.started_at).total_seconds() / 60.0
-        online_map[s.user_id] = online_map.get(s.user_id, 0) + mins
+        online_week[s.user_id] = online_week.get(s.user_id, 0) + mins
+        if s.started_at >= today_start:
+            online_today[s.user_id] = online_today.get(s.user_id, 0) + mins
 
-    # Batch: online time today
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    sessions_today = UserSession.query.filter(
-        UserSession.user_id.in_(user_ids),
-        UserSession.started_at >= today_start
-    ).all()
-    online_today_map = {}
-    for s in sessions_today:
-        mins = (s.last_active_at - s.started_at).total_seconds() / 60.0
-        online_today_map[s.user_id] = online_today_map.get(s.user_id, 0) + mins
-
-    team = []
-    for user in users:
-        uid = user.id
-        conv_data = conv_map.get(uid, {'total': 0, 'active': 0})
-        msg_data = msg_map.get(uid, {'total': 0, 'week': 0, 'month': 0})
-        last_at = last_activity_map.get(uid)
-        user_daily = daily_map.get(uid, {})
-
-        # Per-user avg response time (kept as separate query — complex logic)
-        user_avg_response = _compute_avg_response_time_for_user(uid)
-
-        # Build daily breakdown
-        daily = []
-        for i in range(6, -1, -1):
-            day = (now - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
-            day_str = day.strftime('%Y-%m-%d')
-            daily.append({
-                'date': day_str,
-                'weekday': weekday_names[day.weekday()],
-                'count': user_daily.get(day_str, 0),
-            })
-
-        team.append({
-            'user_id': uid,
-            'display_name': user.display_name,
-            'assigned_total': conv_data['total'],
-            'assigned_active': int(conv_data['active'] or 0),
-            'messages_total': msg_data['total'],
-            'messages_week': int(msg_data['week'] or 0),
-            'messages_month': int(msg_data['month'] or 0),
-            'avg_response_minutes': user_avg_response,
-            'last_activity': last_at.isoformat() if last_at else None,
-            'last_seen': user.last_seen.isoformat() if user.last_seen else None,
-            'online_minutes_week': round(online_map.get(uid, 0), 1),
-            'online_minutes_today': round(online_today_map.get(uid, 0), 1),
-            'daily': daily,
-        })
-
-    # Sort by messages this week descending (most active first)
-    team.sort(key=lambda u: u['messages_week'], reverse=True)
+    online_cutoff = now - timedelta(minutes=5)  # same rule as /api/users/online
+    team = [{
+        'user_id': u.id,
+        'display_name': u.display_name,
+        'online': bool(u.last_seen and u.last_seen >= online_cutoff),
+        'last_seen': u.last_seen.isoformat() if u.last_seen else None,
+        'online_minutes_today': round(online_today.get(u.id, 0)),
+        'online_minutes_week': round(online_week.get(u.id, 0)),
+        'umi_messages_week': umi_sent.get(u.id, 0),
+    } for u in User.query.all()]
+    team.sort(key=lambda u: u['last_seen'] or '', reverse=True)
 
     return jsonify({
-        'overview': overview,
+        'today': daily[today_local.isoformat()],
+        'reply_minutes_median': round(median(reply_minutes)) if reply_minutes else None,
+        'waiting_count': len(waiting),
+        'escalated_count': int(escalated or 0),
+        'daily': [{'date': d, **counts} for d, counts in daily.items()],
         'team': team,
     })
-
-
-def _compute_avg_response_time():
-    """Compute average response time (in minutes) from last 50 active conversations.
-    Finds guest message → next owner/ai reply pairs and averages the deltas.
-    Caps individual deltas at 24h to exclude outliers."""
-    return _compute_avg_response_time_for_user(None)
-
-
-def _compute_avg_response_time_for_user(user_id):
-    """Compute average response time for a specific user's conversations,
-    or all conversations if user_id is None.
-    Uses a single query to fetch all messages for the batch of conversations."""
-    from datetime import timedelta
-
-    query = Conversation.query.filter_by(status='active')
-    if user_id is not None:
-        query = query.filter_by(user_id=user_id)
-    conversations = query.order_by(Conversation.last_message_at.desc()).limit(50).all()
-
-    if not conversations:
-        return None
-
-    # Fetch all messages for these conversations in ONE query
-    conv_ids = [c.id for c in conversations]
-    all_messages = Message.query.filter(
-        Message.conversation_id.in_(conv_ids)
-    ).order_by(Message.conversation_id, Message.sent_at.asc()).all()
-
-    # Group messages by conversation
-    from collections import defaultdict
-    msgs_by_conv = defaultdict(list)
-    for msg in all_messages:
-        msgs_by_conv[msg.conversation_id].append(msg)
-
-    deltas = []
-    max_delta = timedelta(hours=24)
-
-    for conv_id, messages in msgs_by_conv.items():
-        for i, msg in enumerate(messages):
-            if msg.sender_type == 'guest':
-                for j in range(i + 1, len(messages)):
-                    if messages[j].sender_type in ('owner', 'ai'):
-                        delta = messages[j].sent_at - msg.sent_at
-                        if timedelta(0) < delta <= max_delta:
-                            deltas.append(delta.total_seconds() / 60.0)
-                        break
-
-    if not deltas:
-        return None
-    return round(sum(deltas) / len(deltas), 1)
 
 
 # ============================================================================
@@ -3248,9 +3198,172 @@ def webhook_gmail():
 
 @chatbot_bp.route('/webhook/whatsapp', methods=['POST'])
 def webhook_whatsapp():
-    """Webhook endpoint for WhatsApp messages"""
-    # TODO: Implement WhatsApp webhook handling
-    return jsonify({'status': 'received'}), 200
+    """Inbound message from the local Baileys bridge (whatsapp_bridge/).
+
+    Endpoint name starts with 'webhook_' so the before_request hook in
+    routes.py:114 skips login_required — the sidecar has no session. It is
+    reachable without a login, so the shared secret is the only gate and is
+    mandatory: an unset WHATSAPP_BRIDGE_SECRET rejects everything rather than
+    leaving an open message-injection endpoint on a public tunnel.
+    """
+    from .services.message_router import get_message_router
+
+    expected = os.environ.get('WHATSAPP_BRIDGE_SECRET', '')
+    if not expected or not hmac.compare_digest(request.headers.get('X-Bridge-Secret', ''), expected):
+        return jsonify({'error': 'forbidden'}), 403
+
+    data = request.get_json(silent=True) or {}
+    jid = (data.get('jid') or '').strip()
+    text = (data.get('text') or '').strip()
+    if not jid or not text:
+        return jsonify({'error': 'jid and text are required'}), 400
+
+    sent_at = None
+    if data.get('timestamp'):
+        try:
+            # Naive UTC like every stored timestamp — plain fromtimestamp() gave
+            # server-local time, 2h ahead, which floated WhatsApp chats up the inbox.
+            sent_at = datetime.fromtimestamp(int(data['timestamp']), timezone.utc).replace(tzinfo=None)
+        except (TypeError, ValueError, OSError):
+            sent_at = None
+
+    msg_id = f"whatsapp-{data.get('message_id')}" if data.get('message_id') else None
+    router = get_message_router()
+    try:
+        if data.get('from_me'):
+            # Typed by the team on the phone. Stored under the same
+            # `whatsapp-<id>` a UMI send stores, so a stray echo dedups.
+            result = router.process_external_owner_message(
+                platform='whatsapp',
+                platform_conversation_id=f"whatsapp-{jid}",
+                platform_user_id=jid,
+                sender_phone=data.get('phone') or None,
+                content=text,
+                subject='WhatsApp',
+                platform_message_id=msg_id,
+                sent_at=sent_at,
+            )
+        else:
+            result = router.process_incoming_message(
+                platform='whatsapp',
+                platform_conversation_id=f"whatsapp-{jid}",
+                # No fallback to the jid's user part: a `@lid` jid is an opaque id,
+                # not a phone number, and storing it as one creates a junk guest and
+                # breaks matching against the Smoobu guest with the same number.
+                sender_phone=data.get('phone') or None,
+                sender_name=data.get('name') or None,
+                platform_user_id=jid,
+                message_content=text,
+                subject='WhatsApp',
+                platform_message_id=msg_id,
+                # UMI never answers WhatsApp unattended: this channel exists to put
+                # the chat in the inbox, a human writes the reply.
+                auto_respond=False,
+                sent_at=sent_at,
+            )
+    except Exception:
+        logger.exception("WhatsApp webhook failed for %s", jid)
+        # 200 anyway: the bridge must not retry-storm, and the message is lost
+        # only from UMI — it is still on the phone.
+        return jsonify({'status': 'error'}), 200
+
+    return jsonify({'status': 'received', 'conversation_id': result.get('conversation_id')}), 200
+
+
+@chatbot_bp.route('/api/whatsapp/status', methods=['GET'])
+@login_required
+def api_whatsapp_status():
+    """Is the WhatsApp bridge linked? Drives the composer's send path.
+
+    The pairing QR is a login credential (whoever scans it links a device), so it
+    never leaves through this non-admin route — admins get it from /pairing.
+    """
+    from .services.whatsapp_service import get_whatsapp_service
+    status = get_whatsapp_service().get_status()
+    status.pop('qr', None)
+    return jsonify(status)
+
+
+@chatbot_bp.route('/api/whatsapp/pairing', methods=['GET'])
+@admin_required
+def api_whatsapp_pairing():
+    """Bridge status plus the pairing QR (a data: URL) for the Settings page."""
+    from .services.whatsapp_service import get_whatsapp_service
+    return jsonify(get_whatsapp_service().get_status())
+
+
+@chatbot_bp.route('/api/whatsapp/start', methods=['POST'])
+@admin_required
+def api_whatsapp_start():
+    """Start the bridge sidecar from Settings when it isn't answering."""
+    from .services.whatsapp_service import get_whatsapp_service
+    whatsapp = get_whatsapp_service()
+    if not whatsapp.is_configured():
+        return jsonify({'error': 'WhatsApp bridge not configured'}), 400
+    if whatsapp.is_running():
+        return jsonify({'started': False, 'already_running': True})
+    try:
+        pid = whatsapp.start_bridge()
+    except OSError as e:
+        logger.exception("Starting the WhatsApp bridge failed")
+        return jsonify({'error': f'Bridge konnte nicht gestartet werden: {e}'}), 500
+    if pid is None:
+        return jsonify({'started': False, 'starting': True})
+    return jsonify({'started': True, 'pid': pid})
+
+
+@chatbot_bp.route('/api/whatsapp/reply/<int:conversation_id>', methods=['POST'])
+@login_required
+def api_whatsapp_reply(conversation_id):
+    """Send a reply through the WhatsApp bridge.
+
+    Mirrors api_smoobu_reply: same per-conversation lock and duplicate guard,
+    and the message is stored only after the send succeeds.
+    """
+    from .services.whatsapp_service import get_whatsapp_service
+
+    conversation = Conversation.query.get_or_404(conversation_id)
+    if conversation.platform != 'whatsapp':
+        return jsonify({'error': 'Not a WhatsApp conversation'}), 400
+
+    jid = (conversation.guest.whatsapp_id if conversation.guest else None) or ''
+    if not jid:
+        return jsonify({'error': 'No WhatsApp ID on this guest'}), 400
+
+    data = request.get_json() or {}
+    content = (data.get('message') or '').strip()
+    if not content:
+        return jsonify({'error': 'Message is required'}), 400
+
+    whatsapp = get_whatsapp_service()
+    if not whatsapp.is_configured():
+        return jsonify({'error': 'WhatsApp bridge not configured'}), 400
+
+    with _conversation_send_lock(conversation.id):
+        if _recent_duplicate_owner_reply(conversation.id, content):
+            logger.info("Duplicate WhatsApp reply blocked for conversation %s", conversation.id)
+            return jsonify({'success': True, 'duplicate_skipped': True, 'content': content}), 200
+
+        send_result = whatsapp.send_message(jid, content)
+        if not send_result:
+            return jsonify({'error': 'Failed to send message via WhatsApp'}), 502
+
+        msg_id = send_result.get('message_id')
+        owner_result = get_message_router().process_owner_message(
+            conversation_id=conversation.id, content=content, extract_memory=True,
+            platform_message_id=f"whatsapp-{msg_id}" if msg_id else None,
+            sent_via_app=True)
+
+    if current_user.is_authenticated and conversation.user_id is None:
+        conversation.user_id = current_user.id
+        db.session.commit()
+
+    original_ai_content = data.get('original_ai_content')
+    if original_ai_content:
+        _store_correction_if_needed(original_ai_content, content, conversation)
+
+    return jsonify({'success': True, 'message_id': owner_result.get('message_id'),
+                    'content': content})
 
 
 @chatbot_bp.route('/webhook/airbnb', methods=['POST'])
@@ -3349,10 +3462,7 @@ def api_debug_ai_prompt(conversation_id):
     property_info = conversation.property.to_dict() if conversation.property else None
 
     # Query latest guest message directly (bypass relationship default ordering)
-    latest_guest_message = Message.query.filter(
-        Message.conversation_id == conversation.id,
-        Message.sender_type == 'guest'
-    ).order_by(Message.sent_at.desc()).first()
+    latest_guest_message, question_text = pending_guest_question(conversation)
 
     # Read AI settings for debug display
     tone = AISettings.get('ai_response_tone', 'friendly_professional')
@@ -3364,7 +3474,7 @@ def api_debug_ai_prompt(conversation_id):
         chat_messages = ai_service._build_chat_messages(
             guest_profile=profile,
             conversation_history=[m.to_dict() for m in messages],
-            latest_message=latest_guest_message.content,
+            latest_message=question_text,
             property_info=property_info,
             tone=tone,
             host_instructions=host_instructions,
@@ -4505,6 +4615,64 @@ def api_smoobu_sync():
     return jsonify({'success': True, 'started': True})
 
 
+_email_sweep_state = {'running': False, 'last': None}
+
+
+@chatbot_bp.route('/api/email/sweep', methods=['POST'])
+@login_required
+def email_sweep():
+    """Inbox button: pull Booking guest messages straight out of Gmail.
+
+    Fire-and-forget — a full sweep fetches hundreds of message bodies and would
+    blow past the Cloudflare tunnel's 100s timeout and tie up a Waitress thread.
+    Inserted messages surface through the inbox's normal polling; the result of
+    the last run is readable via GET so the UI can report it.
+    """
+    import threading
+    from flask import current_app
+
+    if _email_sweep_state['running']:
+        return jsonify({'success': True, 'started': False, 'reason': 'already_running'})
+
+    from .services.gmail_service import get_gmail_service
+    gmail = get_gmail_service()
+    if not gmail or not gmail.is_authenticated():
+        return jsonify({'success': False, 'error': 'Gmail nicht verbunden'}), 400
+
+    try:
+        days = int((request.get_json(silent=True) or {}).get('days', 30))
+    except (TypeError, ValueError):
+        days = 30
+    days = max(1, min(days, 365))
+
+    app_obj = current_app._get_current_object()
+
+    def _run():
+        from .services.email_reconcile import sweep_booking_emails
+        _email_sweep_state['running'] = True
+        try:
+            with app_obj.app_context():
+                _email_sweep_state['last'] = sweep_booking_emails(gmail, days=days)
+        except Exception:
+            app_obj.logger.exception("email sweep failed")
+            _email_sweep_state['last'] = {'error': True}
+        finally:
+            _email_sweep_state['running'] = False
+            with app_obj.app_context():
+                db.session.remove()
+
+    threading.Thread(target=_run, daemon=True, name='email-sweep').start()
+    return jsonify({'success': True, 'started': True, 'days': days})
+
+
+@chatbot_bp.route('/api/email/sweep', methods=['GET'])
+@login_required
+def email_sweep_status():
+    """Progress/result of the last inbox-wide email sweep."""
+    return jsonify({'running': _email_sweep_state['running'],
+                    'last': _email_sweep_state['last']})
+
+
 @chatbot_bp.route('/api/smoobu/sync/<int:conversation_id>', methods=['POST'])
 def api_smoobu_sync_conversation(conversation_id):
     """Sync messages for a single Smoobu conversation (lightweight)"""
@@ -4943,6 +5111,88 @@ def _find_duplicate_knowledge(category, label, property_id, street, exclude_id=N
     return None
 
 
+def _resolve_kb_scope(conversation, scope):
+    """(property_id, street, error_response) for a save scope picked in the chat.
+
+    'room' → this apartment, 'street' → every room on its street, 'general' → all.
+    """
+    prop = Property.query.get(conversation.property_id) if conversation and conversation.property_id else None
+    if scope == 'room':
+        if not prop:
+            return None, None, (jsonify({'error': 'Kein Zimmer für diese Unterhaltung — nur "Allgemein" möglich.'}), 400)
+        return prop.id, None, None
+    if scope == 'street':
+        if not prop or not prop.street:
+            return None, None, (jsonify({'error': 'Keine Straße für dieses Zimmer bekannt.'}), 400)
+        return None, prop.street, None
+    if scope == 'general':
+        return None, None, None
+    return None, None, (jsonify({'error': f'Invalid scope: {scope}'}), 400)
+
+
+@chatbot_bp.route('/api/messages/<int:message_id>/save-example', methods=['POST'])
+@login_required
+def api_save_reply_example(message_id):
+    """Save a host reply + the guest message it answered as a style example.
+
+    Stored as a `correction` entry so it rides along in the reply prompt that
+    already loads them — no new category, no new plumbing. The FRAGE:/ANTWORT:
+    shape is what AIService._format_corrections renders as an example pair.
+    """
+    message = Message.query.get_or_404(message_id)
+    if message.sender_type == 'guest':
+        return jsonify({'error': 'Nur eigene Antworten können als Beispiel gespeichert werden.'}), 400
+
+    conversation = Conversation.query.get(message.conversation_id)
+
+    # The guest message this reply answered: the last guest message before it.
+    # Ordered by sent_at with id as tiebreaker — Smoobu imports land out of order.
+    guest_msg = (Message.query
+                 .filter_by(conversation_id=message.conversation_id, sender_type='guest')
+                 .filter(Message.sent_at <= message.sent_at)
+                 .filter(Message.id != message.id)
+                 .order_by(Message.sent_at.desc(), Message.id.desc())
+                 .first())
+    if not guest_msg:
+        return jsonify({'error': 'Keine Gästenachricht davor gefunden.'}), 400
+
+    ai = get_ai_service()
+    clean = ai._strip_html if ai else (lambda t: t)
+    question = (clean(guest_msg.content) or '').strip()
+    answer = (clean(message.content) or '').strip()
+    if not question or not answer:
+        return jsonify({'error': 'Nachricht ist leer.'}), 400
+
+    data = request.get_json(silent=True) or {}
+    property_id, street, error = _resolve_kb_scope(conversation, data.get('scope', 'room'))
+    if error:
+        return error
+
+    label = question[:60] + ('…' if len(question) > 60 else '')
+    value = f'FRAGE: {question[:600]}\nANTWORT: {answer[:600]}'
+
+    existing = _find_duplicate_knowledge('correction', label, property_id, street)
+    if existing:
+        if existing.value == value:
+            return jsonify({'saved': 0, 'message': 'Dieses Beispiel ist bereits gespeichert.'}), 200
+        # Different pair, similar opening line — keep both, disambiguate the label.
+        label = f'{label[:50]} #{message_id}'
+
+    entry = KnowledgeEntry(
+        property_id=property_id,
+        street=street,
+        category='correction',
+        label=label,
+        value=value,
+        source='manual',
+    )
+    db.session.add(entry)
+    db.session.commit()
+    logger.info(f"[EXAMPLE] Saved reply example {entry.id} from message {message_id} "
+                f"(property_id={property_id}, street={street})")
+    return jsonify({'saved': 1, 'entry': entry.to_dict()}), 201
+
+
 @chatbot_bp.route('/api/knowledge')
 def api_list_knowledge():
     """List knowledge entries with optional property filter"""
@@ -4985,21 +5235,11 @@ def api_extract_knowledge_from_message(message_id):
     # Resolve scope: room (default) | street | general
     data = request.get_json(silent=True) or {}
     scope = data.get('scope', 'room')
+    internal = bool(data.get('is_internal'))
     conversation = Conversation.query.get(message.conversation_id)
-    prop = Property.query.get(conversation.property_id) if conversation and conversation.property_id else None
-
-    if scope == 'room':
-        if not prop:
-            return jsonify({'error': 'Kein Zimmer für diese Unterhaltung — nur "Allgemein" möglich.'}), 400
-        target_property_id, target_street = prop.id, None
-    elif scope == 'street':
-        if not prop or not prop.street:
-            return jsonify({'error': 'Keine Straße für dieses Zimmer bekannt.'}), 400
-        target_property_id, target_street = None, prop.street
-    elif scope == 'general':
-        target_property_id, target_street = None, None
-    else:
-        return jsonify({'error': f'Invalid scope: {scope}'}), 400
+    target_property_id, target_street, error = _resolve_kb_scope(conversation, scope)
+    if error:
+        return error
 
     saved = []
     skipped = 0
@@ -5021,6 +5261,9 @@ def api_extract_knowledge_from_message(message_id):
             label=entry['label'],
             value=entry['value'],
             source='ai',
+            # Applies to the whole batch: one message yields several entries and
+            # the team judges the message, not each extracted fact.
+            is_internal=internal,
         )
         db.session.add(ke)
         saved.append(entry)
@@ -5089,6 +5332,7 @@ def api_create_knowledge():
         label=label,
         value=value,
         trigger_words=trigger_words or None,
+        is_internal=bool(data.get('is_internal')),
         sort_order=max_order + 1
     )
     db.session.add(entry)
@@ -5187,6 +5431,8 @@ def api_update_knowledge(entry_id):
         entry.property_id = pid
     if 'sort_order' in data:
         entry.sort_order = so
+    if 'is_internal' in data:
+        entry.is_internal = bool(data['is_internal'])
 
     db.session.commit()
     return jsonify(entry.to_dict())
@@ -5200,14 +5446,6 @@ def api_delete_knowledge(entry_id):
     db.session.delete(entry)
     db.session.commit()
     return jsonify({'success': True})
-
-
-@chatbot_bp.route('/api/email-review/pending-count')
-@login_required
-def email_review_pending_count():
-    """Return the number of pending email-backfill candidates."""
-    count = EmailBackfillCandidate.query.filter_by(status='pending').count()
-    return jsonify({'count': count})
 
 
 @chatbot_bp.route('/api/problem-reports', methods=['POST'])
@@ -5299,49 +5537,41 @@ def email_reconcile_pending_count():
     return jsonify({'count': count})
 
 
-@chatbot_bp.route('/api/email-review/<int:candidate_id>/confirm', methods=['POST'])
-@login_required
-def email_review_confirm(candidate_id):
-    """Confirm a candidate: insert a Message and mark the candidate as confirmed."""
-    from .services.message_router import get_message_router
-    cand = EmailBackfillCandidate.query.get_or_404(candidate_id)
-    if cand.status != 'pending':
-        return jsonify({'success': False, 'error': 'already handled'}), 400
-    payload = request.get_json(silent=True) or {}
-    conv_id = payload.get('conversation_id') or cand.guessed_conversation_id
-    if not conv_id:
-        return jsonify({'success': False, 'error': 'no conversation'}), 400
-    router = get_message_router()
-    router._store_message(
-        conversation_id=conv_id, sender_type='guest', content=cand.parsed_text,
-        platform_message_id=f"email:{cand.gmail_message_id}", sent_at=cand.parsed_timestamp,
-        sent_via_app=False,
-    )
-    cand.status = 'confirmed'
-    db.session.commit()
-    return jsonify({'success': True})
-
-
-@chatbot_bp.route('/api/email-review/<int:candidate_id>/reject', methods=['POST'])
-@login_required
-def email_review_reject(candidate_id):
-    """Reject a candidate without inserting a message."""
-    cand = EmailBackfillCandidate.query.get_or_404(candidate_id)
-    cand.status = 'rejected'
-    db.session.commit()
-    return jsonify({'success': True})
-
-
 @chatbot_bp.route('/api/conversation/<int:conversation_id>/recover-emails', methods=['POST'])
 @login_required
 def conversation_recover_emails(conversation_id):
-    """Pull already-detected email candidates for this chat (>= standard match
-    threshold) into the thread on demand. Returns the number inserted."""
-    from .services.email_reconcile import promote_email_candidates, get_reconcile_config
+    """Find this chat's missing guest messages in Gmail, on demand.
+
+    Two passes, because the messages can be stranded in two different places:
+      1. A live Gmail search for this reservation (by Buchungsnummer when we
+         have one, so it is not capped by the daemon's date window).
+      2. Candidates the daemon already parsed but left pending below the
+         auto-insert threshold.
+
+    The button used to do only (2), which is why it found nothing for chats the
+    daemon had never scanned. `force` bypasses the on-open throttle: a human
+    clicking must never be a no-op.
+    """
+    from .services.email_reconcile import (promote_email_candidates,
+                                           get_reconcile_config,
+                                           fetch_booking_for_conversation)
     Conversation.query.get_or_404(conversation_id)
     threshold = get_reconcile_config()['threshold']
-    inserted = len(promote_email_candidates(conversation_id, threshold))
-    return jsonify({'success': True, 'inserted': inserted})
+
+    live = 0
+    from .services.gmail_service import get_gmail_service
+    gmail = get_gmail_service()
+    if gmail and gmail.is_authenticated():
+        try:
+            stats = fetch_booking_for_conversation(gmail, conversation_id, force=True)
+            live = stats.get('auto_inserted', 0)
+        except Exception:
+            current_app.logger.exception(
+                "recover-emails: live Gmail fetch failed for conv %s", conversation_id)
+
+    promoted = len(promote_email_candidates(conversation_id, threshold))
+    return jsonify({'success': True, 'inserted': live + promoted,
+                    'from_gmail': live, 'from_queue': promoted})
 
 
 @chatbot_bp.route('/api/conversation/<int:conversation_id>/fetch-booking-live', methods=['POST'])

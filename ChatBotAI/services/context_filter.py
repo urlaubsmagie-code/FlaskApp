@@ -94,6 +94,13 @@ class ContextFilter:
         'grazie', 'molte grazie', 'mille grazie',
     })
 
+    # A knowledge base this size fits in a cloud model's prompt whole, so it is sent
+    # whole (see _filter_knowledge_entries). The top-N scorer still exists for anything
+    # above it. Raised 30k → 45k on 2026-09-10: the Notion import was about to cross
+    # 30k. 45k chars ≈ 12k tokens, far inside gpt-oss:120b's context. Raise again only
+    # if prefill latency starts to hurt.
+    KB_FULL_BUDGET_CHARS = 45000
+
     # Keywords that trigger including specific profile sections
     PROFILE_TRIGGERS = {
         'allergies': frozenset({
@@ -181,7 +188,8 @@ class ContextFilter:
         resolved_topics = cls._detect_resolved_topics(conversation_history)
 
         # Filter 3: Knowledge base filtering
-        filtered_kb = cls._filter_knowledge_entries(knowledge_entries, message_keywords)
+        filtered_kb = cls._filter_knowledge_entries(knowledge_entries, message_keywords,
+                                                    latest_message or '')
 
         # Filter 4: Guest profile filtering
         filtered_profile = cls._filter_guest_profile(guest_profile, message_keywords, latest_message)
@@ -330,6 +338,7 @@ class ContextFilter:
         cls,
         entries: List[Dict[str, Any]],
         message_keywords: Set[str],
+        message_text: str = '',
         max_entries: int = 5
     ) -> List[Dict[str, Any]]:
         """Filter KB entries by keyword relevance to the guest's message.
@@ -343,22 +352,41 @@ class ContextFilter:
         # internal note (`value`) is stripped here — deliberately, at this
         # boundary — so any future caller reading `knowledge_entries` directly
         # can't leak it to a guest.
+        #
+        # Internal-only entries (is_internal) are dropped outright at the same
+        # boundary. load_for_conversation_context already excludes them; this is
+        # the second gate so a caller assembling entries by hand can't leak team
+        # notes — invoicing rules, office hours — into a guest reply.
         escalation, scorable = [], []
         for entry in entries:
+            if entry.get('is_internal'):
+                continue
             is_esc = (entry.get('category') or '').startswith('esc')
             target = escalation if is_esc else scorable
             target.append({**entry, 'value': ''} if is_esc else entry)
 
-        if not scorable or not message_keywords:
+        if not scorable:
+            return escalation
+
+        # Below the budget there is nothing to retrieve: send the whole knowledge
+        # base and let the model pick. Today it is ~18k characters — small enough
+        # that scoring could only ever LOSE the entry holding the answer, which is
+        # exactly what happened to "Zahlungskonto" (no word in common with a guest
+        # asking where to *überweisen* her money). Still score, so the most likely
+        # entries lead. Above the budget, fall back to top-N.
+        total_chars = sum(len(e.get('label') or '') + len(e.get('value') or '')
+                          for e in scorable)
+        scored = [(cls._score_entry(e, message_keywords, message_text), e)
+                  for e in scorable]
+        if total_chars <= cls.KB_FULL_BUDGET_CHARS:
+            scored.sort(key=lambda x: x[0], reverse=True)
+            return escalation + [entry for _, entry in scored]
+
+        if not message_keywords:
             # No keywords extracted — return up to 3 fallback entries
             return escalation + cls._fallback_entries(scorable, 3)
 
-        scored = []
-        for entry in scorable:
-            score = cls._score_entry(entry, message_keywords)
-            if score > 0:
-                scored.append((score, entry))
-
+        scored = [(score, e) for score, e in scored if score > 0]
         if not scored:
             # No matches — return fallback entries
             return escalation + cls._fallback_entries(scorable, 3)
@@ -368,12 +396,20 @@ class ContextFilter:
         return escalation + [entry for _, entry in scored[:max_entries]]
 
     @classmethod
-    def _score_entry(cls, entry: Dict[str, Any], keywords: Set[str]) -> int:
+    def _score_entry(cls, entry: Dict[str, Any], keywords: Set[str],
+                     message_text: str = '') -> int:
         """Score a KB entry by keyword overlap.
 
+        +3 for a trigger word the team set on the entry
         +2 for exact token match in label
         +1 for exact token match in value
         +1 for substring match in label or value (keyword length >= 4)
+
+        Trigger words outrank everything because they are the team's explicit
+        "when a guest says this, use this entry". Without them the scorer only
+        sees the words the entry happens to contain, so "Zahlungskonto" scored
+        zero for a guest asking where to *überweisen* her money and the entry
+        holding the IBAN never reached the prompt.
         """
         label = entry.get('label', '').lower()
         value = entry.get('value', '').lower()
@@ -382,7 +418,15 @@ class ContextFilter:
         label_tokens = set(re.split(r'[\s/,;:.()\-]+', label))
         value_tokens = set(re.split(r'[\s/,;:.()\-]+', value))
 
+        # Trigger words are comma-separated phrases matched against the raw message,
+        # not the token set, so multi-word triggers ("kein warmwasser") still work.
+        haystack = (message_text or '').lower()
         score = 0
+        for trigger in (entry.get('trigger_words') or '').split(','):
+            trigger = trigger.strip().lower()
+            if trigger and (trigger in haystack or trigger in keywords):
+                score += 3
+
         for kw in keywords:
             if kw in label_tokens:
                 score += 2

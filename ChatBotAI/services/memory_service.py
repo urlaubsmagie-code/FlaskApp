@@ -408,6 +408,16 @@ class MemoryService:
             if guest:
                 logger.info(f"Found guest by {platform} ID: {guest.id}")
 
+        # Matched on email/phone but the platform id is not on the row yet — a
+        # guest we already know from Smoobu who now writes on WhatsApp. Backfill
+        # it, or every later send to this chat has no address to send to.
+        if guest and platform and platform_id:
+            field = {'whatsapp': 'whatsapp_id', 'airbnb': 'airbnb_id',
+                     'booking': 'booking_id'}.get(platform)
+            if field and not getattr(guest, field):
+                setattr(guest, field, platform_id)
+                db.session.commit()
+
         # Create new guest if not found
         if not guest:
             guest = Guest(

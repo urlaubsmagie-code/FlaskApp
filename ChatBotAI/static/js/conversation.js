@@ -15,6 +15,7 @@ let autoRespond = cfg.autoRespond;
 const conversationPlatform = cfg.platform;
 const gmailConnected = cfg.gmailConnected;
 const smoobuConnected = cfg.smoobuConnected;
+const whatsappConnected = cfg.whatsappConnected;
 const currentPropertyId = cfg.currentPropertyId;
 const draftKey = 'chatbot_draft_' + conversationId;
 let approvalQueueEnabled = cfg.approvalQueueEnabled || false;
@@ -377,6 +378,8 @@ function sendMessage(e) {
         sendViaGmail(content, tempId, correctionOriginal);
     } else if (conversationPlatform === 'smoobu' && smoobuConnected) {
         sendViaSmoobu(content, tempId, correctionOriginal);
+    } else if (conversationPlatform === 'whatsapp' && whatsappConnected) {
+        sendViaPlatform('whatsapp', content, tempId, correctionOriginal);
     } else {
         sendLocal(content, tempId, correctionOriginal);
     }
@@ -428,8 +431,12 @@ function sendViaGmail(content, tempId, correctionOriginal) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: content, ...(correctionOriginal && { original_ai_content: correctionOriginal }) })
     })
-    .then(response => {
+    .then(async response => {
         if (response.status === 401) {
+            // require_login answers 401 too when the session lapsed. That is not a
+            // Gmail problem, and a local-send retry would fail exactly the same way.
+            const body = await response.json().catch(() => ({}));
+            if (body.session_expired) throw new Error(body.error);
             console.warn('Gmail disconnected, falling back to local send');
             sendLocal(content, tempId, correctionOriginal, true);
             return null;
@@ -456,6 +463,45 @@ function sendViaGmail(content, tempId, correctionOriginal) {
     })
     .catch(err => {
         console.error('Gmail send error, falling back to local:', err);
+        sendLocal(content, tempId, correctionOriginal, true);
+    })
+    .finally(() => { sendInProgress = false; });
+}
+
+// Generic platform sender. sendViaSmoobu predates it and stays as-is (its
+// wording and tests are pinned); new channels route through here.
+function sendViaPlatform(platform, content, tempId, correctionOriginal) {
+    fetch(`/chatbot/api/${platform}/reply/${conversationId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: content, ...(correctionOriginal && { original_ai_content: correctionOriginal }) })
+    })
+    .then(response => response.json().then(data => {
+        if (!response.ok) throw new Error(data.error || 'Send failed');
+        return data;
+    }))
+    .then(data => {
+        if (data.duplicate_skipped) {
+            const el = document.querySelector(`[data-message-id="${tempId}"]`);
+            if (el) el.remove();
+            knownMessageIds.delete(tempId);
+            showNotification('Diese Nachricht wurde gerade eben schon gesendet – sie wurde nicht erneut verschickt.', 'info', 6000);
+            return;
+        }
+        if (data.message_id) {
+            knownMessageIds.delete(tempId);
+            knownMessageIds.add(data.message_id);
+            const el = document.querySelector(`[data-message-id="${tempId}"]`);
+            if (el) el.dataset.messageId = data.message_id;
+        }
+        showNotification(`Gesendet über ${platform}`, 'success');
+        if (correctionOriginal) {
+            showNotification(i18n.t('knowledge.corrections.autoSaved'), 'info', 3000);
+        }
+    })
+    .catch(err => {
+        console.error(`${platform} send error, falling back to local:`, err);
+        showNotification('Unsicherer Sendestatus – die Nachricht wurde möglicherweise schon zugestellt. Bitte prüfe den Chat, bevor du sie erneut sendest.', 'info', 7000);
         sendLocal(content, tempId, correctionOriginal, true);
     })
     .finally(() => { sendInProgress = false; });
@@ -790,7 +836,9 @@ function toggleAutoRespond() {
 }
 
 // 🎓 button: ask Room / Street / General before saving, then extract with that scope.
-function openKnowledgeScopePopup(messageId) {
+// mode 'extract' pulls facts out of the message; mode 'example' saves the
+// guest question + this reply as a style example for UMI.
+function openKnowledgeScopePopup(messageId, mode = 'extract') {
     // Remove any existing popup first.
     const old = document.getElementById('kbScopePopup');
     if (old) old.remove();
@@ -823,8 +871,16 @@ function openKnowledgeScopePopup(messageId) {
         + `max-width:420px;width:100%;padding:18px;box-shadow:0 8px 30px rgba(0,0,0,.4);">`
         + `<div style="font-weight:600;margin-bottom:4px;">${t('knowledge.scope.title', 'Wo speichern?')}</div>`
         + `<div style="font-size:.9rem;color:var(--text-secondary,#666);margin-bottom:14px;">`
-        + `${t('knowledge.scope.subtitle', 'Für wen gilt diese Information?')}</div>`
+        + (mode === 'example'
+            ? t('knowledge.scope.subtitleExample', 'Für welche Zimmer soll UMI so antworten?')
+            : t('knowledge.scope.subtitle', 'Für wen gilt diese Information?')) + `</div>`
         + `<div style="display:flex;flex-direction:column;gap:8px;">${buttons}</div>`
+        + (mode === 'example' ? '' :
+            `<label style="display:flex;align-items:flex-start;gap:8px;margin-top:12px;cursor:pointer;font-size:.85rem;">`
+            + `<input type="checkbox" id="kbScopeInternal" style="margin-top:2px;">`
+            + `<span style="color:var(--text-secondary,#666);">`
+            + t('knowledge.internal', 'Nur intern — nicht an Gäste')
+            + `</span></label>`)
         + `<button id="kbScopeCancel" style="margin-top:14px;background:transparent;border:0;`
         + `color:var(--text-secondary,#666);cursor:pointer;">${t('knowledge.scope.cancel', 'Abbrechen')}</button>`
         + `</div>`;
@@ -833,13 +889,61 @@ function openKnowledgeScopePopup(messageId) {
     overlay.querySelectorAll('.kb-scope-btn').forEach(b => {
         b.style.cssText = 'padding:12px;border:1px solid var(--border,#ccc);border-radius:8px;'
             + 'background:var(--sidebar-bg,#4A1520);color:#fff;cursor:pointer;font-size:.95rem;text-align:left;';
-        b.onclick = () => { overlay.remove(); extractKnowledge(messageId, b.dataset.scope); };
+        b.onclick = () => {
+            const internalEl = overlay.querySelector('#kbScopeInternal');
+            const internal = !!(internalEl && internalEl.checked);
+            overlay.remove();
+            if (mode === 'example') saveReplyExample(messageId, b.dataset.scope);
+            else extractKnowledge(messageId, b.dataset.scope, internal);
+        };
     });
     overlay.querySelector('#kbScopeCancel').onclick = () => overlay.remove();
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 }
 
-function extractKnowledge(messageId, scope = 'room', attempt = 1) {
+// 💬 button: store "guest asked X, we answered Y" so UMI copies the team's
+// wording. No AI call — that's the whole point, nothing can time out here.
+function saveReplyExample(messageId, scope = 'room') {
+    const msgDiv = document.querySelector(`[data-message-id="${messageId}"]`);
+    const btn = msgDiv ? msgDiv.querySelector('.btn-save-example') : null;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    }
+    const restoreBtn = () => {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-comment-dots"></i>';
+        }
+    };
+
+    fetch(`/chatbot/api/messages/${messageId}/save-example`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope })
+    })
+    .then(async r => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        return data;
+    })
+    .then(data => {
+        showNotification(
+            data.saved
+                ? (i18n.t('conversation.example.saved') || 'Als Beispiel gespeichert')
+                : (data.message || i18n.t('conversation.example.alreadySaved')),
+            data.saved ? 'success' : 'info', 3500
+        );
+        restoreBtn();
+    })
+    .catch(err => {
+        console.error('Saving reply example failed:', err);
+        showNotification(err.message || i18n.t('conversation.example.failed'), 'error', 5000);
+        restoreBtn();
+    });
+}
+
+function extractKnowledge(messageId, scope = 'room', internal = false, attempt = 1) {
     const msgDiv = document.querySelector(`[data-message-id="${messageId}"]`);
     const btn = msgDiv ? msgDiv.querySelector('.btn-extract-knowledge') : null;
 
@@ -857,7 +961,7 @@ function extractKnowledge(messageId, scope = 'room', attempt = 1) {
     fetch(`/chatbot/api/messages/${messageId}/extract-knowledge`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope })
+        body: JSON.stringify({ scope, is_internal: internal })
     })
     .then(async r => {
         if (!r.ok) {
@@ -868,6 +972,7 @@ function extractKnowledge(messageId, scope = 'room', attempt = 1) {
             try { serverMessage = (await r.json()).error; } catch (e) {}
             const err = new Error(serverMessage || `HTTP ${r.status}`);
             err.serverMessage = serverMessage;   // set => real handler error, don't retry
+            err.status = r.status;
             throw err;
         }
         return r.json();
@@ -897,118 +1002,38 @@ function extractKnowledge(messageId, scope = 'room', attempt = 1) {
         // cloud model was likely cold or slow. Retry once — it usually warms up.
         if (attempt < 2 && !err.serverMessage) {
             console.warn('Knowledge extraction transient failure, retrying once:', err.message);
-            setTimeout(() => extractKnowledge(messageId, scope, attempt + 1), 1500);
+            setTimeout(() => extractKnowledge(messageId, scope, internal, attempt + 1), 1500);
             return;   // keep the spinner; restoreBtn runs on the retry's outcome
         }
         console.error('Knowledge extraction failed:', err);
+        // Append the HTTP status when the server said nothing useful. Without it
+        // every cause — 401, 404, 502, dead network — reads as the same toast and
+        // there is no way to tell them apart from a screenshot.
+        const detail = err.serverMessage || (err.status ? `HTTP ${err.status}` : err.message);
         showNotification(
-            err.serverMessage || i18n.t('conversation.knowledge.extractFailed'),
-            'error', 5000
+            err.serverMessage || `${i18n.t('conversation.knowledge.extractFailed')} (${detail})`,
+            'error', 6000
         );
         restoreBtn();
     });
 }
 
-function syncConversation() {
-    const syncBtn = document.getElementById('syncBtn');
-    const mobileSyncBtn = document.getElementById('mobileSyncBtn');
-    const btns = [syncBtn, mobileSyncBtn].filter(Boolean);
-
-    // Show spinning icon
-    btns.forEach(btn => {
-        btn.disabled = true;
-        const icon = btn.querySelector('i');
-        if (icon) icon.classList.add('fa-spin');
-    });
-
-    fetch(`/chatbot/api/smoobu/sync/${conversationId}`, { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
-        if (data.imported > 0) {
-            showNotification(`${data.imported} neue Nachricht(en) synchronisiert`, 'success', 3000);
-            // Reload to show new messages
-            location.reload();
-        } else {
-            showNotification('Keine neuen Nachrichten', 'info', 2000);
-        }
-    })
-    .catch(err => {
-        console.error('Sync failed:', err);
-        showNotification('Synchronisierung fehlgeschlagen', 'error', 3000);
-    })
-    .finally(() => {
-        btns.forEach(btn => {
-            btn.disabled = false;
-            const icon = btn.querySelector('i');
-            if (icon) icon.classList.remove('fa-spin');
-        });
-    });
-}
-
-function recoverEmails() {
-    const btn = document.getElementById('recoverEmailsBtn');
-    if (btn) { btn.disabled = true; btn.classList.add('loading'); }
-    fetch(`/chatbot/api/conversation/${conversationId}/recover-emails`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success && data.inserted > 0) {
-            window.location.reload();   // inserted messages render in-thread
-        } else {
-            if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
-        }
-    })
-    .catch(() => { if (btn) { btn.disabled = false; btn.classList.remove('loading'); } });
-}
-
-const importEmailThreadBtn = document.getElementById('import-email-thread-btn');
-if (importEmailThreadBtn) {
-    importEmailThreadBtn.addEventListener('click', async () => {
-        importEmailThreadBtn.disabled = true;
-        importEmailThreadBtn.classList.add('loading');
-        try {
-            const r = await fetch(`/chatbot/api/conversation/${conversationId}/import-email-thread`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ allow_name_fallback: true }),
-            });
-            const data = await r.json();
-            if (!data.success) { alert(data.error || 'Fehler'); return; }
-            if (data.inserted > 0) { location.reload(); return; }
-            const box = document.getElementById('email-thread-candidates');
-            if (data.candidates && data.candidates.length) {
-                box.hidden = false;
-                box.innerHTML = data.candidates.map(c =>
-                    `<div class="cand"><span>${escapeHtml(c.participant)} — ${c.message_count} Nachrichten (${escapeHtml(c.date_range)})</span>` +
-                    `<button data-tid="${escapeHtml(c.thread_id)}">Übernehmen</button></div>`).join('');
-                box.querySelectorAll('button[data-tid]').forEach(b =>
-                    b.addEventListener('click', async () => {
-                        const rr = await fetch(`/chatbot/api/conversation/${conversationId}/import-email-thread`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ confirm_thread_id: b.dataset.tid }),
-                        });
-                        const rd = await rr.json();
-                        if (rd.success && rd.inserted > 0) {
-                            location.reload();
-                        } else {
-                            alert(rd.error || 'Keine neuen Nachrichten');
-                        }
-                    }));
-            } else {
-                alert('Keine passenden E-Mails gefunden.');
-            }
-        } finally {
-            importEmailThreadBtn.disabled = false;
-            importEmailThreadBtn.classList.remove('loading');
-        }
-    });
-}
-
 function resolveEscalation() {
     setEscalation(false);
+}
+
+// Opening a chat marks it read (DOMContentLoaded + the poller on every new
+// message), so "I only opened it to read it" silently looks answered. This
+// rewinds the read cursor and leaves immediately — staying on the page would
+// just let the next poll mark it read again.
+function markUnreadAndLeave() {
+    fetch(`/chatbot/api/conversations/${conversationId}/unread`, { method: 'POST' })
+        .then(r => r.json())
+        .then(() => { window.location.href = '/chatbot/'; })
+        .catch(err => {
+            console.error('Failed to mark as unread:', err);
+            showNotification(i18n.t('conversation.markUnread.failed'), 'error');
+        });
 }
 
 // Manual escalation: the team flags a chat as important whether or not UMI
@@ -1189,6 +1214,11 @@ function addMessageToUI(message, senderType) {
         messageDiv.dataset.messageId = message.id;
     }
 
+    // Raw text, kept for the optimistic-bubble match in updateMessages(). The
+    // rendered bubble contains icons/timestamps, so the DOM text is not
+    // comparable to what the server sends back.
+    messageDiv.dataset.rawContent = (message.content || '');
+
     // Normalize to UTC (Z). to_dict() emits naive isoformat (no Z); the server
     // template and toISOString() emit Z. Without this, cross-source comparisons
     // are off by the local offset and break sent_at ordering.
@@ -1220,6 +1250,11 @@ function addMessageToUI(message, senderType) {
             data-i18n-title="conversation.knowledge.extract"
             title="${i18n.t('conversation.knowledge.extract')}">
             <i class="fas fa-graduation-cap"></i>
+           </button>
+           <button class="btn-save-example" onclick="openKnowledgeScopePopup(${message.id}, 'example')"
+            data-i18n-title="conversation.example.save"
+            title="${i18n.t('conversation.example.save')}">
+            <i class="fas fa-comment-dots"></i>
            </button>`;
     }
     const emailTag = (message.platform_message_id || '').startsWith('email:')
@@ -1297,6 +1332,31 @@ function addMessageToUI(message, senderType) {
     insertInitialDateDividers();
 }
 
+// Optimistic bubbles carry a Date.now() temp id; real message ids are small
+// integers, so anything this large is still waiting for its send response.
+const TEMP_ID_FLOOR = 1e12;
+
+/**
+ * If this polled message is our own and an un-reconciled optimistic bubble with
+ * the same text is on screen, give that bubble the real id and report it as
+ * handled. Returns the element, or null when nothing matched.
+ */
+function adoptPendingOwnBubble(msg) {
+    if (msg.sender_type !== 'owner' && msg.sender_type !== 'ai') return null;
+    const wanted = (msg.content || '').trim();
+    if (!wanted) return null;
+    const bubbles = document.querySelectorAll('.message[data-message-id]');
+    for (const el of bubbles) {
+        const id = parseInt(el.dataset.messageId, 10);
+        if (!(id >= TEMP_ID_FLOOR)) continue;          // already reconciled
+        if ((el.dataset.rawContent || '').trim() !== wanted) continue;
+        el.dataset.messageId = msg.id;
+        knownMessageIds.delete(id);
+        return el;
+    }
+    return null;
+}
+
 /**
  * Update messages from poll response - append only new messages
  */
@@ -1306,6 +1366,16 @@ function updateMessages(messages) {
 
     messages.forEach(msg => {
         if (!knownMessageIds.has(msg.id)) {
+            // A poll can land in the gap between the server storing OUR message
+            // and the send response swapping the optimistic bubble's temp id for
+            // the real one. Without this the same message renders twice — it was
+            // only ever sent once. Adopt the pending bubble instead of appending.
+            const pending = adoptPendingOwnBubble(msg);
+            if (pending) {
+                knownMessageIds.add(msg.id);
+                if (msg.id > maxKnownMessageId) maxKnownMessageId = msg.id;
+                return;
+            }
             addMessageToUI(msg, msg.sender_type);
             knownMessageIds.add(msg.id);
             if (msg.id > maxKnownMessageId) maxKnownMessageId = msg.id;
@@ -1369,7 +1439,8 @@ function initGmailSync() {
                 { method: 'POST', signal }
             );
             if (response.status === 401) {
-                throw new Error('GMAIL_DISCONNECTED');
+                const body = await response.json().catch(() => ({}));
+                throw new Error(body.session_expired ? 'SESSION_EXPIRED' : 'GMAIL_DISCONNECTED');
             }
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             return response.json();
@@ -1592,25 +1663,10 @@ GuidedTour.buildSteps = function () {
                 textKey: 'tour.autoRespond.desc',
                 prepare: () => this._openMobileMenu()
             });
-            // Sync button (conditional)
-            if (document.getElementById('mobileSyncBtn')) {
-                steps.push({
-                    selector: '#mobileSyncBtn',
-                    titleKey: 'tour.sync',
-                    textKey: 'tour.sync.desc',
-                    prepare: () => this._openMobileMenu()
-                });
-            }
             steps.push({
-                selector: '#mobileRecoverEmailsBtn',
-                titleKey: 'tour.recoverEmails',
-                textKey: 'tour.recoverEmails.desc',
-                prepare: () => this._openMobileMenu()
-            });
-            steps.push({
-                selector: '#mobileImportEmailBtn',
-                titleKey: 'tour.importEmail',
-                textKey: 'tour.importEmail.desc',
+                selector: '#mobileMarkUnreadBtn',
+                titleKey: 'tour.markUnread',
+                textKey: 'tour.markUnread.desc',
                 prepare: () => this._openMobileMenu()
             });
             steps.push({
@@ -1645,22 +1701,10 @@ GuidedTour.buildSteps = function () {
                     textKey: 'tour.autoApprove.desc'
                 });
             }
-            if (document.getElementById('syncBtn')) {
-                steps.push({
-                    selector: '#syncBtn',
-                    titleKey: 'tour.sync',
-                    textKey: 'tour.sync.desc'
-                });
-            }
             steps.push({
-                selector: '#recoverEmailsBtn',
-                titleKey: 'tour.recoverEmails',
-                textKey: 'tour.recoverEmails.desc'
-            });
-            steps.push({
-                selector: '#import-email-thread-btn',
-                titleKey: 'tour.importEmail',
-                textKey: 'tour.importEmail.desc'
+                selector: '#markUnreadBtn',
+                titleKey: 'tour.markUnread',
+                textKey: 'tour.markUnread.desc'
             });
             steps.push({
                 selector: '#problemReportBtn',

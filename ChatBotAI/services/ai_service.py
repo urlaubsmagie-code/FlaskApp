@@ -272,8 +272,10 @@ class AIService:
         # Read configurable temperature and max tokens from DB (with fallbacks)
         temperature = 0.5
         num_predict = 1024
+        think = 'medium'
         try:
             from ..models import AISettings
+            think = AISettings.get('ai_reasoning_effort') or think
             temp_str = AISettings.get('ai_temperature')
             if temp_str is not None:
                 temperature = float(temp_str)
@@ -328,19 +330,21 @@ class AIService:
 
                     t0 = time.monotonic()
 
-                    response = requests.post(
-                        self.chat_endpoint,
-                        json={
-                            'model': effective_model,
-                            'messages': messages,
-                            'stream': False,
-                            'options': {
-                                'temperature': temperature,
-                                'num_predict': num_predict,
-                            }
-                        },
-                        timeout=request_timeout
-                    )
+                    payload = {
+                        'model': effective_model,
+                        'messages': messages,
+                        'stream': False,
+                        'options': {
+                            'temperature': temperature,
+                            'num_predict': num_predict,
+                        }
+                    }
+                    # Thinking cloud models (glm, kimi) default to max effort and can spend
+                    # the whole num_predict on reasoning → empty reply. Local models 400 on it.
+                    # ponytail: assumes every cloud model accepts 'think'; gate per model if one 400s.
+                    if self._is_cloud_model(effective_model):
+                        payload['think'] = think
+                    response = requests.post(self.chat_endpoint, json=payload, timeout=request_timeout)
 
                     elapsed = time.monotonic() - t0
 
@@ -552,7 +556,7 @@ Return ONLY the JSON object:"""
             corrections=corrections,
             resolved_topics=resolved_topics,
             is_closing=is_closing,
-            target_message_override=target_message_override
+            target_message_override=target_message_override,
         )
 
         # Log what the AI actually receives for debugging
@@ -861,18 +865,30 @@ JSON array:"""
             if labels:
                 escalation_topics_text = ", ".join(dict.fromkeys(labels))
 
-        # KB entries: top 3, exclude escalation, truncate value to 80 chars.
+        # KB entries, escalation topics excluded (their `value` is team-only).
+        #
+        # RICH tier gets them whole. The old budget here — top 3, values cut to 80
+        # chars — starved the model: the entire Wissensdatenbank is ~18k characters,
+        # but at most ~240 of them ever reached the prompt, and an 80-char cut lands
+        # mid-IBAN. Combined with the "never guess, escalate instead" rule above,
+        # that produced "ich frage kurz das Team" for questions the KB answered.
+        # Cloud models have the context to spare; COMPACT keeps the tight budget
+        # because small local models do not.
         kb_for_template = None
         if knowledge_entries:
-            regular = [e for e in knowledge_entries if not (e.get('category') or '').startswith('esc')][:3]
+            regular = [e for e in knowledge_entries
+                       if not (e.get('category') or '').startswith('esc')]
+            if tier != 'rich':
+                regular = regular[:3]
             if regular:
                 kb_for_template = []
                 for e in regular:
-                    value = e.get('value', '')
-                    val = value[:80] + ("..." if len(value) > 80 else "")
+                    value = e.get('value', '') or ''
+                    if tier != 'rich' and len(value) > 80:
+                        value = value[:80] + "..."
                     kb_for_template.append({
                         'label': e.get('label', ''),
-                        'value_truncated': val,
+                        'value': value,
                     })
 
         # History rendering differs by tier:
@@ -1431,16 +1447,29 @@ JSON array:"""
         return "Reservation: " + ", ".join(parts) if parts else ""
 
     @staticmethod
-    def _format_corrections(corrections: List[Dict[str, Any]], max_chars: int = 1500) -> str:
-        """Format correction entries for the AI system prompt."""
+    def _format_corrections(corrections: List[Dict[str, Any]], max_chars: int = 6000) -> str:
+        """Format correction entries for the AI system prompt.
+
+        Rich tier only. At the old 1500-char budget a single saved example pair
+        (up to ~620 chars) ate a third of it, so only the 2-3 newest of the 10
+        loaded entries ever reached the model — the team's saved examples were
+        silently dropped. Short entries are rendered first so the budget buys
+        the most examples; these pairs are what teach the team's voice.
+        """
         lines = []
         total = 0
-        for c in corrections:
+        for c in sorted(corrections, key=lambda c: len(c.get('value') or '')):
             label = c.get('label', 'Unknown')
             value = c.get('value', '')
 
+            # Team-saved example pair (FRAGE:/ANTWORT:) — how the team really
+            # answered this. Longer slice than a correction: the wording IS the point.
+            if value.startswith('FRAGE: ') and '\nANTWORT: ' in value:
+                question, answer = value[len('FRAGE: '):].split('\nANTWORT: ', 1)
+                line = (f'- Guest asked: "{question.strip()[:300]}" '
+                        f'→ the team answered: "{answer.strip()[:300]}"')
             # Parse FALSCH:/RICHTIG: format
-            if '\nRICHTIG: ' in value:
+            elif '\nRICHTIG: ' in value:
                 parts = value.split('\nRICHTIG: ', 1)
                 original = parts[0].replace('FALSCH: ', '', 1).strip()
                 corrected = parts[1].strip()
@@ -1454,60 +1483,6 @@ JSON array:"""
             total += len(line)
 
         return "\n".join(lines) if lines else ""
-
-    def _format_knowledge_entries(entries: List[Dict[str, Any]], max_chars: int = 2000) -> str:
-        """Format knowledge base entries for the AI prompt, grouped by category."""
-        if not entries:
-            return ""
-
-        CATEGORY_LABELS = {
-            'general': 'General Info',
-            'checkin_checkout': 'Check-in / Check-out',
-            'nearby': 'Nearby Places',
-            'house_rules': 'House Rules',
-            'emergency': 'Emergency Contacts',
-            'faq': 'FAQ',
-        }
-
-        # Group by category
-        by_category = {}
-        for entry in entries:
-            cat = entry.get('category', 'general')
-            by_category.setdefault(cat, []).append(entry)
-
-        lines = []
-        total_len = 0
-        truncated = False
-
-        for cat_key in ['general', 'checkin_checkout', 'nearby', 'house_rules', 'emergency', 'faq']:
-            cat_entries = by_category.get(cat_key, [])
-            if not cat_entries:
-                continue
-
-            header = f"[{CATEGORY_LABELS.get(cat_key, cat_key)}]"
-            if total_len + len(header) + 1 > max_chars:
-                truncated = True
-                break
-
-            lines.append(header)
-            total_len += len(header) + 1
-
-            for entry in cat_entries:
-                line = f"- {entry['label']}: {entry['value']}"
-                if total_len + len(line) + 1 > max_chars:
-                    truncated = True
-                    break
-                lines.append(line)
-                total_len += len(line) + 1
-
-            if truncated:
-                break
-            lines.append("")  # blank line between categories
-
-        if truncated:
-            lines.append("(...additional entries omitted)")
-
-        return "\n".join(lines).strip()
 
     @staticmethod
     def _format_restricted_topics(escalation_entries: List[Dict[str, Any]]) -> str:
@@ -1630,6 +1605,29 @@ JSON array:"""
         if data.get('num_guests'):
             parts.append(f"guests:{data['num_guests']}")
         return ", ".join(parts) if parts else "no data extracted"
+
+
+def local_reservation_info(conversation):
+    """Build reservation context for the AI prompt from locally-stored conversation
+    fields, avoiding a blocking live Smoobu get_reservation() call on the hot path
+    (that call added ~11s of prep — see [SUGGEST TIMING]). Guest counts are synced
+    onto the conversation by the Smoobu reservation sync + webhook. Returns None if
+    nothing is known.
+
+    The guest count is what decides du vs ihr in the reply, so every prompt path
+    needs it — the auto-respond path falls back to this when the live Smoobu
+    fetch returns nothing.
+    """
+    ci, co = conversation.check_in, conversation.check_out
+    adults, children = conversation.adults, conversation.children
+    if not (ci or co or adults or children):
+        return None
+    return {
+        'check_in': ci.isoformat() if ci else None,
+        'check_out': co.isoformat() if co else None,
+        'adults': adults,
+        'children': children,
+    }
 
 
 # Global instance for Flask app context

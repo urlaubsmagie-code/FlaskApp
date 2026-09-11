@@ -89,12 +89,23 @@ def init_chatbot(app):
     is_production = not app.config.get('DEBUG')
     print(f"[ChatBotAI] init_chatbot daemon guard: reloader_child={is_reloader_child}, production={is_production}", flush=True)
     if is_reloader_child or is_production:
-        from .app import _start_background_sync
-        try:
-            _start_background_sync(app)
-        except Exception as e:
-            print(f"[ChatBotAI] ERROR starting background sync: {e!r}", flush=True)
-            raise
+        # All three daemons must start here, not only the Smoobu sync. Production
+        # registers the blueprint directly (FlaskApp/app.py) and never calls
+        # ChatBotAI/app.py::create_app(), so anything started only there does not
+        # exist in production. Email reconcile was split out of the 10-minute
+        # Smoobu cycle into its own 2-minute daemon and silently stopped running
+        # in prod that day — Booking messages only appeared when a human opened
+        # the chat (the per-chat live fetch) and never on their own.
+        from .app import _start_background_sync, _start_email_reconcile, _start_keepalive
+        for name, start in (('background sync', _start_background_sync),
+                            ('email reconcile', _start_email_reconcile),
+                            ('keepalive', _start_keepalive)):
+            try:
+                start(app)
+                print(f"[ChatBotAI] {name} daemon started", flush=True)
+            except Exception as e:
+                # One daemon failing to start must not take the others down.
+                print(f"[ChatBotAI] ERROR starting {name}: {e!r}", flush=True)
     else:
         print("[ChatBotAI] Background sync NOT started (debug + not reloader child)", flush=True)
 
@@ -118,7 +129,8 @@ def on_register(state):
     app.config.setdefault('SQLALCHEMY_TRACK_MODIFICATIONS', False)
     app.config.setdefault('OLLAMA_URL', 'http://localhost:11434')
     app.config.setdefault('OLLAMA_MODEL', 'mistral:7b-instruct')
-    app.config.setdefault('OLLAMA_TIMEOUT', 30)
+    # Thinking cloud models need 20-40s; stay under Cloudflare's ~100s cut.
+    app.config.setdefault('OLLAMA_TIMEOUT', 90)
 
     # Initialize ChatBotAI
     init_chatbot(app)
@@ -140,6 +152,13 @@ def inject_online_users():
     ).order_by(User.display_name).all()
 
     return {'online_users': online}
+
+
+@chatbot_bp.context_processor
+def inject_whatsapp_enabled():
+    """The sidebar WhatsApp badge renders only when the bridge integration is set up."""
+    import os
+    return {'whatsapp_enabled': bool(os.environ.get('WHATSAPP_BRIDGE_URL'))}
 
 
 @chatbot_bp.app_template_filter('to_local')
