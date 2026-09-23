@@ -305,6 +305,7 @@ class FilterState {
         document.querySelectorAll('[data-stat-filter]').forEach(tile => {
             const f = tile.dataset.statFilter;
             tile.classList.toggle('active', f === 'unread' ? this.state.unread : this.state.status === f);
+            tile.setAttribute('aria-pressed', String(tile.classList.contains('active')));
         });
 
         // Sync guest dropdown selection

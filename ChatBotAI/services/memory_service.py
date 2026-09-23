@@ -38,6 +38,13 @@ class MemoryService:
             logger.debug(f"Message {message.id} already processed")
             return True
 
+        from ..models import is_media_placeholder
+        if is_media_placeholder(message.content):
+            # A photo/voice note placeholder carries no facts about the guest.
+            message.is_processed = True
+            db.session.commit()
+            return True
+
         try:
             ai_service = get_ai_service()
             if not ai_service:
@@ -322,7 +329,11 @@ class MemoryService:
             'allergies': [],
             'interests': [],
             'special_requests': [],
-            'booking': []
+            'booking': [],
+            # Smoobu's own reservation data (arrival, departure, adults, channel).
+            # Its own key so the profile page shows it without changing the AI prompt,
+            # which already gets the live reservation.
+            'reservation': []
         }
 
         # Categorize details
@@ -352,7 +363,11 @@ class MemoryService:
                 profile['special_requests'].append(detail_dict)
             elif detail.detail_type == 'booking':
                 profile['booking'].append(detail_dict)
+            elif detail.detail_type == 'reservation':
+                profile['reservation'].append(detail_dict)
 
+        order = ['check_in', 'check_out', 'adults', 'children', 'booking_channel']
+        profile['reservation'].sort(key=lambda d: order.index(d['key']) if d['key'] in order else len(order))
         return profile
 
     def find_or_create_guest(

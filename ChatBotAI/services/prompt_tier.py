@@ -33,7 +33,8 @@ def detect_tier(model_name: Optional[str]) -> str:
         return "compact"
 
     name = model_name.lower()
-    if name.endswith("-cloud"):
+    # Older cloud tags are "model:120b-cloud", newer ones are "model:cloud".
+    if name.endswith(("-cloud", ":cloud")):
         return "rich"
 
     match = re.search(r":(\d+)b", name)

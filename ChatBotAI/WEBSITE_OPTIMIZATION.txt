@@ -1,0 +1,300 @@
+================================================================================
+  WEBSITE OPTIMIZATION INITIATIVE
+  Started: 2026-05-07 (brainstorm) / 2026-05-13 (execution)
+================================================================================
+
+GOAL
+----
+Make the ChatBotAI / Urlaubsmagie Messenger faster, more secure, and more
+reliable for the Digital Team. Local PC bottleneck (Flask + sync layer) is
+the new pain point now that AI is offloaded to gpt-oss:120b-cloud.
+
+Triage: one issue at a time. Easiest → hardest. Each step independently
+shippable.
+
+================================================================================
+  STATUS LEGEND
+================================================================================
+  [ ] pending     [~] in progress     [x] done     [!] blocked     [-] skipped
+
+================================================================================
+  PLAN
+================================================================================
+
+[x] STEP 1 — Tune Waitress threads (4 → 8)
+    Symptom : Waitress default 4 threads underutilizes the PC now that
+              Ollama is offloaded to cloud.
+    Fix     : app.py:3450 `serve(app, threads=4)` → `threads=8`
+    Risk    : none.
+    Status  : done 2026-05-13.
+
+[x] STEP 2 — Smoobu cold-start sync (immediate first run)
+    Symptom : After server restart, ~30s + 120s = up to ~2.5 min until
+              first sync. Team doesn't see new messages right away.
+    Fix     : ChatBotAI/app.py `_sync_loop()` — run one immediate sync,
+              THEN enter the SYNC_INTERVAL loop. Drop INITIAL_DELAY.
+    Risk    : low (existing lock prevents overlap with manual syncs).
+    Status  : done 2026-05-13.
+
+[x] STEP 3 — Flask-Compress (gzip)
+    Status  : ALREADY DONE — `Compress(app)` at ChatBotAI/app.py:318,
+              `flask-compress>=1.14` in requirements.txt.
+
+[x] STEP 4 — Cloudflare Cache Rules for /static/
+    Action  : USER configured in Cloudflare dashboard 2026-05-13.
+              Cache Rule (/chatbot/static/ + /static/, 1mo Edge / 1wk Browser)
+              and Tiered Cache enabled. Brotli not applied (optional, skipped).
+    Result  : User reports loading times "notably better".
+    Status  : done 2026-05-13.
+
+[x] STEP 5 — Browser cache headers on static
+    Status  : ALREADY DONE — `SEND_FILE_MAX_AGE_DEFAULT = 2592000`
+              (30 days) in production at ChatBotAI/app.py:338. Pairs
+              with existing ?v= cache-busting.
+
+[-] STEP 6 — Secrets → .env  (DEFERRED 2026-05-13)
+    Audit complete. Findings:
+      - No hardcoded API keys in service code (Smoobu key + VAPID keys
+        live in AISettings DB table; Gmail uses gitignored credentials.json).
+      - The only real concern is the dev SECRET_KEY fallback string,
+        which is in 3 source files and would be loaded in production
+        because load_dotenv() is only called from run.py, NOT from the
+        prod entry FlaskApp/app.py.
+      - User decided to defer: site is not indexed in Google, attack
+        surface is "someone with the source code". Repo status unknown.
+    Status: parked. Revisit if repo goes public or threat model changes.
+
+[x] STEP 6b — Smoobu API key in-memory cache (BONUS 2026-05-13)
+    During Step 6 audit, surfaced that SmoobuService.api_key property
+    hit the DB on every access (every _request call, every is_configured
+    check, every status poll). User flagged this as wasteful.
+    Fix: cache key on first access in SmoobuService._cached_api_key.
+    reload_api_key() invalidates cache; called from /smoobu/connect,
+    /smoobu/disconnect, and the invalid-key clear path.
+    Result: 0 extra DB hits during sync cycles (was ~20+ per cycle).
+
+[x] STEP 7 — Duplicate-messages fix (2026-05-13)
+    Investigation found that 38bff2d (HTML-strip in content dedup) was
+    correct but addressed a DIFFERENT bug. Active duplicates were still
+    happening: 15 platform_message_id duplicate pairs since 2026-04-22,
+    with sub-millisecond gaps between rows → classic race condition.
+
+    Root cause: three concurrent sync paths (background daemon + manual
+    full-sync route + per-conversation sync route) all run the same
+    check-then-insert pattern. With NO UNIQUE constraint on
+    platform_message_id, two threads could both pass the "not in DB"
+    check and both insert before either committed.
+
+    Fix:
+      a) Migration p14_uniq_platform_msg_id:
+         - Repointed 8 conversation.last_read_message_id pointers from
+           soon-to-be-deleted dup rows to their surviving lower-id sibling
+         - Deleted 15 duplicate message rows (kept MIN(id) per plat_id)
+         - Created partial UNIQUE INDEX
+           ix_message_platform_message_id_unique
+           ON message (platform_message_id)
+           WHERE platform_message_id IS NOT NULL
+      b) Code: services/smoobu_service.py (2 sites) and
+         services/message_router.py (_store_message) now catch
+         IntegrityError on insert. On collision they roll back and
+         either skip (smoobu sync) or return the winning row
+         (message_router) so callers see a consistent result.
+
+    DB backed up to instance/chatbot.db.bak-pre-p14-20260513-120632.
+    Verified: 24/24 tests pass; manual INSERT of dup platform_message_id
+    raises IntegrityError as expected; 0 dupes remain.
+
+[x] STEP 7c — Cold-cache morning-load mitigation (2026-05-15)
+    Symptom: after server idles overnight, first page load next morning
+    feels slow even though Cloudflare cache rules are in place. Reason:
+    Cloudflare edge cache cools off without traffic, CF tunnel may need
+    re-handshake, SQLite pages get evicted from the OS file cache.
+
+    Fix has two parts:
+      a) SQLite pragmas (app.py _setup_sqlite_pragmas):
+         - PRAGMA cache_size=-65536    (64MB in-process page cache)
+         - PRAGMA mmap_size=268435456  (256MB memory-mapped IO)
+         Keeps more DB pages hot in memory so first queries after idle
+         don't hit cold OS file cache.
+      b) Keepalive daemon (_start_keepalive in app.py):
+         - Pings KEEPALIVE_URL every KEEPALIVE_INTERVAL seconds (5 min)
+         - Default URL: https://umteamsbz.com/chatbot/api/keepalive
+         - New endpoint /chatbot/api/keepalive does a 1-row DB touch
+           and returns 200 JSON. No Ollama call (avoids cloud charges).
+         - Whitelisted past login wall so anonymous requests succeed.
+         - Outbound hit goes through the whole chain: CF edge → CF tunnel
+           → Waitress → Flask → SQLite → keeping each layer warm.
+    Set KEEPALIVE_URL='' to disable. Tests pass.
+
+
+[x] STEP 8 — Profile page loads (2026-05-15)
+    Wrote one-shot query profiler at tools/profile_pages.py. Uses
+    SQLAlchemy before/after_cursor_execute events to capture every
+    query during simulated requests via Flask's test_client.
+
+    Results (against current DB, ~5000 messages, ~65 active conversations):
+      inbox /chatbot/                           65 ms wall, 7 queries, 4.6 ms SQL
+      /api/conversations?page=1                 15 ms wall, 7 queries, 2.9 ms SQL
+      /api/conversations?page=2 (Mehr Laden)     9 ms wall, 7 queries, 2.4 ms SQL
+      /conversation/<id>                        35 ms wall, 9 queries, 1.6 ms SQL
+      /api/conversations/<id>/messages           3 ms wall, 3 queries, 0.5 ms SQL
+
+    Conclusions:
+      - Backend is fast and clean. No N+1 patterns. preload_last_messages,
+        preload_unread_counts, preload_display_platforms are doing their
+        job — constant query count regardless of pagination depth.
+      - Inbox wall time (65ms) is mostly Jinja rendering, not DB.
+      - Bottleneck for user-perceived slowness must be elsewhere:
+        Cloudflare/network/client-side, not the Flask app.
+
+[-] STEP 9 — Fix N+1 queries (SKIPPED 2026-05-15)
+    Step 8 found no N+1 patterns. Existing joinedload + preload_*
+    helpers already do this correctly. Skipped.
+
+[-] STEP 10 — Keyset pagination (DEFERRED 2026-05-15)
+    Step 8 showed page 2 (Mehr Laden) runs in 9ms — faster than page 1.
+    OFFSET pagination is not the bottleneck at current scale.
+    Revisit if inbox grows beyond ~1000 active conversations.
+
+[ ] STEP 8b — Client-side perf audit (FOLLOWUP from Step 8)
+    Since backend isn't the bottleneck, look at:
+      - JS/CSS bundle sizes and load order
+      - Number of XHRs on inbox load (polling, status checks, etc.)
+      - Time to first paint / first contentful paint
+      - Whether inbox template renders all 65 cards server-side or
+        progressively
+    Tool: Chrome DevTools Network + Performance tabs, ideally with
+    Lighthouse run against production.
+
+[x] STEP 11 — Missing-messages bug (2026-05-15)
+    User reframed the symptom: girls on phones don't see new messages
+    in the inbox, but the message IS in the DB (user verified by opening
+    the conversation on PC).
+
+    Root cause: the inbox poller (`inbox.js` `inboxPoller`, every 3s) only
+    triggers a full inbox refresh when `MAX(conversation.updated_at)` OR
+    `unread COUNT` changes (via `/api/conversations/last-updated`).
+
+    `MessageRouter.process_incoming_message` had logic that only bumped
+    `conversation.updated_at` when the new message's `sent_at` was newer
+    than the current `updated_at`. For out-of-order Smoobu deliveries
+    (e.g. a guest reply with a timestamp older than our last owner
+    message), `updated_at` did NOT move. And because the conversation
+    was already unread, the unread count didn't change either. Result:
+    poller never fired, inbox preview stayed stale forever — on every
+    device — even though the conversation page (which loads messages
+    directly) showed the truth when opened.
+
+    Why this looked phone-specific: girls sit on the inbox waiting for
+    the unread badge / preview to update; PC users open conversations
+    more often and stumble into the actual messages.
+
+    Fix (services/message_router.py): always advance `updated_at` so
+    the poller fires. For forward-in-time messages use `msg_ts`
+    (truthful); for out-of-order ones use `max(old_updated_at, now())`
+    so the conversation still surfaces in the inbox without lying
+    about the message time. `is_read` logic preserved: forward = mark
+    unread; out-of-order = recompute from read cursor.
+
+    Owner-message paths in services/smoobu_service.py left untouched —
+    they already trip the unread-count tripwire by setting is_read=True,
+    so the bug doesn't manifest there, and bumping updated_at on a slow
+    owner-echo sync could cause weird inbox reorderings.
+
+[ ] STEP 12 — Server stack upgrade (only if needed)
+    Only after Step 8 measurements. Options: nginx via WSL2, IIS+ARR,
+    or stay on tuned Waitress. Skip unless throughput stays bad.
+
+================================================================================
+  STEP 4 — CLOUDFLARE DASHBOARD INSTRUCTIONS
+================================================================================
+
+Log in to https://dash.cloudflare.com → select domain `umteamsbz.com`.
+
+A) Cache Rules (Caching → Cache Rules → "Create rule"):
+
+   Rule name : Cache static assets
+   When incoming requests match :
+       URI Path  starts with  /chatbot/static/
+       OR
+       URI Path  starts with  /static/
+   Then :
+       Cache eligibility       : Eligible for cache
+       Edge TTL                : Override origin → 1 month
+       Browser TTL             : Override origin → 1 week
+
+   Save and deploy.
+
+B) Tiered Cache (Caching → Tiered Cache):
+   Enable "Smart Tiered Cache Topology".
+
+C) (Optional) Compression (Speed → Optimization → Content Optimization):
+   Brotli ON (defaults to ON usually).
+
+VERIFICATION
+   After saving, hard-reload the app and check response headers in DevTools:
+       cf-cache-status: HIT       (after second request)
+       cache-control: public, max-age=...
+   If you see DYNAMIC instead of HIT, the rule didn't match — re-check
+   the URI path matcher.
+
+NOTES
+   - Existing ?v= versioning (style v49, etc.) means cache-busting is
+     already in place. Bumping the ?v= number forces a refresh.
+   - Do NOT cache /chatbot/api/* or HTML pages — only /static/.
+
+================================================================================
+  HISTORY
+================================================================================
+
+2026-05-07  Brainstorm: 6-issue triage agreed with user. Context cleared
+            before starting Step 1.
+
+2026-05-13  Resumed. Reordered plan (12 steps). Created this tracker.
+            Step 1 (Waitress threads 4→8) done.
+            Step 2 (Smoobu cold-start sync) done.
+            Discovered Steps 3 + 5 already in place from previous work.
+            Step 4 (Cloudflare Cache Rules) applied by user — notable
+            loading time improvement confirmed.
+            Steps 1–5 of the easy block all complete.
+
+            Step 6 (Secrets → .env) deferred after audit — no hardcoded
+            keys found, only concern is dev SECRET_KEY fallback in code.
+            Site not indexed in Google → low practical risk. Parked.
+
+            Step 6b (Smoobu API key in-memory cache) done — bonus
+            optimization surfaced during audit. Saves a DB hit per
+            Smoobu API call.
+
+            Step 7 (duplicate messages) done. Root cause was a different
+            bug than the 38bff2d fix addressed — three concurrent sync
+            paths racing without a DB UNIQUE constraint. Fixed via
+            migration p14 (partial unique index + cleanup of 15 existing
+            dupes) and IntegrityError guards on 3 insert sites.
+
+            Step 7b (WhatsApp-style delivery status) filed for future
+            work based on user's UX idea.
+
+2026-05-15  User reported overnight cold-start slow first-load.
+            Step 7c implemented: SQLite cache_size + mmap_size pragmas
+            and a 5-min keepalive daemon hitting a new lightweight
+            /chatbot/api/keepalive endpoint. Whole-chain warming so
+            morning loads stay fast even after idle nights.
+
+            Step 8 (page profiling) done. Surprise result: backend is
+            already in excellent shape (<70ms wall, <5ms SQL, no N+1
+            patterns, constant query count across pages). Step 9 (N+1
+            fixes) skipped because there are none to fix. Step 10
+            (keyset pagination) deferred — OFFSET is fine at current
+            scale (~65 conversations).
+
+            Filed Step 8b: client-side perf audit (Lighthouse + Network
+            tab) since user-perceived slowness must be CSS/JS bundle
+            or network-layer, not application code.
+
+            Step 11 (missing messages on phones) done. Was a subtle
+            invariant bug: out-of-order Smoobu deliveries didn't bump
+            conversation.updated_at, so the inbox poller's tripwire
+            never fired. Fix in MessageRouter.process_incoming_message
+            always advances updated_at (using now() for out-of-order
+            messages) while preserving is_read semantics.

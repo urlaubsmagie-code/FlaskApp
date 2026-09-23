@@ -1,0 +1,459 @@
+================================================================================
+                    CHATBOT AI - UNIFIED MESSAGING SYSTEM
+                         PROJECT DOCUMENTATION
+================================================================================
+
+Created: February 2026
+Project Location: C:\Users\admin\Documents\FlaskApp\ChatBotAI
+Part of: FlaskApp Project
+
+================================================================================
+                           1. PROJECT OVERVIEW
+================================================================================
+
+BUSINESS CONTEXT:
+- Owner manages multiple Airbnb apartments
+- Listings on: Airbnb, Booking.com, and personal website
+- Guest communication via: WhatsApp, Email, Airbnb chat, Booking chat
+- Current problem: Messages scattered across platforms, hard to track
+
+SOLUTION:
+A unified messaging dashboard with AI-powered auto-responses and persistent
+guest memory, integrated into the existing FlaskApp project.
+
+CORE VALUE PROPOSITION:
+- Single inbox for all guest communications
+- AI assistant that remembers every guest
+- Personalized responses based on guest history
+- Auto-response capability when owner is unavailable
+
+================================================================================
+                           2. KEY FEATURES
+================================================================================
+
+FEATURE 1: UNIFIED INBOX
+-------------------------
+- Aggregate messages from all platforms into one interface
+- Display conversations in a single, organized view
+- Filter by platform, guest, date, or status
+- Mark conversations as handled/pending/urgent
+
+FEATURE 2: GUEST MEMORY SYSTEM (CRITICAL)
+-----------------------------------------
+The AI maintains persistent memory of all guests across all interactions.
+
+How it works:
+  1. Every conversation (AI or human-managed) is analyzed
+  2. Important details are extracted automatically:
+     - Guest name and contact info
+     - Family members (names, ages)
+     - Pets (type, name)
+     - Preferences (room type, check-in time, dietary needs)
+     - Past stays and feedback
+     - Special requests or complaints
+  3. Information stored in guest profile database
+  4. Profile retrieved and injected into AI context for future chats
+
+Example scenario:
+  [First visit]
+  Guest: "I'm Maria, traveling with my son Lucas and our dog Max"
+  AI extracts: { name: "Maria", family: [{name: "Lucas", relation: "son"}],
+                 pets: [{name: "Max", type: "dog"}] }
+
+  [Return visit - 6 months later]
+  Guest: "Hi, I'd like to book again for next weekend"
+  AI retrieves Maria's profile and responds:
+  "Welcome back Maria! We'd love to host you again. Will Lucas and Max
+   be joining you? We have a ground-floor apartment that's perfect for
+   dogs - Max would have easy garden access!"
+
+FEATURE 3: DUAL-MODE AI OPERATION
+---------------------------------
+Mode A - AUTO-RESPONSE (Owner away):
+  - AI fully handles the conversation
+  - Responds to inquiries, provides information
+  - Can handle bookings (with configured limits)
+  - Escalates complex issues to owner
+
+Mode B - OBSERVER (Owner chatting):
+  - AI does NOT respond
+  - AI STILL monitors and extracts information
+  - Guest profile continuously updated
+  - Memory grows from ALL interactions
+
+This ensures guest memory is built from 100% of conversations, not just
+automated ones.
+
+FEATURE 4: SMART RESPONSES
+--------------------------
+- Context-aware replies based on guest history
+- Personalized offers (pet-friendly rooms, family discounts)
+- Consistent tone and information across all platforms
+- Multi-language support (if needed)
+
+================================================================================
+                           3. SYSTEM ARCHITECTURE
+================================================================================
+
+HIGH-LEVEL OVERVIEW:
+
++------------------+     +------------------+     +------------------+
+|   MESSAGING      |     |    FLASK APP     |     |    LOCAL AI      |
+|   PLATFORMS      |---->|    (Backend)     |---->|    (Ollama)      |
+|                  |<----|                  |<----|                  |
++------------------+     +------------------+     +------------------+
+  - Gmail                  - Message Router        - Mistral 7B
+  - WhatsApp               - Guest Database        - Context Injection
+  - Airbnb*                - Memory System         - Response Generation
+  - Booking*               - Web Dashboard         - Info Extraction
+                           - API Endpoints
+
+* Limited API access - workarounds needed
+
+COMPONENT BREAKDOWN:
+
+1. MESSAGE AGGREGATOR
+   - Connects to each platform's API
+   - Normalizes messages to common format
+   - Routes incoming messages to processing pipeline
+
+2. GUEST DATABASE
+   - Stores guest profiles with all extracted information
+   - Links conversations across platforms (same guest, different channels)
+   - Tracks booking history and preferences
+
+3. MEMORY EXTRACTION ENGINE
+   - Analyzes every message using the local LLM
+   - Extracts structured data (names, dates, preferences)
+   - Updates guest profiles automatically
+
+4. CONTEXT INJECTION SYSTEM
+   - Retrieves relevant guest profile for incoming messages
+   - Builds AI prompt with guest history and context
+   - Ensures personalized, informed responses
+
+5. RESPONSE GENERATOR
+   - Uses local LLM (Ollama) to generate responses
+   - Follows configured tone and business rules
+   - Can be toggled on/off per conversation
+
+6. WEB DASHBOARD
+   - Unified inbox interface
+   - Guest profile viewer/editor
+   - AI settings and controls
+   - Analytics and reporting
+
+================================================================================
+                           4. DATABASE SCHEMA
+================================================================================
+
+TABLE: guests
+--------------
+- id (primary key)
+- name
+- email
+- phone
+- whatsapp_id
+- airbnb_id
+- booking_id
+- first_contact_date
+- last_contact_date
+- total_stays
+- notes
+- created_at
+- updated_at
+
+TABLE: guest_details
+--------------------
+- id (primary key)
+- guest_id (foreign key)
+- detail_type (family_member, pet, preference, allergy, etc.)
+- detail_key (name, type, value identifier)
+- detail_value (actual value)
+- confidence_score (how certain the AI is about this info)
+- source_message_id (which message this came from)
+- extracted_at
+
+TABLE: conversations
+--------------------
+- id (primary key)
+- guest_id (foreign key)
+- platform (email, whatsapp, airbnb, booking)
+- platform_conversation_id
+- status (active, closed, pending)
+- ai_enabled (boolean - is auto-response on?)
+- created_at
+- updated_at
+
+TABLE: messages
+---------------
+- id (primary key)
+- conversation_id (foreign key)
+- sender_type (guest, owner, ai)
+- content
+- platform_message_id
+- sent_at
+- processed (boolean - has AI extracted info?)
+- created_at
+
+TABLE: properties
+-----------------
+- id (primary key)
+- name
+- address
+- description
+- amenities (JSON)
+- pet_friendly (boolean)
+- max_guests
+- bedrooms
+- created_at
+
+TABLE: bookings
+---------------
+- id (primary key)
+- guest_id (foreign key)
+- property_id (foreign key)
+- platform
+- check_in_date
+- check_out_date
+- total_guests
+- special_requests
+- status
+- created_at
+
+TABLE: ai_settings
+------------------
+- id (primary key)
+- setting_key
+- setting_value
+- description
+
+================================================================================
+                           5. TECHNICAL STACK
+================================================================================
+
+BACKEND:
+- Python 3.11+
+- Flask (web framework)
+- SQLAlchemy (ORM for database)
+- SQLite or PostgreSQL (database)
+- Celery (background tasks for message processing)
+
+FRONTEND:
+- HTML5 / CSS3
+- JavaScript (vanilla or with Vue.js/Alpine.js for reactivity)
+- Bootstrap 5 or Tailwind CSS (styling)
+- WebSocket (real-time message updates)
+
+LOCAL AI:
+- Ollama (LLM server)
+- Mistral 7B Instruct (primary model)
+- REST API communication (localhost:11434)
+
+INTEGRATIONS:
+- Gmail API (email)
+- Twilio / WhatsApp Business API (WhatsApp)
+- Airbnb - TBD (email forwarding or unofficial methods)
+- Booking.com - TBD (partner API or email forwarding)
+
+================================================================================
+                           6. FOLDER STRUCTURE
+================================================================================
+
+C:\Users\admin\Documents\FlaskApp\
+|
++-- ChatBotAI\
+    |
+    +-- __init__.py
+    +-- config.py                 # Configuration settings
+    +-- models.py                 # Database models
+    +-- routes.py                 # Flask routes/endpoints
+    |
+    +-- services\
+    |   +-- __init__.py
+    |   +-- ai_service.py         # Ollama integration
+    |   +-- memory_service.py     # Guest memory extraction
+    |   +-- gmail_service.py      # Gmail API integration
+    |   +-- whatsapp_service.py   # WhatsApp integration
+    |   +-- message_router.py     # Route messages between services
+    |
+    +-- templates\
+    |   +-- inbox.html            # Unified inbox view
+    |   +-- conversation.html     # Single conversation view
+    |   +-- guest_profile.html    # Guest details page
+    |   +-- settings.html         # AI and system settings
+    |
+    +-- static\
+    |   +-- css\
+    |   +-- js\
+    |   +-- img\
+    |
+    +-- utils\
+    |   +-- __init__.py
+    |   +-- prompt_templates.py   # AI prompt templates
+    |   +-- extractors.py         # Info extraction helpers
+    |
+    +-- tests\
+        +-- test_ai_service.py
+        +-- test_memory_service.py
+
+================================================================================
+                           7. AI PROMPT STRATEGY
+================================================================================
+
+PROMPT TEMPLATE FOR RESPONSES:
+
+```
+You are a helpful assistant for [Property Name], an Airbnb rental business.
+
+GUEST PROFILE:
+- Name: {guest_name}
+- Previous stays: {stay_count}
+- Family: {family_members}
+- Pets: {pets}
+- Known preferences: {preferences}
+- Past interactions summary: {history_summary}
+
+CURRENT CONVERSATION:
+{recent_messages}
+
+NEW MESSAGE FROM GUEST:
+{new_message}
+
+INSTRUCTIONS:
+- Respond warmly and professionally
+- Reference relevant details from their profile naturally
+- If they're a returning guest, acknowledge this
+- Provide accurate information about our properties
+- If unsure about something, offer to check and get back to them
+
+RESPONSE:
+```
+
+PROMPT TEMPLATE FOR INFO EXTRACTION:
+
+```
+Analyze this conversation message and extract any important guest information.
+
+MESSAGE:
+{message_content}
+
+Extract the following if mentioned (return as JSON):
+- guest_name: string or null
+- family_members: [{name, relation, age}] or []
+- pets: [{name, type}] or []
+- preferences: [{type, value}] or []
+- dates_mentioned: [{check_in, check_out}] or []
+- special_requests: [string] or []
+- complaints: [string] or []
+- positive_feedback: [string] or []
+
+Only include fields that are explicitly mentioned. Do not assume or infer.
+
+JSON OUTPUT:
+```
+
+================================================================================
+                           8. DEVELOPMENT PHASES
+================================================================================
+
+PHASE 1: FOUNDATION
+-------------------
+- Set up project structure within FlaskApp
+- Create database models
+- Build basic Flask routes
+- Create simple web interface (inbox mockup)
+
+PHASE 2: AI INTEGRATION
+-----------------------
+- Connect to Ollama API
+- Implement basic chat functionality
+- Create prompt templates
+- Test AI responses
+
+PHASE 3: MEMORY SYSTEM
+----------------------
+- Implement info extraction from messages
+- Build guest profile storage
+- Create context injection for AI prompts
+- Test memory persistence across conversations
+
+PHASE 4: GMAIL INTEGRATION
+--------------------------
+- Set up Gmail API credentials
+- Implement email fetching
+- Implement email sending
+- Route emails through unified inbox
+
+PHASE 5: WHATSAPP INTEGRATION
+-----------------------------
+- Set up WhatsApp Business API or Twilio
+- Implement message receiving webhook
+- Implement message sending
+- Route WhatsApp through unified inbox
+
+PHASE 6: WEB DASHBOARD
+----------------------
+- Build full inbox interface
+- Create guest profile viewer
+- Add conversation management
+- Implement AI toggle controls
+
+PHASE 7: AIRBNB & BOOKING (TBD)
+-------------------------------
+- Research available options
+- Implement email forwarding workaround
+- Or investigate unofficial API options
+
+PHASE 8: POLISH & TESTING
+-------------------------
+- Comprehensive testing
+- Performance optimization
+- Security review
+- Documentation
+
+================================================================================
+                           9. SECURITY CONSIDERATIONS
+================================================================================
+
+- All API keys stored in environment variables
+- Guest data encrypted at rest
+- HTTPS for all web traffic
+- Authentication required for dashboard access
+- Rate limiting on AI requests
+- Regular database backups
+- GDPR compliance for guest data (if applicable)
+
+================================================================================
+                           10. FUTURE ENHANCEMENTS
+================================================================================
+
+- Multi-language auto-detection and response
+- Booking calendar integration
+- Automated pricing suggestions
+- Review response automation
+- Analytics dashboard (response times, guest satisfaction)
+- Mobile app version
+- Voice message transcription
+- Integration with property management systems
+
+================================================================================
+                           11. LOCAL AI SETUP (COMPLETED)
+================================================================================
+
+Current Status: READY
+
+- Ollama installed and running on localhost:11434
+- Model: mistral:7b-instruct (4.4 GB)
+- API endpoint: POST http://localhost:11434/api/generate
+- Tested and working
+
+Hardware:
+- CPU: Intel Core i7-7700 @ 3.60GHz
+- RAM: 16 GB
+- GPU: NVIDIA GeForce GTX 1070 (8GB VRAM)
+- Performance: ~9-10 tokens/second
+
+================================================================================
+                               END OF DOCUMENT
+================================================================================

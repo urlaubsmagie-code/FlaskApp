@@ -5,10 +5,11 @@ flask-sqlalchemy>=3.1.1
 flask-migrate>=4.0.0
 flask-login>=0.6.3
 flask-compress>=1.14
-Werkzeug>=3.0.0
+Werkzeug>=3.0.6
+Jinja2>=3.1.5
 
 # HTTP requests for Ollama
-requests>=2.31.0
+requests>=2.32.4
 
 # Environment management
 python-dotenv>=1.0.0
@@ -18,15 +19,21 @@ google-api-python-client>=2.100.0
 google-auth-httplib2>=0.1.1
 google-auth-oauthlib>=1.1.0
 
+# Notion knowledge-base synchronization
+notion-client>=2.2.1
+
 # Database (production - optional)
 # psycopg2-binary>=2.9.9  # Uncomment for PostgreSQL
 
 # Web Push Notifications
 pywebpush>=2.0.0
-cryptography>=41.0.0
+cryptography>=46.0.0
+
+# Message translation (already used by the review portal in the parent app)
+deep-translator>=1.11.4
 
 # Production WSGI server
-waitress>=3.0.0
+waitress>=3.0.2
 
 # Development tools
 pytest>=7.0

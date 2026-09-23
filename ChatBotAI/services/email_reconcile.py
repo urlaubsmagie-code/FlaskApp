@@ -8,6 +8,7 @@ See docs/superpowers/specs/2026-06-09-email-reconciliation-design.md.
 """
 import logging
 import re
+import unicodedata
 from collections import namedtuple
 from datetime import datetime, timedelta, timezone
 
@@ -523,6 +524,7 @@ def promote_email_candidates(conversation_id: int, min_confidence: float) -> lis
         cand.status = 'confirmed'
         if is_new:
             inserted_ids.append(msg.id)
+            surface_in_inbox(conversation_id, cand.parsed_timestamp)
     db.session.commit()
     return inserted_ids
 
@@ -591,7 +593,25 @@ def undo_last_flush() -> int:
 
 def resolve_channel(conv):
     """Return 'booking' | 'airbnb' | None for a Conversation, checking
-    Conversation.platform first, then the guest's booking_channel detail."""
+    Conversation.platform first, then the guest's booking_channel detail.
+
+    Non-primary Smoobu accounts return None: the missing-Booking-messages gap is
+    a primary-account problem only, so their chats are excluded from email
+    reconcile entirely (match pool and per-chat fetch both funnel through here).
+    ponytail: hardcoded to "primary only"; make it a per-account setting if a
+    third account ever needs email gathering.
+
+    "Primary" is the account id in settings, NOT a NULL tag: the multi-account
+    sync stamps the primary id onto conversations too. Testing `if
+    conv.smoobu_account_id` therefore excluded EVERY chat and silently killed
+    email reconcile from 2026-08-07 to 2026-09-02 — the match pool was empty, so
+    every notification email landed in `unmatched` and the per-chat button
+    answered 'not_booking'. When no primary is configured we exclude nothing,
+    which is the pre-multi-account behaviour."""
+    from ..models import AISettings
+    primary = AISettings.get('smoobu_account_id')
+    if conv.smoobu_account_id and primary and str(conv.smoobu_account_id) != str(primary):
+        return None
     plat = (conv.platform or '').lower()
     if plat in ('booking', 'booking.com'):
         return 'booking'
@@ -673,8 +693,8 @@ def conversation_booking_ref(conv, smoobu_service=None) -> str | None:
         return None
     svc = smoobu_service
     if svc is None:
-        from .smoobu_service import get_smoobu_service
-        svc = get_smoobu_service()
+        from .smoobu_service import get_smoobu_service_for
+        svc = get_smoobu_service_for(conv)
     if not svc:
         return None
     try:
@@ -743,6 +763,74 @@ def _authentic_new_notif(email, platform, stats):
     return notif
 
 
+def surface_in_inbox(conversation_id: int, sent_at):
+    """Make an email-recovered guest message visible the way a Smoobu one is.
+
+    router._store_message() only writes the row; the conversation fields that the
+    inbox actually reads are updated by process_incoming_message(), which this
+    path does not go through. Without this a recovered message is invisible
+    unless you already know which chat to open — the inbox sorts by
+    last_message_at and the unread badge comes from the read cursor.
+
+    last_message_at only ever moves forward, so backfilling an OLD message can
+    never push a stale chat to the top.
+    """
+    from ..models import Conversation
+    conv = Conversation.query.get(conversation_id)
+    if not conv or not sent_at:
+        return
+    if not conv.last_message_at or sent_at > conv.last_message_at:
+        conv.last_message_at = sent_at
+    conv.updated_at = datetime.utcnow()   # polling tripwire for open clients
+    conv.recompute_is_read()              # unread only if newer than the cursor
+    db.session.commit()
+
+
+def _name_key(value) -> str:
+    """Accent- and order-insensitive name key: 'Vaghela Hardik' == 'Hardik Vaghela'.
+    Booking and Smoobu disagree on name order often enough that plain equality
+    drops real matches."""
+    base = normalize_name(value)
+    if not base:
+        return ''
+    flat = unicodedata.normalize('NFKD', base).encode('ascii', 'ignore').decode()
+    return ' '.join(sorted(re.sub(r'[^a-z ]', ' ', flat).split()))
+
+
+def exact_match_from_views(notif, views, smoobu_service=None):
+    """The one conversation this Booking email provably belongs to, or None.
+
+    Narrows by guest name (Booking notifications carry the full name), then applies
+    the same tier match the live on-open path uses: exact Buchungsnummer, else exact
+    check-in AND check-out. Returns None on zero OR multiple hits — never guess.
+    """
+    from ..models import Conversation
+    key = _name_key(notif.guest_name)
+    if not key:
+        return None
+    ids = [v['conversation_id'] for v in views if _name_key(v['guest_name']) == key]
+    if not ids:
+        return None
+    hits = [conv for conv in Conversation.query.filter(Conversation.id.in_(ids)).all()
+            if email_matches_conversation(
+                notif, conv, conversation_booking_ref(conv, smoobu_service))]
+    return hits[0] if len(hits) == 1 else None
+
+
+def _confirm_candidate(gmail_id: str):
+    """Mark a pending review row as handled once we have inserted its email.
+
+    Without this the message sits in the tray forever and a later flush could
+    promote the same text into a second chat.
+    """
+    from ..models import EmailBackfillCandidate
+    cand = EmailBackfillCandidate.query.filter_by(
+        gmail_message_id=gmail_id, status='pending').first()
+    if cand:
+        cand.status = 'confirmed'
+        db.session.commit()
+
+
 def _handle_notification_email(email, platform, views, cfg, router, stats):
     """Background-scan handler: threshold-gated auto-insert, else queue for review."""
     from ..models import EmailBackfillCandidate
@@ -750,9 +838,36 @@ def _handle_notification_email(email, platform, views, cfg, router, stats):
     if notif is None:
         return
 
-    # Scan path skips emails already queued/rejected (a human decision).
-    if EmailBackfillCandidate.query.filter_by(gmail_message_id=notif.gmail_id).first():
+    # A candidate row must not veto a PROVABLE placement. It used to: any email
+    # that had ever been queued was skipped forever, so a message parked below
+    # the confidence threshold stayed invisible in the chat until a human opened
+    # that conversation (the live path ignores this skip). 169 pending rows were
+    # stranded that way. A row the team explicitly rejected is still respected,
+    # and the fuzzy branch below still refuses to re-queue what is already queued.
+    candidate = EmailBackfillCandidate.query.filter_by(
+        gmail_message_id=notif.gmail_id).first()
+    if candidate and candidate.status == 'rejected':
         return
+
+    # An exact Buchungsnummer/dates hit is proof, not a score — take it before the
+    # fuzzy scorer, whose apartment soft-veto (-0.50) cancels the exact-name bonus
+    # (+0.50) and files the email onto a stranger in the apartment the email names.
+    if platform == 'booking' and cfg['autoinsert_booking']:
+        conv = exact_match_from_views(notif, views)
+        if conv is not None:
+            stats['matched'] += 1
+            if has_equivalent_message(conv.id, notif, cfg['window_minutes']):
+                stats['skipped_dupe'] += 1
+                return
+            router._store_message(
+                conversation_id=conv.id, sender_type='guest', content=notif.message_text,
+                platform_message_id=f"email:{notif.gmail_id}", sent_at=notif.sent_at,
+                sent_via_app=False,
+            )
+            surface_in_inbox(conv.id, notif.sent_at)
+            stats['auto_inserted'] += 1
+            _confirm_candidate(notif.gmail_id)
+            return
 
     best, score = pick_best_match(notif, views)
     if not best:
@@ -764,6 +879,11 @@ def _handle_notification_email(email, platform, views, cfg, router, stats):
         stats['skipped_dupe'] += 1
         return
 
+    if candidate:
+        # Already awaiting review: never queue it twice, and don't let the fuzzy
+        # scorer place it — the exact matcher above already declined.
+        return
+
     autoinsert = cfg['autoinsert_booking'] if platform == 'booking' else cfg['autoinsert_airbnb']
     if score >= cfg['threshold'] and autoinsert:
         router._store_message(
@@ -772,6 +892,7 @@ def _handle_notification_email(email, platform, views, cfg, router, stats):
             platform_message_id=f"email:{notif.gmail_id}",
             sent_at=notif.sent_at, sent_via_app=False,
         )
+        surface_in_inbox(best['conversation_id'], notif.sent_at)
         stats['auto_inserted'] += 1
     else:
         db.session.add(EmailBackfillCandidate(
@@ -823,7 +944,7 @@ def reconcile_from_email(gmail_service, max_per_platform: int = 50) -> dict:
 # Live per-chat Booking fetch (on chat open)
 # ---------------------------------------------------------------------------
 
-_LIVE_FETCH_DEFAULT_THROTTLE_MIN = 15
+_LIVE_FETCH_DEFAULT_THROTTLE_MIN = 3
 # ponytail: in-memory throttle, shared across Waitress's threads (single
 # process). The check-then-set below is not atomic, so a multi-thread race can
 # let two near-simultaneous opens of the same chat both fetch — worst case one
@@ -863,6 +984,7 @@ def _handle_live_booking_email(email, conv, conv_ref, cfg, router, stats):
         platform_message_id=f"email:{notif.gmail_id}", sent_at=notif.sent_at,
         sent_via_app=False,
     )
+    surface_in_inbox(conv.id, notif.sent_at)
     stats['auto_inserted'] += 1
     stats['matched'] += 1
     # Rescue: a pending candidate for this same email (possibly filed under the
@@ -875,7 +997,96 @@ def _handle_live_booking_email(email, conv, conv_ref, cfg, router, stats):
         db.session.commit()
 
 
-def fetch_booking_for_conversation(gmail_service, conversation_id: int, now=None) -> dict:
+def sweep_booking_emails(gmail_service, days: int = 30, max_emails: int = 60) -> dict:
+    """Inbox-wide sweep: pull Booking guest messages straight out of Gmail.
+
+    Deliberately NOT the review queue. The daemon's scan skips any email that
+    already has an EmailBackfillCandidate row and files uncertain ones for
+    approval; this sweep ignores candidates entirely, inserts only what the
+    strict tier matcher proves (exact Buchungsnummer, else exact check-in AND
+    check-out, and only on a single hit), and queues nothing. So it recovers
+    messages the scan stranded, without inventing placements.
+
+    A pending candidate for an email we insert is confirmed, so the same message
+    can never also be promoted into a different chat later.
+
+    Returns the usual stats dict.
+    """
+    from ..models import EmailBackfillCandidate
+
+    cfg = get_reconcile_config()
+    stats = _new_stats()
+    if not cfg['enabled']:
+        stats['reason'] = 'disabled'
+        return stats
+
+    logger.info("email sweep: starting (%dd, max %d emails)", days, max_emails)
+    from .message_router import get_message_router
+    router = get_message_router()
+    views = _candidate_views('booking')
+    if not views:
+        stats['reason'] = 'no_booking_conversations'
+        return stats
+
+    try:
+        emails = gmail_service.get_recent_emails(
+            max_results=max_emails,
+            query=f'from:guest.booking.com newer_than:{days}d',
+            apply_filter=False)
+    except Exception:
+        logger.exception("email sweep: Gmail fetch failed")
+        stats['reason'] = 'gmail_error'
+        return stats
+
+    for email in emails:
+        notif = _authentic_new_notif(email, 'booking', stats)
+        if notif is None:
+            continue
+        conv = exact_match_from_views(notif, views)
+        if conv is None:
+            stats['unmatched'] += 1
+            continue
+        stats['matched'] += 1
+        if has_equivalent_message(conv.id, notif, cfg['window_minutes']):
+            stats['skipped_dupe'] += 1
+            continue
+        router._store_message(
+            conversation_id=conv.id, sender_type='guest', content=notif.message_text,
+            platform_message_id=f"email:{notif.gmail_id}", sent_at=notif.sent_at,
+            sent_via_app=False,
+        )
+        surface_in_inbox(conv.id, notif.sent_at)
+        stats['auto_inserted'] += 1
+        cand = EmailBackfillCandidate.query.filter_by(
+            gmail_message_id=notif.gmail_id, status='pending').first()
+        if cand:
+            cand.status = 'confirmed'
+            db.session.commit()
+
+    logger.info("email sweep (%dd): %s", days, stats)
+    return stats
+
+
+def _live_booking_query(conv_ref: str | None, guest_name: str, days: int) -> str:
+    """Gmail query for the per-chat button.
+
+    With a Buchungsnummer we search the reservation number itself and drop the
+    date window: Booking puts the number in the sender local part
+    (<ref>-…@guest.booking.com) and in the body, so it identifies the
+    reservation exactly. That is what reaches the older silent chats — the
+    daemon's `newer_than` window is for the recurring scan, not for someone
+    deliberately asking us to look.
+
+    Without a number we fall back to the guest name, and then the window has to
+    stay: a bare name across all of Gmail is far too loose.
+    """
+    if conv_ref:
+        return f'from:guest.booking.com "{_safe_query_term(conv_ref)}"'
+    return f'from:guest.booking.com "{_safe_query_term(guest_name)}" newer_than:{days}d'
+
+
+def fetch_booking_for_conversation(gmail_service, conversation_id: int, now=None,
+                                   force: bool = False) -> dict:
     """Live per-chat Booking fetch: search Gmail scoped to this guest, auto-insert
     an email that matches this conversation by Buchungsnummer (stored note or
     Smoobu reference-id) or by exact check-in/check-out dates. Booking-only,
@@ -901,7 +1112,10 @@ def fetch_booking_for_conversation(gmail_service, conversation_id: int, now=None
         stats['reason'] = 'no_guest_name'
         return stats
 
-    if _live_fetch_throttled(conversation_id, now):
+    # force=True: a human pressed the button. The throttle exists to stop the
+    # on-open auto-fetch from burning Gmail quota on repeated page loads — it
+    # must never make an explicit click do nothing.
+    if not force and _live_fetch_throttled(conversation_id, now):
         stats['reason'] = 'throttled'
         return stats
     # Record the attempt BEFORE fetching so a slow/empty/failed Gmail call still
@@ -910,8 +1124,7 @@ def fetch_booking_for_conversation(gmail_service, conversation_id: int, now=None
 
     cfg = get_reconcile_config()
     conv_ref = conversation_booking_ref(conv)
-    name = _safe_query_term(guest.name)
-    query = f'from:guest.booking.com "{name}" newer_than:{cfg["days"]}d'
+    query = _live_booking_query(conv_ref, guest.name, cfg['days'])
     try:
         emails = gmail_service.get_recent_emails(
             max_results=50, query=query, apply_filter=False)

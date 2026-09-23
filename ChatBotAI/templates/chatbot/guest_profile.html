@@ -207,10 +207,12 @@
                 <div class="memory-section">
                     <h3><i class="fas fa-calendar-alt"></i> <span data-i18n="guest.memories.booking">Buchungsdetails</span></h3>
                     <div class="memory-items" id="bookingItems">
-                        {% if profile.booking %}
-                            {% for item in profile.booking %}
+                        {% set booking_labels = {'check_in': 'Anreise', 'check_out': 'Abreise', 'adults': 'Erwachsene', 'children': 'Kinder', 'booking_channel': 'Kanal', 'num_guests': 'Anzahl Gäste'} %}
+                        {% set booking_items = (profile.reservation or []) + (profile.booking or []) %}
+                        {% if booking_items %}
+                            {% for item in booking_items %}
                             <div class="memory-item" data-id="{{ item.id }}">
-                                <span class="memory-key">{{ item.key|replace('_', ' ')|title }}</span>
+                                <span class="memory-key">{{ booking_labels.get(item.key) or item.key|replace('_', ' ')|title }}</span>
                                 <span class="memory-value" data-detail-id="{{ item.id }}" data-editable="true">{{ item.value }}</span>
                                 <span class="memory-confidence" title="Confidence: {{ (item.confidence * 100)|round }}%">
                                     {{ (item.confidence * 100)|round }}%

@@ -1,0 +1,668 @@
+================================================================================
+              CHATBOT AI - CODING INSTRUCTIONS FOR AI ASSISTANT
+================================================================================
+
+This document provides detailed instructions for building the ChatBotAI unified
+messaging system. Follow these instructions precisely to implement the project.
+
+================================================================================
+                         PROJECT CONTEXT
+================================================================================
+
+WHAT WE ARE BUILDING:
+A unified messaging dashboard for an Airbnb host that:
+1. Aggregates messages from multiple platforms (Email, WhatsApp, Airbnb, Booking)
+2. Uses a LOCAL AI (Ollama) to auto-respond to guests
+3. Maintains PERSISTENT MEMORY of all guests across all conversations
+4. Learns from ALL conversations, even when the owner is chatting manually
+
+CRITICAL REQUIREMENT - GUEST MEMORY:
+The AI must remember guests permanently. When Maria books for the second time
+and mentions she has a dog named Max, the system must:
+- Store this information in the database
+- Retrieve it for ALL future conversations with Maria
+- Allow the AI to reference Max naturally in responses
+
+PROJECT LOCATION:
+- Parent project: C:\Users\admin\Documents\FlaskApp
+- This module: C:\Users\admin\Documents\FlaskApp\ChatBotAI
+
+================================================================================
+                         WHAT IS ALREADY WORKING
+================================================================================
+
+LOCAL AI SERVER (COMPLETED):
+- Ollama is installed and running
+- Endpoint: http://localhost:11434
+- Model: mistral:7b-instruct
+- API tested and functional
+
+To call the AI:
+```
+POST http://localhost:11434/api/generate
+Content-Type: application/json
+
+{
+    "model": "mistral:7b-instruct",
+    "prompt": "Your prompt here",
+    "stream": false
+}
+
+Response:
+{
+    "response": "AI generated text here",
+    "done": true
+}
+```
+
+================================================================================
+                         TECHNICAL REQUIREMENTS
+================================================================================
+
+PYTHON VERSION: 3.11 or higher
+
+REQUIRED PACKAGES (install via pip):
+```
+flask
+flask-sqlalchemy
+flask-login
+requests
+python-dotenv
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+celery (optional, for background tasks)
+redis (optional, for celery broker)
+```
+
+DATABASE: SQLite for development (can migrate to PostgreSQL later)
+
+================================================================================
+                         FOLDER STRUCTURE TO CREATE
+================================================================================
+
+Create this exact structure inside C:\Users\admin\Documents\FlaskApp\ChatBotAI\
+
+ChatBotAI/
+|
++-- __init__.py              # Blueprint registration
++-- config.py                # Configuration variables
++-- models.py                # SQLAlchemy database models
++-- routes.py                # Flask routes (web pages and API)
+|
++-- services/
+|   +-- __init__.py
+|   +-- ai_service.py        # Ollama API communication
+|   +-- memory_service.py    # Extract and store guest info
+|   +-- gmail_service.py     # Gmail API integration
+|   +-- whatsapp_service.py  # WhatsApp integration (future)
+|   +-- message_router.py    # Central message processing
+|
++-- templates/
+|   +-- chatbot/
+|       +-- base.html        # Base template with navigation
+|       +-- inbox.html       # Main unified inbox
+|       +-- conversation.html# Single conversation view
+|       +-- guest_profile.html# Guest details page
+|       +-- settings.html    # AI configuration
+|
++-- static/
+|   +-- css/
+|   |   +-- style.css        # Custom styles
+|   +-- js/
+|       +-- inbox.js         # Inbox interactivity
+|       +-- conversation.js  # Real-time message handling
+|
++-- utils/
+    +-- __init__.py
+    +-- prompt_templates.py  # AI prompt builders
+    +-- extractors.py        # Helper functions
+
+================================================================================
+                         DATABASE MODELS TO IMPLEMENT
+================================================================================
+
+In models.py, create these SQLAlchemy models:
+
+MODEL 1: Guest
+--------------
+```python
+class Guest(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100))
+    email = db.Column(db.String(120), unique=True, nullable=True)
+    phone = db.Column(db.String(20), nullable=True)
+    whatsapp_id = db.Column(db.String(50), nullable=True)
+    airbnb_id = db.Column(db.String(50), nullable=True)
+    booking_id = db.Column(db.String(50), nullable=True)
+    first_contact = db.Column(db.DateTime, default=datetime.utcnow)
+    last_contact = db.Column(db.DateTime, default=datetime.utcnow)
+    total_stays = db.Column(db.Integer, default=0)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
+
+    # Relationships
+    details = db.relationship('GuestDetail', backref='guest', lazy=True)
+    conversations = db.relationship('Conversation', backref='guest', lazy=True)
+```
+
+MODEL 2: GuestDetail (FOR MEMORY STORAGE)
+-----------------------------------------
+This is the CRITICAL table for guest memory.
+
+```python
+class GuestDetail(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    guest_id = db.Column(db.Integer, db.ForeignKey('guest.id'), nullable=False)
+    detail_type = db.Column(db.String(50))  # family, pet, preference, allergy, etc.
+    detail_key = db.Column(db.String(100))  # name, type, relation, etc.
+    detail_value = db.Column(db.String(255))# actual value
+    confidence = db.Column(db.Float, default=1.0)  # AI confidence score
+    source_message_id = db.Column(db.Integer, nullable=True)
+    extracted_at = db.Column(db.DateTime, default=datetime.utcnow)
+```
+
+Examples of stored details:
+| guest_id | detail_type | detail_key | detail_value |
+|----------|-------------|------------|--------------|
+| 1        | family      | son_name   | Lucas        |
+| 1        | pet         | dog_name   | Max          |
+| 1        | preference  | floor      | ground       |
+| 1        | allergy     | food       | peanuts      |
+
+MODEL 3: Conversation
+---------------------
+```python
+class Conversation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    guest_id = db.Column(db.Integer, db.ForeignKey('guest.id'), nullable=False)
+    platform = db.Column(db.String(20))  # email, whatsapp, airbnb, booking
+    platform_id = db.Column(db.String(100))  # external conversation ID
+    subject = db.Column(db.String(255), nullable=True)
+    status = db.Column(db.String(20), default='active')  # active, closed, pending
+    ai_enabled = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
+
+    messages = db.relationship('Message', backref='conversation', lazy=True)
+```
+
+MODEL 4: Message
+----------------
+```python
+class Message(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey('conversation.id'))
+    sender_type = db.Column(db.String(10))  # guest, owner, ai
+    content = db.Column(db.Text, nullable=False)
+    platform_message_id = db.Column(db.String(100), nullable=True)
+    sent_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_processed = db.Column(db.Boolean, default=False)  # has AI extracted info?
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+```
+
+MODEL 5: Property
+-----------------
+```python
+class Property(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    address = db.Column(db.String(255))
+    description = db.Column(db.Text)
+    amenities = db.Column(db.JSON)  # ["wifi", "pool", "parking"]
+    pet_friendly = db.Column(db.Boolean, default=False)
+    max_guests = db.Column(db.Integer)
+    bedrooms = db.Column(db.Integer)
+    price_per_night = db.Column(db.Float)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+```
+
+MODEL 6: AISettings
+-------------------
+```python
+class AISettings(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(50), unique=True)
+    value = db.Column(db.Text)
+    description = db.Column(db.String(255))
+```
+
+================================================================================
+                         AI SERVICE IMPLEMENTATION
+================================================================================
+
+File: services/ai_service.py
+
+```python
+import requests
+import json
+
+OLLAMA_URL = "http://localhost:11434/api/generate"
+MODEL_NAME = "mistral:7b-instruct"
+
+def generate_response(prompt: str) -> str:
+    """Send prompt to Ollama and return response text."""
+    payload = {
+        "model": MODEL_NAME,
+        "prompt": prompt,
+        "stream": False
+    }
+
+    response = requests.post(OLLAMA_URL, json=payload)
+    response.raise_for_status()
+
+    return response.json().get("response", "")
+
+def extract_guest_info(message_content: str) -> dict:
+    """Extract structured guest information from a message."""
+
+    extraction_prompt = f'''Analyze this message and extract guest information.
+
+MESSAGE:
+{message_content}
+
+Extract ONLY what is explicitly mentioned. Return valid JSON:
+{{
+    "guest_name": "string or null",
+    "family_members": [{{"name": "string", "relation": "string"}}],
+    "pets": [{{"name": "string", "type": "string"}}],
+    "preferences": [{{"type": "string", "value": "string"}}],
+    "check_in": "date or null",
+    "check_out": "date or null",
+    "num_guests": "number or null",
+    "special_requests": ["string"],
+    "mentioned_interests": ["string"]
+}}
+
+Return ONLY the JSON, no explanation.'''
+
+    response = generate_response(extraction_prompt)
+
+    try:
+        # Parse JSON from response
+        return json.loads(response)
+    except json.JSONDecodeError:
+        # If parsing fails, return empty structure
+        return {}
+
+def generate_guest_response(guest_profile: dict, conversation_history: list,
+                            new_message: str, property_info: dict) -> str:
+    """Generate a response using guest context."""
+
+    prompt = f'''You are a helpful assistant for a vacation rental business.
+
+GUEST PROFILE:
+- Name: {guest_profile.get('name', 'Guest')}
+- Previous stays: {guest_profile.get('total_stays', 0)}
+- Family members: {guest_profile.get('family', 'Unknown')}
+- Pets: {guest_profile.get('pets', 'None mentioned')}
+- Preferences: {guest_profile.get('preferences', 'None recorded')}
+- Past notes: {guest_profile.get('notes', 'None')}
+
+PROPERTY INFORMATION:
+{json.dumps(property_info, indent=2)}
+
+CONVERSATION HISTORY:
+{format_conversation(conversation_history)}
+
+NEW MESSAGE FROM GUEST:
+{new_message}
+
+INSTRUCTIONS:
+- Be warm, professional, and helpful
+- If returning guest, welcome them back naturally
+- Reference relevant details from their profile (family, pets) naturally
+- Answer questions accurately based on property info
+- If unsure, offer to check and confirm
+- Keep response concise but friendly
+
+YOUR RESPONSE:'''
+
+    return generate_response(prompt)
+
+def format_conversation(messages: list) -> str:
+    """Format message history for prompt."""
+    formatted = []
+    for msg in messages[-10:]:  # Last 10 messages for context
+        sender = msg.get('sender_type', 'unknown').upper()
+        content = msg.get('content', '')
+        formatted.append(f"{sender}: {content}")
+    return "\n".join(formatted)
+```
+
+================================================================================
+                         MEMORY SERVICE IMPLEMENTATION
+================================================================================
+
+File: services/memory_service.py
+
+This service handles the CRITICAL guest memory feature.
+
+```python
+from models import db, Guest, GuestDetail, Message
+from services.ai_service import extract_guest_info
+
+def process_message_for_memory(message: Message):
+    """
+    Process a message to extract and store guest information.
+    This runs for EVERY message, regardless of who sent it.
+    """
+
+    if message.is_processed:
+        return
+
+    # Extract information using AI
+    extracted = extract_guest_info(message.content)
+
+    if not extracted:
+        message.is_processed = True
+        db.session.commit()
+        return
+
+    guest = message.conversation.guest
+
+    # Store family members
+    for family in extracted.get('family_members', []):
+        if family.get('name'):
+            store_detail(
+                guest_id=guest.id,
+                detail_type='family',
+                detail_key=family.get('relation', 'member'),
+                detail_value=family.get('name'),
+                source_message_id=message.id
+            )
+
+    # Store pets
+    for pet in extracted.get('pets', []):
+        if pet.get('name'):
+            store_detail(
+                guest_id=guest.id,
+                detail_type='pet',
+                detail_key=pet.get('type', 'pet'),
+                detail_value=pet.get('name'),
+                source_message_id=message.id
+            )
+
+    # Store preferences
+    for pref in extracted.get('preferences', []):
+        store_detail(
+            guest_id=guest.id,
+            detail_type='preference',
+            detail_key=pref.get('type', 'general'),
+            detail_value=pref.get('value'),
+            source_message_id=message.id
+        )
+
+    # Store special requests
+    for request in extracted.get('special_requests', []):
+        store_detail(
+            guest_id=guest.id,
+            detail_type='special_request',
+            detail_key='request',
+            detail_value=request,
+            source_message_id=message.id
+        )
+
+    # Mark message as processed
+    message.is_processed = True
+    db.session.commit()
+
+def store_detail(guest_id: int, detail_type: str, detail_key: str,
+                 detail_value: str, source_message_id: int = None):
+    """Store a guest detail, avoiding duplicates."""
+
+    # Check if this exact detail already exists
+    existing = GuestDetail.query.filter_by(
+        guest_id=guest_id,
+        detail_type=detail_type,
+        detail_key=detail_key,
+        detail_value=detail_value
+    ).first()
+
+    if existing:
+        return  # Already stored
+
+    detail = GuestDetail(
+        guest_id=guest_id,
+        detail_type=detail_type,
+        detail_key=detail_key,
+        detail_value=detail_value,
+        source_message_id=source_message_id
+    )
+    db.session.add(detail)
+    db.session.commit()
+
+def get_guest_profile(guest_id: int) -> dict:
+    """Build a complete guest profile from stored details."""
+
+    guest = Guest.query.get(guest_id)
+    if not guest:
+        return {}
+
+    details = GuestDetail.query.filter_by(guest_id=guest_id).all()
+
+    profile = {
+        'id': guest.id,
+        'name': guest.name,
+        'email': guest.email,
+        'phone': guest.phone,
+        'total_stays': guest.total_stays,
+        'first_contact': str(guest.first_contact),
+        'last_contact': str(guest.last_contact),
+        'notes': guest.notes,
+        'family': [],
+        'pets': [],
+        'preferences': [],
+        'special_requests': []
+    }
+
+    for detail in details:
+        if detail.detail_type == 'family':
+            profile['family'].append({
+                'relation': detail.detail_key,
+                'name': detail.detail_value
+            })
+        elif detail.detail_type == 'pet':
+            profile['pets'].append({
+                'type': detail.detail_key,
+                'name': detail.detail_value
+            })
+        elif detail.detail_type == 'preference':
+            profile['preferences'].append({
+                'type': detail.detail_key,
+                'value': detail.detail_value
+            })
+        elif detail.detail_type == 'special_request':
+            profile['special_requests'].append(detail.detail_value)
+
+    return profile
+```
+
+================================================================================
+                         MESSAGE FLOW - HOW IT WORKS
+================================================================================
+
+INCOMING MESSAGE FLOW:
+
+1. Message arrives (email, WhatsApp, etc.)
+       |
+       v
+2. message_router.py receives it
+       |
+       v
+3. Identify or create guest (by email, phone, platform ID)
+       |
+       v
+4. Create/update Conversation record
+       |
+       v
+5. Store Message in database
+       |
+       v
+6. memory_service.process_message_for_memory()
+   - Extract info using AI
+   - Store in GuestDetail table
+       |
+       v
+7. Check if AI auto-response is enabled
+       |
+       +-- YES --> ai_service.generate_guest_response()
+       |           - Load guest profile
+       |           - Include in prompt
+       |           - Generate personalized response
+       |           - Send response via platform
+       |
+       +-- NO --> Just notify owner in dashboard
+
+OWNER SENDS MESSAGE FLOW:
+
+1. Owner writes message in dashboard
+       |
+       v
+2. Store Message (sender_type='owner')
+       |
+       v
+3. Send via appropriate platform API
+       |
+       v
+4. memory_service.process_message_for_memory()
+   - Extract info from OWNER'S message too
+   - Sometimes owner mentions guest details
+       |
+       v
+5. Done
+
+================================================================================
+                         API ENDPOINTS TO CREATE
+================================================================================
+
+In routes.py, create these endpoints:
+
+PAGE ROUTES:
+- GET  /chatbot/                    -> Inbox page
+- GET  /chatbot/conversation/<id>   -> Single conversation
+- GET  /chatbot/guest/<id>          -> Guest profile page
+- GET  /chatbot/settings            -> AI settings page
+
+API ROUTES:
+- GET  /chatbot/api/conversations   -> List all conversations (JSON)
+- GET  /chatbot/api/conversation/<id>/messages -> Get messages (JSON)
+- POST /chatbot/api/conversation/<id>/send -> Send message
+- POST /chatbot/api/conversation/<id>/toggle-ai -> Enable/disable AI
+- GET  /chatbot/api/guest/<id>      -> Get guest profile (JSON)
+- PUT  /chatbot/api/guest/<id>      -> Update guest profile
+- POST /chatbot/api/settings        -> Update AI settings
+
+WEBHOOK ROUTES (for incoming messages):
+- POST /chatbot/webhook/gmail       -> Gmail push notifications
+- POST /chatbot/webhook/whatsapp    -> WhatsApp incoming messages
+
+================================================================================
+                         IMPLEMENTATION ORDER
+================================================================================
+
+Follow this EXACT order when building:
+
+STEP 1: PROJECT SETUP
+---------------------
+- Create folder structure
+- Create __init__.py with Flask blueprint
+- Create config.py with settings
+- Create models.py with all database models
+- Initialize database
+
+STEP 2: AI SERVICE
+------------------
+- Implement ai_service.py
+- Test connection to Ollama
+- Test generate_response()
+- Test extract_guest_info()
+
+STEP 3: MEMORY SERVICE
+----------------------
+- Implement memory_service.py
+- Test storing guest details
+- Test retrieving guest profiles
+- Test processing messages
+
+STEP 4: BASIC ROUTES
+--------------------
+- Create inbox route and template
+- Create conversation view
+- Create guest profile view
+- Test manual message creation
+
+STEP 5: MESSAGE FLOW
+--------------------
+- Implement message_router.py
+- Connect all services
+- Test full flow: message -> extraction -> storage -> response
+
+STEP 6: GMAIL INTEGRATION
+-------------------------
+- Set up Google Cloud project
+- Get OAuth credentials
+- Implement gmail_service.py
+- Test receiving emails
+- Test sending emails
+
+STEP 7: DASHBOARD UI
+--------------------
+- Build complete inbox interface
+- Add real-time updates (polling or WebSocket)
+- Add conversation management
+- Add guest profile editor
+
+STEP 8: TESTING
+---------------
+- Test memory persistence
+- Test AI responses with context
+- Test across multiple conversations
+- Test guest identification
+
+================================================================================
+                         IMPORTANT NOTES
+================================================================================
+
+1. ALWAYS process messages for memory extraction, even owner messages
+2. Guest identification should work across platforms (same email = same guest)
+3. The AI prompt MUST include guest profile for personalization
+4. Store ALL extracted details, even if seemingly minor
+5. Never delete guest details - they're permanent memory
+6. Keep conversation history in prompts limited (last 10 messages) for performance
+7. Handle Ollama being unavailable gracefully
+
+================================================================================
+                         TESTING SCENARIOS
+================================================================================
+
+Test these scenarios to verify the system works:
+
+SCENARIO 1: New Guest
+- New message from unknown email
+- System creates guest
+- AI responds generically
+- Info extracted and stored
+
+SCENARIO 2: Returning Guest
+- Same guest messages again
+- System identifies them
+- AI response includes their stored info
+- Feels personalized
+
+SCENARIO 3: Owner Chat Mode
+- Owner disables AI, chats manually
+- Guest mentions new info ("my daughter's birthday")
+- System still extracts and stores it
+- Next AI response can reference daughter
+
+SCENARIO 4: Cross-Platform
+- Guest emails first
+- Same guest messages via WhatsApp
+- System links both to same profile
+- All history available
+
+================================================================================
+                              END OF INSTRUCTIONS
+================================================================================

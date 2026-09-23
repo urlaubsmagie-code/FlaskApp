@@ -1,0 +1,949 @@
+================================================================================
+                    CHATBOTAI - DEVELOPMENT PROGRESS REPORT
+                         Updated: 2026-02-23 18:00
+================================================================================
+
+PROJECT OVERVIEW
+================================================================================
+ChatBotAI is a unified messaging system for vacation rental hosts that
+aggregates guest communications from multiple platforms (Email, WhatsApp,
+Airbnb, Booking.com) and uses local AI (Ollama) to provide intelligent,
+personalized auto-responses with persistent guest memory.
+
+Location: C:\Users\admin\Documents\FlaskApp\ChatBotAI
+Integration: COMPLETED - Added as 7th menu option in FlaskApp homepage
+AI Server: Ollama at http://localhost:11434
+AI Model: mistral:7b-instruct
+
+BREAKTHROUGH FEATURE: Persistent Guest Memory
+- The system remembers EVERYTHING about every guest permanently
+- Extracts information from ALL messages (guest AND owner)
+- Creates truly personalized service for returning guests
+
+
+PROJECT STATUS: 100% COMPLETE (8/8 Steps Done)
+================================================================================
+
+COMPLETED:
+[X] Step 1: Project Setup & Foundation
+[X] Step 2: AI Service Core
+[X] Step 3: Memory Service (Breakthrough Feature)
+[X] Step 4: Basic Web Interface
+[X] Step 5: Message Processing Pipeline
+[X] Step 6: Gmail Integration
+[X] Step 7: Complete Dashboard UI (2026-02-19)
+[X] Step 8: Testing & Refinement (2026-02-19)
+
+ALL STEPS COMPLETE - READY FOR PRODUCTION USE
+
+
+COMPLETED WORK DETAILS
+================================================================================
+
+STEP 1: PROJECT SETUP & FOUNDATION
+--------------------------------------------------------------------------------
+Created complete folder structure:
+  ChatBotAI/
+  +-- __init__.py              (68 lines - Blueprint + auto-init)
+  +-- app.py                   (120 lines - Standalone Flask app)
+  +-- config.py                (87 lines - Configuration management)
+  +-- models.py                (500+ lines - 7 database tables)
+  +-- routes.py                (1200+ lines - All API endpoints)
+  +-- run.py                   (20 lines - Dev server runner)
+  +-- requirements.txt
+  +-- .env & .env.example
+  +-- .gitignore
+  +-- credentials.json         (For Gmail OAuth - user must add)
+  +-- services/
+  |   +-- __init__.py
+  |   +-- ai_service.py        (435 lines)
+  |   +-- memory_service.py    (445 lines)
+  |   +-- message_router.py    (400 lines)
+  |   +-- gmail_service.py     (450 lines)
+  +-- utils/
+  |   +-- __init__.py
+  +-- templates/chatbot/
+  |   +-- base.html            (Navigation, layout)
+  |   +-- inbox.html           (Conversation list)
+  |   +-- conversation.html    (Message thread view)
+  |   +-- guest_profile.html   (Guest memories display)
+  |   +-- settings.html        (AI & Gmail configuration)
+  |   +-- gmail_error.html     (OAuth error page)
+  +-- static/
+  |   +-- css/style.css        (1800+ lines)
+  |   +-- js/app.js            (460+ lines)
+  |   +-- js/i18n.js           (450+ lines - DE/EN translations)
+  |   +-- js/polling.js        (180+ lines - Real-time polling)
+  +-- instance/
+      +-- chatbot.db           (SQLite database)
+
+DATABASE SCHEMA (7 Tables):
+- guest: Central guest records with multi-platform IDs
+- guest_detail: Persistent memory storage (family, pets, preferences, allergies)
+- conversation: Platform conversation threads
+- message: Individual messages with processing status
+- property: Rental property information for AI context
+- ai_settings: Flexible key-value configuration storage
+- reply_template: Quick reply templates with categories (NEW - Batch 3)
+
+
+STEP 2: AI SERVICE CORE
+--------------------------------------------------------------------------------
+File: services/ai_service.py (435 lines)
+
+FUNCTIONS IMPLEMENTED:
+1. AIService class with Ollama integration
+2. test_connection() - Health check for Ollama
+3. generate_response(prompt) - Raw AI response generation
+4. extract_guest_info(message) - Structured info extraction with JSON parsing
+5. generate_guest_response(profile, history, message, property) - Personalized responses
+6. _format_guest_profile() - Profile formatting for prompts
+7. _format_property_info() - Property info formatting
+8. _format_conversation() - Conversation history formatting
+
+TESTED & WORKING:
+- Ollama connection verified
+- AI extraction working (family members, pets, preferences detected)
+- Personalized responses generated with guest context
+
+
+STEP 3: MEMORY SERVICE (BREAKTHROUGH FEATURE)
+--------------------------------------------------------------------------------
+File: services/memory_service.py (445 lines)
+
+CORE FUNCTIONS:
+1. process_message_for_memory(message) - Extracts info from ANY message
+2. store_detail(guest_id, type, key, value, confidence) - Stores with deduplication
+3. get_guest_profile(guest_id) - Builds complete profile from stored details
+4. find_or_create_guest(email, phone, platform, platform_id, name) - Smart guest ID
+5. get_guest_memory_summary(guest_id) - Human-readable summary
+6. delete_guest_detail(detail_id) - Manual detail removal
+
+WHAT MAKES THIS SPECIAL:
+- LEARNS FROM ALL MESSAGES (guest AND owner messages)
+- PERMANENT MEMORY (never deleted unless manual)
+- AUTOMATIC DEDUPLICATION (won't store duplicates)
+- AUDIT TRAIL (every detail links to source message)
+- CROSS-PLATFORM LINKING (same guest on Email + WhatsApp = unified profile)
+- CONFIDENCE SCORES (tracks AI certainty)
+
+TESTED EXTRACTION:
+- Input: "I would like to book. Traveling with my husband Peter and our dog Bruno."
+- Extracted: Family: Peter (husband), Pet: Bruno (dog)
+- AI Response personalized with extracted info!
+
+
+STEP 4: BASIC WEB INTERFACE
+--------------------------------------------------------------------------------
+TEMPLATES CREATED (5 files):
+
+1. base.html - Main layout with sidebar navigation
+   - Logo and branding
+   - Navigation menu (Inbox, Settings)
+   - AI status indicator (online/offline)
+   - Responsive design
+
+2. inbox.html - Conversation list dashboard
+   - Filter by status (All, Active, Pending, Closed)
+   - Search functionality
+   - Platform badges (Email, WhatsApp, Airbnb, Booking)
+   - AI toggle indicators
+   - Last message preview
+
+3. conversation.html - Message thread view
+   - Message bubbles (guest/owner/AI differentiated)
+   - Real-time message sending
+   - AI response generation button
+   - AI toggle per conversation
+   - Link to guest profile
+
+4. guest_profile.html - Guest memory display (THE KEY UI!)
+   - Contact information card
+   - MEMORY CARD showing:
+     * Family members
+     * Pets
+     * Preferences
+     * Allergies (highlighted for safety)
+     * Interests
+     * Special requests
+   - Confidence scores displayed
+   - Conversation history
+   - Private notes
+
+5. settings.html - Configuration page
+   - AI settings (auto-response, memory extraction, tone)
+   - Ollama server status
+   - Gmail integration (connect/disconnect)
+   - Platform integrations list
+   - Property management (placeholder)
+
+CSS STYLING (700+ lines):
+- Modern, clean design
+- Responsive layout
+- Platform color coding
+- Message bubble styling
+- Card-based components
+- Toast notifications
+
+
+STEP 5: MESSAGE PROCESSING PIPELINE
+--------------------------------------------------------------------------------
+File: services/message_router.py (400 lines)
+
+CENTRAL ORCHESTRATOR - Handles complete message flow:
+1. Message arrives (from any platform)
+2. Identify/create guest (smart matching)
+3. Create/update conversation
+4. Store message
+5. Extract memory (AI processing)
+6. Generate AI response (if enabled)
+7. Return result
+
+CORE FUNCTIONS:
+1. process_incoming_message() - Main entry point for all platforms
+2. process_owner_message() - Handle owner replies
+3. generate_ai_response_for_conversation() - On-demand AI response
+4. create_test_conversation() - Testing helper
+5. _find_or_create_guest() - Smart guest identification
+6. _find_or_create_conversation() - Conversation management
+7. _store_message() - Message persistence
+8. _generate_ai_response() - AI response with full context
+
+NEW API ENDPOINTS:
+- POST /api/test/create-conversation - Create test conversation
+- POST /api/test/simulate-message - Simulate guest message
+- POST /api/test/bulk-create - Create 5 sample conversations
+- GET /api/guests - List all guests
+- PUT /api/conversations/<id>/status - Update conversation status
+
+TESTED END-TO-END:
+- Guest creation
+- Conversation creation
+- Message storage
+- Memory extraction (Family and pets detected)
+- AI response generation (Personalized with guest info!)
+
+
+STEP 6: GMAIL INTEGRATION
+--------------------------------------------------------------------------------
+File: services/gmail_service.py (450 lines)
+
+COMPLETE GMAIL API INTEGRATION:
+
+1. OAuth 2.0 Authentication
+   - get_authorization_url() - Start OAuth flow
+   - handle_oauth_callback() - Complete OAuth
+   - Automatic token refresh
+   - Secure credential storage
+
+2. Email Operations
+   - get_recent_emails(max_results, query) - Fetch emails
+   - get_unread_emails() - Fetch unread only
+   - get_email_by_id() - Single email fetch
+   - get_thread() - Full conversation thread
+   - mark_as_read() - Mark email read
+
+3. Email Sending
+   - send_email(to, subject, body, thread_id, reply_to) - Send with threading
+   - Proper In-Reply-To and References headers
+   - Thread preservation for replies
+
+4. Email Parsing
+   - _parse_email() - Extract structured data
+   - _get_email_body() - Handle multipart/plain/HTML
+   - _parse_email_address() - Parse "Name <email>" format
+
+GMAIL SETUP INSTRUCTIONS:
+1. Go to Google Cloud Console (https://console.cloud.google.com)
+2. Create project, enable Gmail API
+3. Create OAuth 2.0 credentials (Web application)
+4. Add redirect URI: http://localhost/chatbot/gmail/callback
+5. Download credentials.json to ChatBotAI folder
+6. Restart app, go to Settings, click Connect Gmail
+
+
+STEP 7: COMPLETE DASHBOARD UI (NEW - Completed 2026-02-19)
+--------------------------------------------------------------------------------
+Major dashboard enhancement with 8 sub-phases, 16 execution plans, ~40 commits.
+
+PHASE 1: INFRASTRUCTURE FOUNDATION
+..................................
+Files Created/Modified:
+- migrations/ directory (Alembic migration infrastructure)
+- utils/search.py (FTS5 search utilities)
+- models.py (is_read field, naming convention)
+- app.py (Flask-Migrate, WAL mode)
+- requirements.txt (flask-migrate>=4.0.0)
+
+Features Added:
+- Database migration system with Flask-Migrate
+- is_read column on Conversation model for unread tracking
+- SQLite WAL mode for concurrent access (polling support)
+- FTS5 full-text search index with automatic triggers
+- search_messages() utility with BM25 ranking
+
+PHASE 2: POLLING CORE (Real-time Updates)
+.........................................
+Files Created/Modified:
+- static/js/polling.js (NEW - PollingManager class)
+- templates/chatbot/inbox.html (polling integration)
+- templates/chatbot/conversation.html (message polling)
+
+Features Added:
+- PollingManager class with Page Visibility API
+- Inbox auto-refresh every 15 seconds
+- Conversation messages auto-refresh every 10 seconds
+- Polling pauses when browser tab is hidden (battery efficient)
+- Polling resumes immediately when tab becomes visible
+- AbortController for request cancellation
+- Incremental DOM updates (no page flicker)
+- XSS prevention with escapeHtml() function
+
+PHASE 3: UNREAD TRACKING
+........................
+Files Modified:
+- routes.py (PATCH /api/conversations/{id}/read endpoint)
+- static/css/style.css (.unread class, .sr-only accessibility)
+- templates/chatbot/inbox.html (unread indicators)
+- templates/chatbot/conversation.html (auto mark-as-read)
+- models.py (nested guest/last_message in to_dict())
+
+Features Added:
+- Blue dot indicator for unread conversations
+- Bold name and left border for visual emphasis
+- Auto mark-as-read when conversation is opened
+- Screen reader accessibility (.sr-only class)
+- Polling updates unread state in real-time
+
+PHASE 4: PLATFORM FILTERING
+...........................
+Files Created/Modified:
+- static/js/filter-state.js (NEW - FilterState singleton)
+- static/css/style.css (filter badge styles)
+- templates/chatbot/inbox.html (platform filter buttons)
+
+Features Added:
+- FilterState singleton class for centralized filter management
+- Platform filter buttons (Email, WhatsApp, Airbnb, Booking)
+- URL synchronization via History API (?platform=email)
+- Active filter badge showing current selection
+- Filter persists through page refresh and browser back/forward
+- Clear All button to reset filters
+
+PHASE 5: STATUS FILTERING
+.........................
+Features Added:
+- Status filter buttons (Active, Pending, Closed)
+- Combines with platform filter (both active simultaneously)
+- Status filter persists in URL (?status=active)
+- Already implemented in Phase 4 FilterState module
+
+PHASE 6: GUEST FILTERING
+........................
+Files Modified:
+- static/js/filter-state.js (guest state, setGuest/clearGuest)
+- static/css/style.css (guest dropdown styling)
+- templates/chatbot/inbox.html (guest dropdown)
+
+Features Added:
+- Guest dropdown filter populated from /api/guests
+- Shows conversation count per guest
+- Alphabetically sorted for easy scanning
+- Combines with platform and status filters
+- URL persistence (?guest=123)
+- Guest name displayed in active filter badge
+
+PHASE 7: SEARCH
+...............
+Files Modified:
+- routes.py (GET /api/search endpoint)
+- static/js/filter-state.js (search state)
+- static/css/style.css (search result styles)
+- templates/chatbot/inbox.html (search UI)
+
+Features Added:
+- Full-text search using FTS5 with BM25 ranking
+- Search API endpoint with grouped results by conversation
+- Debounced search input (300ms delay, 2+ characters)
+- Highlighted search matches with <mark> tags
+- XSS-safe snippet sanitization
+- Search persists in URL (?q=searchterm)
+- Empty state with helpful suggestions
+- Search works with active filters (combined filtering)
+
+PHASE 8: PROFILE EDITING
+........................
+Files Modified:
+- routes.py (PATCH endpoints for guest and details)
+- templates/chatbot/guest_profile.html (edit UI)
+- static/css/style.css (modal and editing styles)
+
+Features Added:
+- PATCH /api/guests/{id} - Update guest name, email, phone
+- PATCH /api/guests/{id}/details/{id} - Update memory values
+- Email uniqueness validation (409 Conflict response)
+- Empty value rejection (400 Bad Request)
+- Manual edits set confidence to 1.0 (authoritative)
+- Edit button opens modal dialog for guest info
+- Native HTML <dialog> element (accessible)
+- Inline editing for memory values (click to edit)
+- Enter key saves, Escape key cancels
+- Delete buttons on each memory item with confirmation
+- Add forms at bottom of each memory section
+- XSS prevention with escapeHtml() and contenteditable='plaintext-only'
+
+STEP 7 SUMMARY:
+- 16 plans executed across 8 sub-phases
+- ~40 git commits
+- 4 new files created (polling.js, filter-state.js, search.py, migrations/)
+- 9 existing files modified
+- 4 new API endpoints added
+- Complete real-time dashboard with filtering, search, and editing
+
+
+FLASKAPP INTEGRATION
+================================================================================
+
+ChatBotAI is now integrated into the main FlaskApp:
+
+1. app.py modified (lines 21-23):
+   from ChatBotAI import chatbot_bp
+   app.register_blueprint(chatbot_bp)
+
+2. homepage.html - New menu card added:
+   - Title: "KI Gastekommunikation"
+   - Icon: Robot (fa-robot)
+   - Badge: "Neu" (blue)
+   - Description: "Vereinheitlichtes Nachrichtensystem mit KI-gestutzten Antworten"
+
+Access: http://localhost/chatbot/
+
+
+API ENDPOINTS SUMMARY
+================================================================================
+
+PAGE ROUTES:
+- GET /chatbot/ - Inbox dashboard
+- GET /chatbot/conversation/<id> - Conversation view
+- GET /chatbot/guest/<id> - Guest profile
+- GET /chatbot/settings - Settings page
+
+CONVERSATION API:
+- GET /api/conversations - List conversations (paginated)
+- GET /api/conversations/<id>/messages - Get messages
+- POST /api/conversations/<id>/messages - Send message
+- POST /api/conversations/<id>/ai-response - Generate & save AI response
+- POST /api/conversations/<id>/ai-suggest - AI suggestion (not saved)
+- POST /api/conversations/<id>/toggle-ai - Toggle AI
+- PUT /api/conversations/<id>/status - Update status
+- PATCH /api/conversations/<id>/read - Mark as read
+
+GUEST API:
+- GET /api/guests - List all guests
+- GET /api/guests/<id> - Get guest profile
+- POST /api/guests/<id>/details - Add guest detail
+- PATCH /api/guests/<id> - Update guest info
+- PATCH /api/guests/<id>/details/<id> - Update detail value
+- DELETE /api/guests/<id>/details/<detail_id> - Delete detail
+- POST /api/guests/<id>/merge-preview - Preview merge impact (NEW - Batch 4)
+- POST /api/guests/<id>/merge - Execute guest merge (NEW - Batch 4)
+
+SEARCH API (NEW):
+- GET /api/search?q=term - Full-text search with FTS5
+
+SETTINGS API:
+- GET /api/settings - Get settings
+- PUT /api/settings - Update settings
+- GET /api/settings/email-filter - Get email filter settings
+- PUT /api/settings/email-filter - Update email filter settings
+
+REPLY TEMPLATES API (NEW - Batch 3):
+- GET /api/reply-templates - List all templates
+- POST /api/reply-templates - Create template
+- PUT /api/reply-templates/<id> - Update template
+- DELETE /api/reply-templates/<id> - Delete template
+
+PROPERTY API (NEW - Batch 3):
+- GET /api/properties - List all properties
+- POST /api/properties - Create property
+- PUT /api/properties/<id> - Update property
+- DELETE /api/properties/<id> - Delete property
+
+STATISTICS API (NEW - Batch 3):
+- GET /api/stats - Dashboard statistics
+
+GMAIL API:
+- GET /gmail/status - Connection status
+- GET /gmail/authorize/redirect - Start OAuth
+- GET /gmail/callback - OAuth callback
+- POST /gmail/disconnect - Disconnect
+- GET /api/gmail/emails - Fetch emails
+- GET /api/gmail/emails/unread - Unread emails
+- GET /api/gmail/emails/<id> - Single email
+- GET /api/gmail/threads/<id> - Email thread
+- POST /api/gmail/send - Send email
+- POST /api/gmail/process - Process with AI
+- POST /api/gmail/reply/<conversation_id> - Reply
+
+TEST API:
+- POST /api/test/create-conversation - Create test
+- POST /api/test/simulate-message - Simulate message
+- POST /api/test/bulk-create - Create sample data
+- POST /api/test-ai - Test AI extraction
+
+WEBHOOKS (Placeholders):
+- POST /webhook/gmail
+- POST /webhook/whatsapp
+- POST /webhook/airbnb
+- POST /webhook/booking
+
+UTILITY:
+- GET /health - Health check
+
+
+CODE STATISTICS
+================================================================================
+
+Python Files: 11
+Total Python Lines: ~4,000
+Template Files: 6
+CSS Lines: ~1,800
+JavaScript Lines: ~1,200
+
+Services:
+- ai_service.py: 435 lines
+- memory_service.py: 445 lines
+- message_router.py: 400 lines
+- gmail_service.py: 450 lines
+
+JS Modules:
+- i18n.js: ~450 lines (DE/EN translations)
+- app.js: ~460 lines (utilities, notifications, theme, avatars)
+- polling.js: ~180 lines
+- filter-state.js: ~200 lines
+
+Utilities:
+- utils/search.py: ~150 lines
+
+Routes: 50+ endpoints
+Database Tables: 7 (added reply_template)
+Migrations: 2 (schema + FTS5)
+
+
+STEP 8: TESTING & REFINEMENT (Completed 2026-02-19)
+--------------------------------------------------------------------------------
+Comprehensive testing and security review of all features.
+
+TESTS PERFORMED:
+- Database state verification (1 guest, 1 conversation, 4 messages, 3 memories)
+- API endpoint testing (all 8 core endpoints return 200)
+- Edge case validation (empty values, non-existent IDs, invalid JSON)
+- AI memory extraction testing (confirmed working with 60s timeout)
+- FTS5 search functionality testing
+- Filter and pagination testing
+
+SECURITY FIXES:
+- Added escapeHtml() function to conversation.html
+- Fixed XSS vulnerability in message content display
+- Verified input validation on all PATCH endpoints
+- Confirmed 400/404/409 error responses working correctly
+
+VERIFICATION RESULTS:
+- App initialization: PASS
+- Ollama connection: PASS
+- Memory extraction: PASS (family, pets, preferences detected)
+- Search API: PASS
+- PATCH endpoints: PASS
+- Error handling: PASS
+
+
+POST-RELEASE ENHANCEMENTS (2026-02-19)
+================================================================================
+
+ENHANCEMENT 1: EMAIL FILTERING
+------------------------------
+Prevents personal emails from being processed - only booking platform emails allowed.
+
+Files Modified:
+- config.py (EMAIL_ALLOWED_DOMAINS, EMAIL_SUBJECT_KEYWORDS, EMAIL_FILTER_MODE)
+- services/gmail_service.py (email_matches_filter, filtering methods)
+- templates/chatbot/settings.html (Email Filtering UI section)
+- routes.py (GET/PUT /api/settings/email-filter endpoints)
+
+Features Added:
+- Domain whitelist filtering (airbnb.com, booking.com, etc.)
+- Subject keyword filtering (Buchung, Reservierung, Booking, etc.)
+- Filter mode options:
+  * Either (domain OR keyword matches)
+  * Domain only
+  * Keyword only
+  * Both (domain AND keyword must match)
+- Settings UI for managing filters with live editing
+- Default domains: airbnb.com, m.airbnb.com, booking.com, guest.booking.com
+- Default keywords: Buchung, Reservierung, Anfrage, Booking, Reservation
+
+ENHANCEMENT 2: MULTILINGUAL SUPPORT
+-----------------------------------
+German company focus with English option for international guests.
+
+Files Created:
+- static/js/i18n.js (Translation system with 140+ keys per language)
+
+Files Modified:
+- templates/chatbot/base.html (Language selector in sidebar)
+- static/css/style.css (Language selector styling)
+- services/ai_service.py (Multilingual prompts, language detection)
+- services/memory_service.py (Store detected language in guest profile)
+- templates/chatbot/guest_profile.html (Display preferred language)
+
+Features Added:
+- Website language toggle (German default, English option)
+- Translations for all UI elements using data-i18n attributes
+- Language preference stored in localStorage
+- AI language detection from guest messages
+- AI responds in same language as guest (German, English, Spanish, French, Italian)
+- Guest language preference stored in profile memory
+- Language displayed on guest profile page
+- Language used to personalize AI responses
+
+
+UX & FEATURE ENHANCEMENT BATCHES (2026-02-23)
+================================================================================
+
+Three batches of enhancements implemented from the Future Planning document,
+bringing the total from core feature-complete to polished production UI.
+
+BATCH 1 - QUICK WINS (Commit adc4e33)
+--------------------------------------
+Implemented items #1, #2, #3, #4 from Future Planning.
+
+1. CTRL+ENTER TO SEND (Item #1)
+   File: templates/chatbot/conversation.html
+   - Keyboard shortcut: Ctrl+Enter (or Cmd+Enter on Mac) sends messages
+   - Added keydown event listener on message textarea
+   - Visual hint below textarea: "Ctrl+Enter to send" (translatable)
+
+2. RELATIVE TIMESTAMPS IN INBOX (Item #2)
+   File: templates/chatbot/inbox.html
+   - Timestamps now show "Just now", "5m ago", "2h ago", "3d ago"
+   - Exact date preserved as tooltip on hover (title attribute)
+   - data-timestamp attributes for JS-driven formatting
+   - Auto-refresh every 60 seconds so "Just now" becomes "1m ago"
+   - Polling updates also apply relative timestamps
+
+3. TOAST NOTIFICATION CLEANUP (Item #3)
+   Files: conversation.html, app.js
+   - Replaced alert() in sendMessage error with showNotification() toast
+   - Toast stacking support: multiple toasts stack vertically
+   - Each new toast offset above previous ones
+   - Remaining toasts reposition when one dismisses
+
+4. SMOOTH SCROLL & MESSAGE ANIMATIONS (Item #4)
+   Files: style.css, conversation.html
+   - scroll-behavior: smooth on .messages-container
+   - scrollToBottom() uses scrollIntoView({ behavior: 'smooth' })
+   - @keyframes messageSlideIn: subtle fade + 8px slide-up (0.3s)
+   - .message-slide-in class applied to dynamically added messages
+   - Typing indicator also uses slide-in animation
+
+
+BATCH 2 - HIGH-VALUE FEATURES (Commit 9a458fe)
+-----------------------------------------------
+Implemented items #5, #9, #10, #13 from Future Planning.
+
+5. DESKTOP BROWSER NOTIFICATIONS (Item #5)
+   Files: app.js, conversation.html, inbox.html
+   - Notification permission requested on first visit
+   - Browser notifications for new guest messages (conversation view)
+   - Browser notifications for new unread conversations (inbox view)
+   - Only shown when browser tab is hidden (no interruption when active)
+   - Click notification to focus tab and navigate to conversation
+   - Auto-dismiss after 8 seconds
+
+6. AI TYPING INDICATOR (Item #9)
+   Files: style.css, conversation.html, i18n.js
+   - Three-dot pulsing animation while AI generates response
+   - Appears in message area styled as AI message bubble
+   - Label: "AI is thinking..." / "KI denkt nach..." (translatable)
+   - Removed when AI response arrives or on error
+   - CSS keyframes: typingPulse with staggered delays
+
+7. DARK MODE TOGGLE (Item #10)
+   Files: style.css, base.html, app.js
+   - Toggle button in sidebar footer with sun/moon icon
+   - CSS custom properties override via :root[data-theme="dark"]
+   - Dark mode covers: backgrounds, text, borders, cards, messages,
+     inputs, badges, scrollbar, and all component styles
+   - Theme preference saved to localStorage (persists across sessions)
+   - Applied before DOMContentLoaded to prevent flash of wrong theme
+
+8. GUEST AVATAR COLORS (Item #13)
+   Files: style.css, app.js, conversation.html, inbox.html
+   - 8-color palette defined as CSS variables (--avatar-0 through --avatar-7)
+   - Deterministic hash function: same guest name = same color always
+   - Applied to conversation avatars and inbox list avatars
+   - data-guest-name attribute triggers color assignment
+   - applyAvatarColors() runs on page load and after polling updates
+   - Dark mode includes adjusted avatar color palette
+
+
+BATCH 3 - MAJOR FEATURES (2026-02-23)
+--------------------------------------
+Implemented items #6, #7, #8 from Future Planning.
+
+9. QUICK REPLY TEMPLATES (Item #6)
+   Files: models.py, routes.py, settings.html, conversation.html, i18n.js
+
+   Database:
+   - New ReplyTemplate model: id, name, content, category, timestamps
+   - to_dict() serialization following existing patterns
+
+   API Endpoints:
+   - GET /api/reply-templates - List all templates
+   - POST /api/reply-templates - Create template
+   - PUT /api/reply-templates/<id> - Update template
+   - DELETE /api/reply-templates/<id> - Delete template
+
+   Settings UI:
+   - New "Quick Reply Templates" settings card
+   - Template list with name, category, content preview
+   - Add/Edit via modal dialog (name, category dropdown, content textarea)
+   - Delete with confirmation
+   - Help text explaining variable substitution
+
+   Conversation UI:
+   - Template dropdown button next to AI buttons in message input area
+   - Dropdown opens upward (above input area) with grouped categories
+   - Click template to insert into textarea
+   - Variable substitution: {guest_name}, {property_name}, {check_in_time}
+   - Host can edit before sending (not auto-sent)
+   - Closes when clicking outside
+
+   Category Options:
+   - General, Check-in, Check-out, House Rules, Directions, WiFi, Amenities
+
+10. PROPERTY MANAGEMENT UI (Item #7)
+    Files: routes.py, settings.html, style.css
+
+    API Endpoints:
+    - GET /api/properties - List all properties
+    - POST /api/properties - Create property
+    - PUT /api/properties/<id> - Update property
+    - DELETE /api/properties/<id> - Delete property
+
+    Settings UI:
+    - Replaced stub "coming soon" alert with full CRUD interface
+    - Property list loaded via JS with edit/delete buttons
+    - Add/Edit modal with all Property model fields:
+      * Name, Address, Description
+      * Bedrooms, Bathrooms, Max Guests, Price/Night
+      * Check-in/Check-out times
+      * Amenities (comma-separated input)
+      * Pet-friendly toggle
+      * House rules textarea
+    - Pet-friendly indicator (paw icon) on property cards
+
+    Also Fixed:
+    - Replaced all remaining alert() calls in settings.html with
+      showNotification() toasts (AI test, settings save)
+
+11. DASHBOARD STATISTICS CARD (Item #8)
+    Files: routes.py, inbox.html, style.css, i18n.js
+
+    API Endpoint:
+    - GET /api/stats - Returns:
+      * total_conversations (all-time count)
+      * unread_count (conversations not yet read)
+      * messages_today (messages sent/received today)
+      * active_guests (distinct guests with active conversations)
+      * total_guests (all guests)
+
+    Inbox UI:
+    - Stats card above the filter bar with 4 metric tiles
+    - Each tile: large number + label below
+    - Unread count highlighted in red when > 0
+    - Refreshed on every polling cycle (15s)
+    - Compact, non-intrusive horizontal layout
+    - Translatable labels (DE/EN)
+
+
+BATCH 3 - FILES MODIFIED SUMMARY
+.................................
+| File                          | Changes                                    |
+|-------------------------------|--------------------------------------------|
+| models.py                     | +ReplyTemplate model (33 lines)            |
+| routes.py                     | +11 API endpoints (templates, props, stats) |
+| settings.html                 | Property CRUD UI, Template CRUD UI, modals |
+| conversation.html             | Template dropdown with variable substitution|
+| inbox.html                    | Stats card, loadStats(), polling integration|
+| style.css                     | Stats card CSS, template dropdown CSS       |
+| i18n.js                       | +30 new DE/EN translation keys              |
+
+
+BATCH 4 - POLISH & DEPTH (2026-02-23)
+--------------------------------------
+Implemented items #11, #12, #14, #15 from Future Planning.
+
+12. AUTO-SAVE DRAFTS (Item #14)
+    File: templates/chatbot/conversation.html, style.css, i18n.js
+    - Saves textarea content to localStorage while typing (debounced 500ms)
+    - Restores draft on page reload (per-conversation key)
+    - Clears draft on successful send
+    - Saves draft when inserting templates or AI suggestions
+    - "Draft saved" indicator flashes briefly on auto-save
+    - Draft key format: chatbot_draft_{conversationId}
+
+13. MESSAGE DATE DIVIDERS (Item #12)
+    Files: conversation.html, style.css, i18n.js
+    - Centered "--- Today ---" / "--- February 23, 2026 ---" dividers
+    - Inserted between messages from different days
+    - Works for both server-rendered and dynamically added messages
+    - data-sent-at attribute on all message elements
+    - Tracks inserted dates with Set to avoid duplicates
+    - "Today" and "Yesterday" labels with locale-formatted dates for older
+
+14. CONVERSATION DATE GROUPING (Item #11)
+    Files: inbox.html, filter-state.js, style.css, i18n.js
+    - Groups inbox conversations under date headers:
+      * Today, Yesterday, This Week, This Month, Older
+    - Headers auto-inserted based on conversation updated_at timestamp
+    - Re-inserted after polling updates and filter changes
+    - Empty group headers hidden when filters active
+    - filter-state.js extended to hide headers with no visible cards
+    - CSS: label + horizontal line design using ::after pseudo-element
+
+15. GUEST MERGE TOOL (Item #15)
+    Files: routes.py, guest_profile.html, style.css, i18n.js
+
+    API Endpoints:
+    - POST /api/guests/{id}/merge-preview - Preview merge impact (read-only)
+    - POST /api/guests/{id}/merge - Execute merge with full FK reassignment
+
+    Backend Logic:
+    - Reassigns all conversations from target to primary guest
+    - Moves GuestDetails with deduplication by (type, key, value)
+    - Copies missing platform IDs (whatsapp, airbnb, booking, phone, email)
+    - Updates first_contact/last_contact date ranges, sums total_stays
+    - Appends target notes to primary with separator
+    - Flushes FK changes before deleting target (prevents cascade loss)
+    - Full try/except with rollback on failure
+
+    Guest Profile UI:
+    - Merge button added next to Edit in card header
+    - Two-step modal dialog:
+      * Step 1: Guest selection dropdown (excludes current guest)
+      * Step 2: Preview showing conversations/details/platforms counts + warning
+    - Success notification and page reload after merge
+    - Dark mode support for merge warning
+
+BATCH 4 - FILES MODIFIED SUMMARY
+.................................
+| File                          | Changes                                    |
+|-------------------------------|------------------------------------------- |
+| conversation.html             | Date dividers, auto-save drafts            |
+| inbox.html                    | Date group headers, insertDateGroupHeaders |
+| guest_profile.html            | Merge button, merge modal (2-step flow)    |
+| filter-state.js               | Hide empty date group headers in filters   |
+| style.css                     | Date dividers, date groups, merge styles   |
+| i18n.js                       | ~25 new DE/EN translation keys             |
+| routes.py                     | +2 merge API endpoints                     |
+
+
+FUTURE ENHANCEMENTS
+================================================================================
+
+Remaining items from Future Planning document (Batch 5):
+
+Batch 5 - Advanced:
+  [ ] #16 Export conversations
+  [ ] #18 Scheduled messages
+  [ ] #20 Conversation pinning
+  [ ] #25 Analytics dashboard
+
+Other future work:
+- WhatsApp Business API integration
+- Airbnb/Booking.com email forwarding setup
+- Push notifications (replace polling)
+- Mobile app version
+- Additional languages (Spanish, French, Italian UI translations)
+
+
+KNOWN ISSUES & LIMITATIONS
+================================================================================
+
+1. Gmail requires OAuth setup (credentials.json needed)
+2. WhatsApp/Airbnb/Booking integrations not yet implemented
+3. AI response time depends on Ollama (15-30 seconds typical)
+4. No push notifications yet (uses polling instead)
+5. Mobile optimization could be improved
+
+
+HOW TO RUN
+================================================================================
+
+1. Start Ollama (required for AI):
+   ollama serve
+
+2. Start FlaskApp:
+   cd C:\Users\admin\Documents\FlaskApp
+   python app.py
+
+3. Access ChatBotAI:
+   http://localhost/chatbot/
+
+4. Create test data (optional):
+   POST http://localhost/chatbot/api/test/bulk-create
+
+5. Connect Gmail (optional):
+   - Add credentials.json to ChatBotAI folder
+   - Go to Settings -> Connect Gmail
+
+
+DEVELOPMENT HISTORY
+================================================================================
+
+2026-02-17: Steps 1-6 completed (Foundation through Gmail Integration)
+2026-02-19: Step 7 completed (Dashboard UI with 8 sub-phases)
+            - Real-time polling updates
+            - Platform/Status/Guest filtering
+            - Full-text search
+            - Unread tracking
+            - Profile editing with inline editing
+2026-02-19: Step 8 completed (Testing & Refinement)
+            - All API endpoints verified
+            - XSS security fix applied
+            - AI extraction confirmed working
+            - Edge cases handled
+2026-02-19: Post-release enhancements
+            - Email filtering (domain/keyword whitelist)
+            - Multilingual support (German/English UI)
+            - AI language detection and response matching
+2026-02-23: Batch 1 - Quick Wins (commit adc4e33)
+            - Ctrl+Enter to send messages
+            - Relative timestamps in inbox (auto-refresh 60s)
+            - Toast notification cleanup (replaced all alert() calls)
+            - Smooth scroll & message entrance animations
+2026-02-23: Batch 2 - High-Value Features (commit 9a458fe)
+            - Desktop browser notifications (tab hidden only)
+            - AI typing indicator (three-dot animation)
+            - Dark mode toggle with full theme support
+            - Guest avatar colors (8-color deterministic palette)
+2026-02-23: Batch 3 - Major Features
+            - Quick reply templates (CRUD + conversation dropdown)
+            - Property management UI (full CRUD with modal forms)
+            - Dashboard statistics card (4 metrics, polling refresh)
+            - 11 new API endpoints, 1 new database table
+            - 30+ new i18n translation keys
+2026-02-23: Batch 4 - Polish & Depth
+            - Auto-save drafts (localStorage, debounced, per-conversation)
+            - Message date dividers (centered day separators)
+            - Conversation date grouping (Today/Yesterday/This Week/etc.)
+            - Guest merge tool (2 API endpoints + 2-step modal UI)
+            - 25+ new i18n translation keys
+
+
+================================================================================
+                         END OF PROGRESS REPORT
+                    Project Status: 100% Core + 4/5 Enhancement Batches
+                    READY FOR PRODUCTION USE
+================================================================================

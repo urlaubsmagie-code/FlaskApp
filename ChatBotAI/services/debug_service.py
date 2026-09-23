@@ -133,6 +133,10 @@ def init_debug_service(app) -> DebugLogHandler:
     """Attach the in-memory log handler to the root logger."""
     global _log_handler, _api_tracker
 
+    if _log_handler is not None:
+        logging.getLogger().removeHandler(_log_handler)
+        _log_handler.close()
+
     _log_handler = DebugLogHandler(max_entries=500)
     _log_handler.setFormatter(logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

@@ -260,6 +260,9 @@
                     <button class="btn btn-primary btn-sm" id="whatsappStartBtn" onclick="startWhatsAppBridge()" style="display:none;">
                         <i class="fas fa-play"></i> <span data-i18n="settings.integrations.whatsapp.start">Bridge starten</span>
                     </button>
+                    <button class="btn btn-primary btn-sm" id="whatsappReconnectBtn" onclick="reconnectWhatsApp()" style="display:none;">
+                        <i class="fas fa-rotate-right"></i> <span data-i18n="settings.integrations.whatsapp.reconnect">Jetzt verbinden</span>
+                    </button>
                 </div>
                 <div class="whatsapp-pairing" id="whatsappPairing" style="display:none;">
                     <img id="whatsappQr" alt="WhatsApp QR-Code" width="240" height="240">
@@ -476,12 +479,14 @@ confirmation</textarea>
             <div class="card-body">
                 <p class="help-text" style="margin-bottom: 15px;">
                     Seiten aus einem Notion-Handbuch in die UMI-Wissensdatenbank synchronisieren.
+                    Neue oder geänderte Wissenseinträge bleiben zunächst intern. Prüfen Sie diese
+                    in der Wissensdatenbank und entfernen Sie „Nur intern“, bevor UMI sie für Gäste verwendet.
                 </p>
 
                 <div class="setting-item">
                     <div class="setting-info">
                         <label for="notion-enabled" data-i18n="notion_enabled">Synchronisierung aktiviert</label>
-                        <p class="setting-description">Regelmäßige Synchronisierung von Notion-Seiten aktivieren</p>
+                        <p class="setting-description">Import über „Jetzt synchronisieren“ erlauben</p>
                     </div>
                     <label class="toggle-switch">
                         <input type="checkbox" id="notion-enabled">
@@ -1383,12 +1388,12 @@ confirmation</textarea>
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
-                    resultDiv.innerHTML = '<p style="color: var(--color-error, #dc2626);">⚠ ' + data.error + '</p>';
+                    resultDiv.textContent = '⚠ ' + data.error;
                 } else {
                     const s = data.stats || {};
                     const blockedList = (s.blocked_titles && s.blocked_titles.length > 0)
                         ? '<ul style="margin: 4px 0 0 16px; font-size: 0.85em;">'
-                          + s.blocked_titles.map(t => '<li>' + t + '</li>').join('')
+                          + s.blocked_titles.map(t => '<li>' + escapeHtml(t) + '</li>').join('')
                           + '</ul>'
                         : '';
                     resultDiv.innerHTML =
@@ -1402,7 +1407,7 @@ confirmation</textarea>
                 }
             })
             .catch(err => {
-                resultDiv.innerHTML = '<p style="color: var(--color-error, #dc2626);">⚠ ' + err.message + '</p>';
+                resultDiv.textContent = '⚠ ' + err.message;
             })
             .finally(() => {
                 btn.disabled = false;
@@ -1655,6 +1660,9 @@ confirmation</textarea>
             .then(data => {
                 const running = !data.error;
                 document.getElementById('whatsappStartBtn').style.display = running ? 'none' : '';
+                // Waiting out the cooldown after a drop: offer to reconnect now.
+                const waiting = running && !data.connected && !data.qr && data.reconnect_at;
+                document.getElementById('whatsappReconnectBtn').style.display = waiting ? '' : 'none';
                 document.getElementById('whatsappPairing').style.display = data.qr ? 'block' : 'none';
                 if (data.qr) document.getElementById('whatsappQr').src = data.qr;
                 if (data.connected) {
@@ -1662,8 +1670,10 @@ confirmation</textarea>
                     statusEl.textContent = i18n.t('settings.integrations.connected') + (number ? ` (+${number})` : '');
                     statusEl.className = 'integration-status connected';
                 } else {
+                    const retryAt = waiting ? new Date(data.reconnect_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '';
                     statusEl.textContent = !running ? i18n.t('settings.integrations.whatsapp.notRunning')
                         : data.qr ? i18n.t('settings.integrations.whatsapp.scan')
+                        : waiting ? i18n.t('settings.integrations.whatsapp.waiting').replace('{time}', retryAt)
                         : i18n.t('settings.integrations.whatsapp.connecting');
                     statusEl.className = 'integration-status';
                 }
@@ -1686,6 +1696,20 @@ confirmation</textarea>
                 if (!ok) throw new Error(data.error || 'Start failed');
                 showNotification(i18n.t('settings.integrations.whatsapp.started'), 'success');
                 setTimeout(checkWhatsApp, 3000);
+            })
+            .catch(err => showNotification(err.message, 'error'))
+            .finally(() => { btn.disabled = false; });
+    }
+
+    function reconnectWhatsApp() {
+        const btn = document.getElementById('whatsappReconnectBtn');
+        btn.disabled = true;
+        fetch('/chatbot/api/whatsapp/reconnect', { method: 'POST' })
+            .then(r => r.json().then(data => ({ ok: r.ok, data })))
+            .then(({ ok, data }) => {
+                if (!ok) throw new Error(data.error || 'Reconnect failed');
+                showNotification(i18n.t('settings.integrations.whatsapp.reconnecting'), 'success');
+                setTimeout(checkWhatsApp, 5000);
             })
             .catch(err => showNotification(err.message, 'error'))
             .finally(() => { btn.disabled = false; });

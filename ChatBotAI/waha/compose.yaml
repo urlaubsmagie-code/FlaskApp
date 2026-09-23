@@ -1,0 +1,27 @@
+name: umi-waha
+services:
+  waha:
+    image: devlikeapro/waha:latest
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:3002:3000"
+    env_file:
+      - .env
+    environment:
+      WHATSAPP_DEFAULT_ENGINE: WEBJS
+      WHATSAPP_FILES_FOLDER: /app/.media
+      WHATSAPP_FILES_LIFETIME: "0"
+      TZ: Europe/Berlin
+    volumes:
+      - sessions:/app/.sessions
+      - media:/app/.media
+    shm_size: 512mb
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  sessions:
+  media:

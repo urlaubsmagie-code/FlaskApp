@@ -1,12 +1,12 @@
 {% extends "chatbot/base.html" %}
 
-{% block title %}{{ _('Knowledge Base') if _ else 'Wissensdatenbank' }}{% endblock %}
+{% block title %}UMI{% endblock %}
 
 {% block content %}
 <div class="settings-container">
     <div class="page-header">
-        <h1><i class="fas fa-book"></i> <span data-i18n="knowledge.title">Wissensdatenbank</span></h1>
-        <div style="display:flex; gap:8px;">
+        <h1><i class="fas fa-robot"></i> <span data-i18n="umi.title">UMI</span></h1>
+        <div style="display:flex; gap:8px;" id="entryHeaderTools">
             <button class="btn btn-secondary" onclick="openCategoryHelp()" title="Kategorie-Hilfe">
                 <i class="fas fa-question-circle"></i> <span>Kategorie-Hilfe</span>
             </button>
@@ -21,38 +21,58 @@
         <button class="knowledge-tab active" data-tab="knowledge" onclick="knowledgeApp.switchTab('knowledge')">
             <i class="fas fa-book"></i> <span data-i18n="knowledge.tab.knowledge">Wissen</span>
         </button>
+        <button class="knowledge-tab" data-tab="corrections" onclick="knowledgeApp.switchTab('corrections')">
+            <i class="fas fa-comment-dots"></i> <span data-i18n="knowledge.tab.corrections">Beispiele</span>
+        </button>
         <button class="knowledge-tab" data-tab="escalation" onclick="knowledgeApp.switchTab('escalation')">
             <i class="fas fa-exclamation-triangle"></i> <span data-i18n="knowledge.tab.escalation">Eskalation</span>
         </button>
-        <button class="knowledge-tab" data-tab="corrections" onclick="knowledgeApp.switchTab('corrections')">
-            <i class="fas fa-spell-check"></i> <span data-i18n="knowledge.tab.corrections">Korrekturen</span>
+        <button class="knowledge-tab" data-tab="personality" onclick="knowledgeApp.switchTab('personality')">
+            <i class="fas fa-wand-magic-sparkles"></i> <span data-i18n="knowledge.tab.personality">Persönlichkeit</span>
+        </button>
+        <button class="knowledge-tab" data-tab="templates" onclick="knowledgeApp.switchTab('templates')">
+            <i class="fas fa-reply"></i> <span data-i18n="knowledge.tab.templates">Vorlagen</span>
         </button>
     </div>
 
-    <!-- Filter Bar -->
-    <div class="settings-card" style="margin-bottom: 20px;">
-        <div class="card-body" style="padding: 15px;">
-            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-                <label data-i18n="knowledge.filter.property" style="font-weight: 500;">Unterkunft:</label>
-                <select id="propertyFilter" class="setting-input" style="max-width: 300px;" onchange="knowledgeApp.loadEntries()">
-                    <option value="" data-i18n="knowledge.filter.all">Alle</option>
-                    <option value="global" data-i18n="knowledge.filter.global">Global</option>
-                    {% for prop in properties %}
-                    <option value="{{ prop.id }}">{{ prop.name }}</option>
-                    {% endfor %}
-                </select>
+    <!-- Entry tabs (Wissen / Beispiele / Eskalation) -->
+    <div id="entriesView">
+        <!-- Filter Bar -->
+        <div class="settings-card" style="margin-bottom: 20px;">
+            <div class="card-body" style="padding: 15px;">
+                <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                    <label data-i18n="knowledge.filter.property" style="font-weight: 500;">Unterkunft:</label>
+                    <select id="propertyFilter" class="setting-input" style="max-width: 300px;" onchange="knowledgeApp.loadEntries()">
+                        <option value="" data-i18n="knowledge.filter.all">Alle</option>
+                        <option value="global" data-i18n="knowledge.filter.global">Global</option>
+                        {% for prop in properties %}
+                        <option value="{{ prop.id }}">{{ prop.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Entries Container -->
+        <div id="entriesContainer">
+            <div class="settings-card">
+                <div class="card-body" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                    <i class="fas fa-spinner fa-spin" style="font-size: 24px;"></i>
+                    <p data-i18n="knowledge.loading">Lade Einträge...</p>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Entries Container -->
-    <div id="entriesContainer">
-        <div class="settings-card">
-            <div class="card-body" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-                <i class="fas fa-spinner fa-spin" style="font-size: 24px;"></i>
-                <p data-i18n="knowledge.loading">Lade Einträge...</p>
-            </div>
-        </div>
+    <!-- Persönlichkeit: how UMI behaves. Moved out of Settings (admin-only nav)
+         so the team that actually talks to guests can tune it. -->
+    <div id="personalityView" style="display:none;">
+        {% include 'chatbot/_umi_settings.html' %}
+    </div>
+
+    <!-- Vorlagen: quick replies the team sends by hand. -->
+    <div id="templatesView" style="display:none;">
+        {% include 'chatbot/_umi_templates.html' %}
     </div>
 </div>
 
@@ -120,13 +140,24 @@
                 <textarea id="entryTriggerWords" class="setting-textarea" rows="3" style="width: 100%;"
                     data-i18n-placeholder="knowledge.triggers.placeholder"
                     placeholder="ausgesperrt, locked out, komme nicht rein" maxlength="2000"></textarea>
-                <small id="entryTriggerHelp" style="color: var(--text-secondary);" data-i18n="knowledge.triggers.help">Mit Komma trennen. Kommt eines dieser Wörter in einer Gästenachricht vor, wird der Chat eskaliert — auch wenn UMI nicht antwortet.</small>
+                <!-- Text is set per tab by KnowledgeManager.updateCategoryOptions (escalation vs knowledge), so no data-i18n here. -->
+                <small id="entryTriggerHelp" style="color: var(--text-secondary);">Mit Komma trennen. Kommt eines dieser Wörter in einer Gästenachricht vor, wird der Chat eskaliert — auch wenn UMI nicht antwortet.</small>
             </div>
 
             <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
                 <label for="entryValue" id="entryValueLabel" data-i18n="knowledge.value">Information</label>
                 <textarea id="entryValue" class="setting-textarea" rows="4" style="width: 100%;"
                     data-i18n-placeholder="knowledge.value.placeholder" placeholder="z.B. SunnyBeach2024" maxlength="2000"></textarea>
+            </div>
+
+            <div class="setting-item" id="entryInternalRow" style="align-items: flex-start;">
+                <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                    <input type="checkbox" id="entryInternal" style="margin-top:3px;">
+                    <span>
+                        <strong data-i18n="knowledge.internal">Nur intern — nicht an Gäste</strong><br>
+                        <small style="color: var(--text-secondary);" data-i18n="knowledge.internal.help">Arbeitsanweisung fürs Team (z.B. Rechnungsablauf, Bürozeiten). Bleibt hier sichtbar, wird UMI aber nie gezeigt.</small>
+                    </span>
+                </label>
             </div>
 
             <div class="modal-footer">
@@ -136,8 +167,11 @@
         </form>
     </div>
 </dialog>
+
+{% include 'chatbot/_umi_template_modal.html' %}
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('chatbot.static', filename='js/knowledge.js') }}?v=11"></script>
+<script src="{{ url_for('chatbot.static', filename='js/umi.js') }}?v=1"></script>
+<script src="{{ url_for('chatbot.static', filename='js/knowledge.js') }}?v=14"></script>
 {% endblock %}

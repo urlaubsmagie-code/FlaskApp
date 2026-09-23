@@ -8,22 +8,14 @@ import logging
 import threading
 from pathlib import Path
 from flask import Flask
-from flask_compress import Compress
-from flask_login import LoginManager
 from flask_migrate import Migrate
 from sqlalchemy import event
 
-from werkzeug.middleware.proxy_fix import ProxyFix
 from .config import get_config
 
 # Path to migrations directory within ChatBotAI package
 MIGRATIONS_DIR = Path(__file__).parent / 'migrations'
-from .models import db, init_db
-from .services.ai_service import init_ai_service
-from .services.memory_service import init_memory_service
-from .services.message_router import init_message_router
-from .services.push_service import init_push_service
-from .services.smoobu_service import init_smoobu_service
+from .models import db
 
 # Flask-Migrate instance
 migrate = Migrate()
@@ -103,7 +95,7 @@ def _install_file_logger(app):
     """
     from logging.handlers import RotatingFileHandler
 
-    log_dir = os.path.join(os.path.dirname(__file__), 'instance')
+    log_dir = app.config.get('CHATBOT_LOG_DIR') or os.path.join(os.path.dirname(__file__), 'instance')
     os.makedirs(log_dir, exist_ok=True)
     pkg_logger = logging.getLogger('ChatBotAI')
     if any(isinstance(h, RotatingFileHandler) for h in pkg_logger.handlers):
@@ -314,6 +306,65 @@ def _start_keepalive(app):
     thread.start()
 
 
+def _start_email_reconcile(app):
+    """Daemon thread: pull new guest messages out of Booking/Airbnb notification
+    emails every 2 minutes.
+
+    Split out of the 10-minute Smoobu sync so a guest's message reaches the inbox
+    (and notifications, and UMI) promptly without hammering the Smoobu API. Gated
+    by the same `email_reconcile_enabled` setting and by Gmail being authenticated.
+    """
+    logger = logging.getLogger(__name__)
+    lock = threading.Lock()
+
+    INTERVAL = 120     # seconds — Gmail cost is a few hundred quota units per cycle
+    STARTUP_DELAY = 15  # let the app finish booting; Smoobu sync goes first
+
+    def _run_once():
+        # Non-blocking: a slow Gmail cycle must never queue up behind itself.
+        if not lock.acquire(blocking=False):
+            logger.debug("Email reconcile: previous cycle still running, skipping")
+            return
+        try:
+            with app.app_context():
+                try:
+                    from .services.email_reconcile import reconcile_from_email, get_reconcile_config
+                    if not get_reconcile_config()['enabled']:
+                        return
+                    from .services.gmail_service import get_gmail_service
+                    gmail = get_gmail_service()
+                    if not (gmail and gmail.is_authenticated()):
+                        return
+                    stats = reconcile_from_email(gmail)
+                    if stats['auto_inserted'] or stats['queued']:
+                        logger.info("Email reconcile: inserted %d, queued %d (scanned %d)",
+                                    stats['auto_inserted'], stats['queued'], stats['scanned'])
+                        print(f"[ChatBotAI] Email reconcile: +{stats['auto_inserted']} inserted, "
+                              f"{stats['queued']} queued (scanned {stats['scanned']})", flush=True)
+                finally:
+                    # Release the SQLAlchemy session so the daemon doesn't hold
+                    # idle connections from the pool between cycles.
+                    from .models import db
+                    db.session.remove()
+        except Exception:
+            logger.exception("Email reconcile daemon error")
+        finally:
+            lock.release()
+
+    def _loop():
+        import time
+        time.sleep(STARTUP_DELAY)
+        logger.info("Email reconcile daemon started (every %ds)", INTERVAL)
+        while True:
+            _run_once()
+            # ponytail: re-scans the same recent window each cycle; the
+            # already-queued/duplicate guards make that harmless. Add a Gmail
+            # historyId watermark only if the quota or the wasted calls bite.
+            time.sleep(INTERVAL)
+
+    threading.Thread(target=_loop, daemon=True, name="email-reconcile").start()
+
+
 def _start_background_sync(app):
     """Start a daemon thread that syncs Smoobu messages every 10 minutes.
 
@@ -339,10 +390,41 @@ def _start_background_sync(app):
                 try:
                     with app.app_context():
                         try:
-                            from .services.smoobu_service import get_smoobu_service
-                            smoobu = get_smoobu_service()
-                            if smoobu and smoobu.is_configured():
-                                result = smoobu.sync_messages(force=force)
+                            from .services.smoobu_service import get_smoobu_services
+                            # One cycle per connected Smoobu account. Each account
+                            # is independent: a dead key in one must not stop the
+                            # other from syncing.
+                            services = get_smoobu_services()
+                            if not services:
+                                logger.debug("Background sync: Smoobu not configured, skipping")
+                            for smoobu in services:
+                                # Self-heal: the account connected before
+                                # multi-account existed has no stored id yet.
+                                smoobu.ensure_account_id()
+
+                                # /threads recency sweep — mirrors the Smoobu inbox
+                                # (ordered by latest activity) and catches recent,
+                                # owner-outbound-only threads the /reservations
+                                # discovery below can miss. Cheap: only threads whose
+                                # newest message we haven't stored trigger a fetch.
+                                try:
+                                    tsweep = smoobu.sync_recent_threads()
+                                    if tsweep.get('imported'):
+                                        logger.info(
+                                            "Smoobu /threads sweep imported %d new message(s)",
+                                            tsweep['imported'])
+                                        print(
+                                            f"[ChatBotAI] /threads sweep imported {tsweep['imported']} new msg(s)",
+                                            flush=True)
+                                except Exception:
+                                    logger.exception("Smoobu /threads sweep error")
+
+                                try:
+                                    result = smoobu.sync_messages(force=force)
+                                except Exception:
+                                    logger.exception("Smoobu sync_messages error (account %s)",
+                                                     smoobu.account_id)
+                                    continue
                                 imported = result.get('imported', 0)
                                 if imported > 0:
                                     # Step 7 instrumentation: once webhooks are live, the daemon
@@ -359,34 +441,18 @@ def _start_background_sync(app):
                                 else:
                                     logger.debug("Background sync: no new messages (webhooks healthy)")
 
-                                # Reconcile read states: if a conversation is marked
-                                # unread but the last message is from the owner or AI,
-                                # someone already handled it outside the app.
+                            # Reconcile read states: if a conversation is marked
+                            # unread but the last message is from the owner or AI,
+                            # someone already handled it outside the app. Account
+                            # agnostic — runs once per cycle, not once per account.
+                            if services:
                                 fixed = _reconcile_read_states()
                                 if fixed > 0:
                                     logger.info("Background sync: reconciled %d conversations (already answered)", fixed)
 
-                                # Email reconciliation: backfill guest messages Smoobu
-                                # dropped, using Airbnb/Booking notification emails as an
-                                # independent source. Guarded by AISettings + Gmail config.
-                                try:
-                                    from .services.email_reconcile import reconcile_from_email, get_reconcile_config
-                                    if get_reconcile_config()['enabled']:
-                                        from .services.gmail_service import get_gmail_service
-                                        gmail = get_gmail_service()
-                                        if gmail and gmail.is_authenticated():
-                                            estats = reconcile_from_email(gmail)
-                                            if estats['auto_inserted'] or estats['queued']:
-                                                logger.info(
-                                                    "Email reconcile: inserted %d, queued %d (scanned %d)",
-                                                    estats['auto_inserted'], estats['queued'], estats['scanned'])
-                                                print(
-                                                    f"[ChatBotAI] Email reconcile: +{estats['auto_inserted']} inserted, "
-                                                    f"{estats['queued']} queued (scanned {estats['scanned']})", flush=True)
-                                except Exception:
-                                    logger.exception("Email reconciliation error")
-                            else:
-                                logger.debug("Background sync: Smoobu not configured, skipping")
+                            # Email reconciliation moved to its own 2-minute daemon
+                            # (_start_email_reconcile) — guest emails shouldn't wait
+                            # on the 10-minute Smoobu cycle.
                         finally:
                             # Always release the SQLAlchemy session so the daemon
                             # doesn't accumulate idle connections from the pool.
@@ -428,143 +494,25 @@ def _start_background_sync(app):
     print("[ChatBotAI] app.smoobu_trigger_sync registered — manual sync is now fire-and-forget", flush=True)
 
 
-def create_app(config_class=None):
-    """Application factory for ChatBotAI"""
+def create_app(config_class=None, *, instance_path=None):
+    """Build standalone UMI; blueprint registration owns shared initialization."""
+    from .startup import configure_app
 
-    # Create Flask app
-    app = Flask(__name__,
-                template_folder='templates',
-                static_folder='static')
-
-    # Load configuration
-    if config_class is None:
-        config_class = get_config()
-    app.config.from_object(config_class)
-
-    # Trust proxy headers (X-Forwarded-For/Proto/Host) from Cloudflare tunnel
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
-
-    # Enable gzip compression for all responses > 500 bytes
-    Compress(app)
-
-    # Initialize Flask-Login
-    login_manager = LoginManager()
-    login_manager.login_view = 'chatbot.login'
-    login_manager.login_message = None  # Suppress default flash message
-    login_manager.init_app(app)
-
-    @login_manager.user_loader
-    def load_user(user_id):
-        from .models import User
-        try:
-            return User.query.get(int(user_id))
-        except (ValueError, TypeError):
-            return None
-
-    # Cache static assets: 0 in dev (instant refresh), 30 days in production (with ?v= busting)
-    if app.config.get('DEBUG'):
-        app.config.setdefault('SEND_FILE_MAX_AGE_DEFAULT', 0)
-    else:
-        app.config.setdefault('SEND_FILE_MAX_AGE_DEFAULT', 2592000)
-
-    # Ensure secret key is always set (required for Flask sessions / OAuth).
-    # In production, refuse to start with the dev fallback — predictable
-    # session keys mean attackers can forge sessions.
-    is_production = (
-        not app.config.get('DEBUG')
-        and os.environ.get('FLASK_ENV', '').lower() == 'production'
-    )
-    secret_key = app.config.get('SECRET_KEY')
-    if is_production and secret_key in (None, '', 'dev-secret-key-change-in-production'):
-        raise RuntimeError(
-            "SECRET_KEY environment variable must be set to a strong random "
-            "value when FLASK_ENV=production. Refusing to start with the dev fallback."
-        )
-    if not secret_key:
-        app.secret_key = 'dev-secret-key-change-in-production'
-
-    # Allow OAuth over HTTP in development (required for localhost Gmail OAuth)
-    if app.config.get('DEBUG'):
-        os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-
-    # Configure logging
-    logging.basicConfig(
-        level=logging.DEBUG if app.config.get('DEBUG') else logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    logger = logging.getLogger(__name__)
-
-    _install_file_logger(app)
-
-    # Initialize in-memory debug log handler
-    from .services.debug_service import init_debug_service
-    init_debug_service(app)
-
-    # Initialize database
-    db.init_app(app)
-
-    # Initialize Flask-Migrate with batch mode for SQLite compatibility
-    # Directory points to ChatBotAI/migrations
-    migrate.init_app(app, db, directory=str(MIGRATIONS_DIR), render_as_batch=True)
-
-    with app.app_context():
-        # Enable WAL mode for SQLite (concurrent access for polling)
-        if 'sqlite' in app.config.get('SQLALCHEMY_DATABASE_URI', ''):
-            _setup_sqlite_pragmas(db.engine)
-
-        # Auto-apply migrations and repair any schema drift
-        _auto_upgrade_schema(app)
-
-        # create_all() handles any brand-new tables not covered by migrations
-        db.create_all()
-        from .models import _populate_default_settings
-        _populate_default_settings()
-
-        # Ensure FTS5 search index exists and is in sync
-        _ensure_fts5_index(app)
-
-        logger.info("Database initialized")
-
-    # Initialize services
-    with app.app_context():
-        ai_service = init_ai_service(app)
-        memory_service = init_memory_service()
-        message_router = init_message_router()
-        push_service = init_push_service(app)
-        smoobu_service = init_smoobu_service(app)
-
-        # Load saved model preference from database
-        from .models import AISettings
-        saved_model = AISettings.get('ollama_model')
-        if saved_model and saved_model != ai_service.model:
-            ai_service.change_model(saved_model)
-            logger.info(f"Loaded saved model preference: {saved_model}")
-
-        # Test Ollama connection
-        if ai_service.test_connection():
-            logger.info("Ollama connection successful")
-        else:
-            logger.warning("Ollama connection failed - AI features will be limited")
-
-    # Register blueprint
+    config_class = config_class or get_config()
+    instance_path = instance_path or getattr(config_class, 'CHATBOT_INSTANCE_PATH', None)
+    kwargs = {'instance_path': str(instance_path)} if instance_path else {}
+    app = Flask(__name__, template_folder='templates', static_folder='static', **kwargs)
+    configure_app(app, config_class)
     from . import chatbot_bp
     app.register_blueprint(chatbot_bp)
 
-    # Add root redirect
     @app.route('/')
     def root():
         from flask import redirect, url_for
         return redirect(url_for('chatbot.index'))
 
-    # Start background Smoobu message sync (every 2 minutes)
-    # Guard: only in reloader child process (debug) or non-debug (Waitress)
-    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.config.get('DEBUG'):
-        _start_background_sync(app)
-        _start_keepalive(app)
-
-    logger.info(f"ChatBotAI application created (debug={app.config.get('DEBUG')})")
-
     return app
+
 
 
 def run_development_server():

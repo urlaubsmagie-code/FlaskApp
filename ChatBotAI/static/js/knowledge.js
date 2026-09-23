@@ -120,6 +120,10 @@ const knowledgeApp = {
     entries: [],
     currentTab: 'knowledge',
 
+    // Wissen / Beispiele / Eskalation list KnowledgeEntry rows; Persönlichkeit
+    // and Vorlagen are settings panels rendered server-side.
+    ENTRY_TABS: ['knowledge', 'corrections', 'escalation'],
+
     switchTab(tab) {
         this.currentTab = tab;
         document.querySelectorAll('.knowledge-tab').forEach(btn => {
@@ -129,7 +133,21 @@ const knowledgeApp = {
         const url = new URL(window.location);
         url.searchParams.set('tab', tab);
         history.replaceState(null, '', url);
-        this.renderEntries();
+        this.applyTabVisibility();
+        if (this.ENTRY_TABS.includes(tab)) this.renderEntries();
+        if (tab === 'templates') loadTemplates();
+    },
+
+    applyTabVisibility() {
+        const isEntries = this.ENTRY_TABS.includes(this.currentTab);
+        const show = (id, on) => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = on ? '' : 'none';
+        };
+        show('entriesView', isEntries);
+        show('entryHeaderTools', isEntries);
+        show('personalityView', this.currentTab === 'personality');
+        show('templatesView', this.currentTab === 'templates');
     },
 
     async loadEntries() {
@@ -152,6 +170,10 @@ const knowledgeApp = {
     },
 
     renderEntries() {
+        // Nothing to render on the settings tabs — loadEntries() still runs so
+        // the lists are warm when the user switches back.
+        if (!this.ENTRY_TABS.includes(this.currentTab)) return;
+
         // Filter entries based on current tab
         let filtered;
         if (this.currentTab === 'knowledge') {
@@ -215,6 +237,12 @@ const knowledgeApp = {
                 html += '<div style="flex: 1; min-width: 0;">';
                 html += '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:5px;">';
                 html += '<strong>' + this.escapeHtml(entry.label) + '</strong>' + scopeBadge;
+                if (entry.is_internal) {
+                    html += '<span class="badge" style="background:var(--warning-color,#b8860b);color:white;padding:2px 8px;border-radius:10px;font-size:11px;">'
+                        + '<i class="fas fa-user-lock"></i> ' + this.escapeHtml(
+                            (typeof i18n !== 'undefined' && i18n.t('knowledge.internal.badge')) || 'Nur intern')
+                        + '</span>';
+                }
                 html += '</div>';
                 if (entry.trigger_words) {
                     html += '<div style="color:var(--text-secondary);margin-top:4px;font-size:12px;">'
@@ -308,6 +336,7 @@ const knowledgeApp = {
         const categoryRow = select.closest('.setting-item');
         const valueRow = document.getElementById('entryValue').closest('.setting-item');
         const triggerRow = document.getElementById('entryTriggerRow');
+        const triggerHelp = document.getElementById('entryTriggerHelp');
         const valueLabel = document.getElementById('entryValueLabel');
         const lang = (typeof i18n !== 'undefined' && i18n.currentLanguage) || 'de';
         const t = (key, fallback) => (typeof i18n !== 'undefined' ? i18n.t(key) : fallback);
@@ -336,8 +365,15 @@ const knowledgeApp = {
 
         // Escalation topics: trigger words decide what escalates, and the
         // Information field becomes a team-only note UMI never sees.
+        // Knowledge entries: the same field decides when UMI PULLS the entry into
+        // its prompt (the retrieval scorer weights it above label and text), so the
+        // row stays visible — only the help text differs.
         const isEscalation = this.currentTab === 'escalation';
-        triggerRow.style.display = isEscalation ? '' : 'none';
+        triggerRow.style.display = '';
+        triggerHelp.textContent = isEscalation
+            ? t('knowledge.triggers.help', triggerHelp.textContent)
+            : t('knowledge.triggers.help.knowledge',
+                'Mit Komma trennen. Kommt eines dieser Wörter in einer Gästenachricht vor, zieht UMI diesen Eintrag zur Antwort heran. Optional.');
         valueRow.style.display = '';
         valueLabel.textContent = isEscalation
             ? t('knowledge.value.internal', 'Interne Notiz (nur fürs Team)')
@@ -357,6 +393,7 @@ const knowledgeApp = {
         document.getElementById('entryId').value = '';
         document.getElementById('knowledgeForm').reset();
         document.querySelector('input[name="scope"][value="global"]').checked = true;
+        document.getElementById('entryInternal').checked = false;
         this.toggleScope();
         this.updateCategoryOptions();
 
@@ -374,6 +411,7 @@ const knowledgeApp = {
         document.getElementById('entryLabel').value = entry.label;
         document.getElementById('entryValue').value = entry.value;
         document.getElementById('entryTriggerWords').value = entry.trigger_words || '';
+        document.getElementById('entryInternal').checked = !!entry.is_internal;
         this.updateCategoryOptions(entry.category);
 
         if (entry.property_id) {
@@ -409,6 +447,7 @@ const knowledgeApp = {
             label: document.getElementById('entryLabel').value.trim(),
             value: document.getElementById('entryValue').value.trim(),
             trigger_words: document.getElementById('entryTriggerWords').value.trim(),
+            is_internal: document.getElementById('entryInternal').checked,
             property_id: isProperty ? parseInt(document.getElementById('entryPropertyId').value) : null,
         };
 
@@ -479,11 +518,14 @@ const knowledgeApp = {
 document.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get('tab');
-    if (tab && ['knowledge', 'escalation', 'corrections'].includes(tab)) {
+    if (tab && ['knowledge', 'escalation', 'corrections', 'personality', 'templates'].includes(tab)) {
         knowledgeApp.currentTab = tab;
         document.querySelectorAll('.knowledge-tab').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tab === tab);
         });
     }
+    knowledgeApp.applyTabVisibility();
+    if (knowledgeApp.currentTab === 'templates') loadTemplates();
+    // Entries load either way — switching back to a list tab must be instant.
     knowledgeApp.loadEntries();
 });

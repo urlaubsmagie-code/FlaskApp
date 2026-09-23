@@ -1,0 +1,720 @@
+================================================================================
+CHATBOTAI - TÉCNICAS MODERNAS DE CONTEXT MANAGEMENT Y RAG (2025-2026)
+================================================================================
+Fecha: 27 de marzo 2026
+Fuentes: AWS, LlamaIndex, Field Guide to AI, Fast.io, ByteTools, Airbyte
+
+Esta guía complementa AI_Response_Focus_Solutions.txt con técnicas de última
+generación usadas por empresas reales en producción.
+
+================================================================================
+HALLAZGOS CLAVE DE LA INVESTIGACIÓN
+================================================================================
+
+1. LOS MODELOS PEQUEÑOS (8B) PIERDEN PRECISIÓN CON CONTEXTO LARGO
+   ---------------------------------------------------------------
+   - Investigación muestra que modelos como qwen3:8b empiezan a perder
+     accuracy después de ~50-60K tokens
+   - Fenómeno "lost in the middle": el modelo olvida información en el medio
+     del contexto largo
+   - Solución: NO es esperar ventanas de contexto más grandes
+   - Solución ES: Gestión inteligente del contexto + retrieval selectivo
+
+2. CHUNK SIZE ÓPTIMO DEPENDE DEL TIPO DE DOCUMENTO
+   -----------------------------------------------
+   Según ByteTools y AWS (2025-2026):
+   
+   | Tipo de Documento          | Chunk Size    | Overlap  | Razón                           |
+   |----------------------------|---------------|----------|---------------------------------|
+   | FAQ / Support              | 256-384 tok   | 32-64    | Respuestas precisas y cortas    |
+   | Documentación Técnica      | 512-768 tok   | 64-100   | Contexto de funciones completo  |
+   | Documentos Legales         | 768-1024 tok  | 128-256  | Preservar cláusulas completas   |
+   | Chat / Conversaciones      | 128-256 tok   | 16-32    | Turnos de diálogo individuales  |
+   | Papers / Artículos         | 512-1024 tok  | 100-128  | Párrafos con argumentos         |
+   | Repositorios de Código     | 384-512 tok   | 64       | Funciones/clases completas      |
+
+3. EL OVERLAP ES CRÍTICO
+   ---------------------
+   - 10-20% del chunk size es el estándar (ej: 512 tokens → 50-100 overlap)
+   - Sin overlap, información relacionada se divide entre chunks
+   - Cuando solo 1 chunk se recupera, el modelo ve contexto incompleto
+   - Resultado: Respuestas incompletas o alucinaciones
+
+4. HIERARCHICAL RETRIEVAL SUPERA A RAG PLANO
+   -----------------------------------------
+   En lugar de buscar directamente en todos los chunks:
+   
+   Nivel 1: Buscar en document summaries (50-100 tokens cada uno)
+   Nivel 2: Identificar documentos relevantes
+   Nivel 3: Buscar chunks dentro de esos documentos
+   
+   Ventajas:
+   - 3x más rápido que RAG plano
+   - Reduce ruido (no trae chunks de docs irrelevantes)
+   - Mejor para 100+ documentos
+
+5. PROMPT CACHING REDUCE COSTOS 90%
+   --------------------------------
+   Providers como Anthropic/OpenAI permiten cachear partes del prompt
+   
+   Ejemplo:
+   - System prompt: 2,000 tokens (se cachea)
+   - Knowledge base: 10,000 tokens (se cachea)
+   - Mensaje del usuario: 100 tokens (nuevo)
+   
+   Resultado:
+   - Primera llamada: Paga por 12,100 tokens
+   - Siguientes llamadas: Paga solo ~1,100 tokens
+   - Ahorro: 90% en tokens repetidos
+
+6. SEMANTIC CHUNKING > FIXED-SIZE CHUNKING
+   ---------------------------------------
+   En lugar de cortar cada 512 tokens arbitrariamente:
+   
+   Semantic Chunking:
+   - Calcula embeddings de oraciones consecutivas
+   - Divide cuando la similitud cae bajo threshold
+   - Respeta límites semánticos naturales
+   
+   Resultado:
+   - 25-40% mejor retrieval accuracy
+   - Chunks más coherentes
+   - Menos fragmentación de conceptos
+
+================================================================================
+TÉCNICA #1: CONTEXTUAL RETRIEVAL (ANTHROPIC 2025)
+================================================================================
+
+QUÉ ES:
+-------
+En lugar de embeddings simples, agregar CONTEXTO a cada chunk antes de
+embeddarlo. Esto permite que el chunk sea auto-contenido.
+
+CÓMO FUNCIONA:
+-------------
+1. Chunk original: "La temperatura debe estar entre 20-25°C"
+2. Generar contexto con LLM: "Este chunk describe requisitos de temperatura
+   para el almacenamiento de medicamentos"
+3. Chunk contextualizado: "[Contexto: Requisitos de temperatura para 
+   almacenamiento de medicamentos] La temperatura debe estar entre 20-25°C"
+4. Embedder el chunk contextualizado
+
+RESULTADO:
+---------
+Anthropic reporta:
+- Reducción de 49% en fallas de retrieval (retrieval failures)
+- Reducción de 67% cuando se combina con reranking
+
+IMPLEMENTACIÓN:
+--------------
+def add_contextual_prefix(chunk: str, document_summary: str, llm) -> str:
+    """Agrega contexto generado por LLM a cada chunk."""
+    prompt = f"""
+    Documento: {document_summary}
+    
+    Chunk: {chunk}
+    
+    Escribe una oración de contexto (1-2 líneas) que explique de qué trata
+    este chunk en relación al documento completo. Formato:
+    "Este chunk describe..."
+    """
+    
+    context = llm.generate(prompt, max_tokens=50)
+    return f"[Contexto: {context}] {chunk}"
+
+# Uso
+doc_summary = "Manual de mantenimiento de apartamentos"
+chunk = "Limpiar filtros del aire acondicionado mensualmente"
+contextualized = add_contextual_prefix(chunk, doc_summary, llm)
+# "[Contexto: Este chunk describe tareas de mantenimiento periódico del
+#   sistema de climatización] Limpiar filtros del aire acondicionado mensualmente"
+
+embedding = embed(contextualized)  # Embedding más informativo
+
+CUÁNDO USAR:
+-----------
+✅ Knowledge bases grandes (50+ documentos)
+✅ Chunks que pierden contexto cuando se aíslan
+✅ Cuando el retrieval accuracy importa más que la velocidad de indexing
+
+❌ Colecciones pequeñas (< 10 documentos)
+❌ Cuando indexing speed es crítico (caro: 1 LLM call por chunk)
+
+================================================================================
+TÉCNICA #2: RECURSIVE CHARACTER TEXT SPLITTER (LANGCHAIN ESTÁNDAR)
+================================================================================
+
+QUÉ ES:
+-------
+El splitter MÁS RECOMENDADO por la industria (2026). Divide texto usando
+una jerarquía de separadores naturales.
+
+JERARQUÍA DE SEPARADORES:
+------------------------
+1. "\n\n"  (párrafos)
+2. "\n"    (líneas)
+3. ". "    (oraciones)
+4. " "     (palabras)
+5. ""      (caracteres) — fallback
+
+Intenta dividir por párrafos primero. Si el chunk es muy grande, intenta
+por líneas. Si aún es muy grande, por oraciones, etc.
+
+IMPLEMENTACIÓN:
+--------------
+from langchain.text_splitters import RecursiveCharacterTextSplitter
+import tiktoken
+
+# Token-based sizing (recomendado para OpenAI/qwen)
+enc = tiktoken.get_encoding("cl100k_base")  # Encoding para GPT-4/text-embedding-3
+
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=512,              # Tamaño objetivo
+    chunk_overlap=64,            # 12% overlap
+    length_function=lambda text: len(enc.encode(text)),  # Medir en tokens
+    separators=["\n\n", "\n", ". ", " ", ""]  # Jerarquía por defecto
+)
+
+chunks = splitter.split_text(your_text)
+
+PARA CÓDIGO (Python, JS, etc.):
+-------------------------------
+from langchain.text_splitters import Language, RecursiveCharacterTextSplitter
+
+code_splitter = RecursiveCharacterTextSplitter.from_language(
+    language=Language.PYTHON,
+    chunk_size=512,
+    chunk_overlap=64,
+)
+
+# Divide en class/function boundaries antes de líneas
+code_chunks = code_splitter.split_text(python_code)
+
+VENTAJAS:
+---------
+✅ Respeta límites naturales del lenguaje
+✅ Funciona bien para el 80% de casos de uso
+✅ Rápido (no requiere AI)
+✅ Previsible
+
+DESVENTAJAS:
+-----------
+❌ No entiende significado semántico
+❌ Puede romper conceptos relacionados si están en párrafos diferentes
+
+CUÁNDO USAR:
+-----------
+🎯 SIEMPRE úsalo como baseline
+🎯 Documentación técnica bien estructurada
+🎯 Cuando velocidad de indexing importa
+🎯 Cuando no tienes presupuesto para semantic chunking
+
+================================================================================
+TÉCNICA #3: SEMANTIC CHUNKING (LANGCHAIN EXPERIMENTAL)
+================================================================================
+
+QUÉ ES:
+-------
+Divide texto basándose en SIGNIFICADO en lugar de tamaño. Usa embeddings
+para detectar cambios de tópico.
+
+CÓMO FUNCIONA:
+-------------
+1. Divide texto en oraciones
+2. Genera embedding para cada oración
+3. Calcula similitud coseno entre oraciones consecutivas
+4. Divide donde la similitud cae bajo threshold (cambio de tópico)
+
+IMPLEMENTACIÓN:
+--------------
+from langchain_experimental.text_splitter import SemanticChunker
+from langchain_openai import OpenAIEmbeddings
+
+embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
+
+chunker = SemanticChunker(
+    embeddings,
+    breakpoint_threshold_type="percentile",  # Divide en percentil 95
+    breakpoint_threshold_amount=95,
+)
+
+docs = chunker.create_documents([your_text])
+
+MÉTODOS DE THRESHOLD:
+--------------------
+1. "percentile": Divide en top 5% de caídas de similitud
+2. "standard_deviation": Divide cuando cae > 1 std dev
+3. "interquartile": Divide en valores atípicos del rango IQR
+
+VENTAJAS:
+---------
+✅ Chunks semánticamente coherentes
+✅ Respeta cambios de tópico naturales
+✅ Mejor retrieval accuracy (25-40% mejora reportada)
+
+DESVENTAJAS:
+-----------
+❌ LENTO: Requiere embedding de cada oración
+❌ CARO: Muchas llamadas a API de embeddings
+❌ Chunks de tamaño variable (algunos muy grandes)
+
+CUÁNDO USAR:
+-----------
+✅ Documentos con múltiples tópicos mezclados (wikis internos)
+✅ Cuando precision > speed
+✅ Corpus que cambia poco (puedes cachear el trabajo)
+
+❌ Indexing de millones de documentos
+❌ Documentos bien estructurados (RecursiveCharacterTextSplitter es suficiente)
+
+================================================================================
+TÉCNICA #4: HIERARCHICAL RETRIEVAL (PRODUCCIÓN)
+================================================================================
+
+QUÉ ES:
+-------
+En lugar de buscar directamente en chunks, buscar en capas:
+Summaries → Documents → Sections → Chunks
+
+ARQUITECTURA:
+------------
+                    USER QUERY
+                         |
+                         v
+              ┌──────────────────────┐
+              │  EMBED QUERY         │
+              └──────────┬───────────┘
+                         |
+                         v
+              ┌──────────────────────┐
+              │  Level 1: Search     │
+              │  Document Summaries  │ <-- 50-100 tokens cada uno
+              │  (Top 3 docs)        │
+              └──────────┬───────────┘
+                         |
+                         v
+              ┌──────────────────────┐
+              │  Level 2: Search     │
+              │  Section Summaries   │ <-- Dentro de los 3 docs
+              │  (Top 5 sections)    │
+              └──────────┬───────────┘
+                         |
+                         v
+              ┌──────────────────────┐
+              │  Level 3: Search     │
+              │  Chunks              │ <-- Dentro de las 5 sections
+              │  (Top 3-5 chunks)    │
+              └──────────────────────┘
+
+IMPLEMENTACIÓN:
+--------------
+class HierarchicalRetriever:
+    def __init__(self, documents: List[Dict]):
+        # Level 1: Document summaries
+        self.doc_summaries = {
+            doc['id']: summarize(doc['content'], max_tokens=100)
+            for doc in documents
+        }
+        self.doc_summary_embeddings = embed_batch(list(self.doc_summaries.values()))
+        
+        # Level 2: Section summaries
+        self.section_summaries = {}
+        for doc in documents:
+            sections = split_into_sections(doc['content'])
+            for section in sections:
+                section_id = f"{doc['id']}-{section['title']}"
+                self.section_summaries[section_id] = {
+                    'doc_id': doc['id'],
+                    'summary': summarize(section['content'], max_tokens=50),
+                    'content': section['content']
+                }
+        
+        # Level 3: Chunks (solo se generan on-demand)
+        self.documents = {doc['id']: doc for doc in documents}
+    
+    def retrieve(self, query: str, top_k: int = 3) -> List[str]:
+        """Hierarchical retrieval."""
+        query_embedding = embed(query)
+        
+        # Level 1: Find top 3 relevant documents
+        doc_scores = cosine_similarity(query_embedding, self.doc_summary_embeddings)
+        top_doc_ids = get_top_k_indices(doc_scores, k=3)
+        
+        # Level 2: Find top 5 sections within those documents
+        relevant_section_summaries = [
+            (section_id, section_data['summary'])
+            for section_id, section_data in self.section_summaries.items()
+            if section_data['doc_id'] in top_doc_ids
+        ]
+        
+        section_embeddings = embed_batch([s[1] for s in relevant_section_summaries])
+        section_scores = cosine_similarity(query_embedding, section_embeddings)
+        top_section_indices = get_top_k_indices(section_scores, k=5)
+        
+        # Level 3: Chunk and retrieve from top sections
+        chunks = []
+        for idx in top_section_indices:
+            section_id = relevant_section_summaries[idx][0]
+            section_content = self.section_summaries[section_id]['content']
+            
+            # Chunk on-demand
+            section_chunks = chunk_text(section_content, chunk_size=512, overlap=64)
+            chunks.extend(section_chunks)
+        
+        # Final retrieval from chunks
+        chunk_embeddings = embed_batch(chunks)
+        chunk_scores = cosine_similarity(query_embedding, chunk_embeddings)
+        top_chunk_indices = get_top_k_indices(chunk_scores, k=top_k)
+        
+        return [chunks[i] for i in top_chunk_indices]
+
+VENTAJAS:
+---------
+✅ Mucho más rápido que buscar en todos los chunks (3x-5x)
+✅ Reduce ruido (no trae chunks de docs irrelevantes)
+✅ Escala bien a cientos/miles de documentos
+✅ Mantiene coherencia (chunks del mismo doc/section)
+
+DESVENTAJAS:
+-----------
+❌ Complejidad de implementación
+❌ Requiere generar summaries (costo inicial)
+❌ Dos niveles de potential retrieval error
+
+CUÁNDO USAR:
+-----------
+🎯 100+ documentos en knowledge base
+🎯 Documentos largos bien estructurados
+🎯 Cuando velocidad de query importa
+🎯 Producción enterprise
+
+================================================================================
+TÉCNICA #5: MMR (MAXIMAL MARGINAL RELEVANCE)
+================================================================================
+
+QUÉ ES:
+-------
+Evita recuperar chunks redundantes. En lugar de top-k por similitud,
+optimiza por: relevancia + diversidad.
+
+PROBLEMA QUE RESUELVE:
+---------------------
+Sin MMR:
+  Query: "¿Cuál es el check-in time?"
+  Top 5 chunks:
+  1. "Check-in es a las 3 PM"
+  2. "El check-in comienza a las 15:00"
+  3. "Puedes hacer check-in desde las 3 de la tarde"
+  4. "Check-in time: 3:00 PM"
+  5. "La hora de check-in es 15h"
+  
+  Problema: 5 chunks diciendo lo mismo = desperdicio de context window
+
+Con MMR:
+  1. "Check-in es a las 3 PM"
+  2. "WiFi password: ABC123" (diferente tópico)
+  3. "Parking está en el sótano" (diferente tópico)
+  4. "Check-out es a las 11 AM" (relacionado pero diferente)
+  5. "La piscina cierra a las 10 PM" (diferente tópico)
+  
+  Resultado: Contexto diverso, más útil
+
+ALGORITMO:
+---------
+1. Busca top-20 chunks por similitud (candidate pool)
+2. Selecciona el #1 (más relevante)
+3. Para cada chunk restante, calcula:
+   Score = λ * Relevance - (1-λ) * MaxSimilarity_to_selected
+   
+   donde:
+   - Relevance = similitud con la query
+   - MaxSimilarity_to_selected = similitud con chunks ya seleccionados
+   - λ = balance (0.5 = 50% relevance, 50% diversity)
+4. Selecciona el chunk con mejor score
+5. Repite hasta tener k chunks
+
+IMPLEMENTACIÓN:
+--------------
+# Con pgvector/LangChain
+from langchain_community.vectorstores import PGVector
+
+db = PGVector.from_documents(
+    documents=chunks,
+    embedding=OpenAIEmbeddings(model="text-embedding-3-large"),
+    connection_string=CONNECTION_STRING,
+)
+
+retriever = db.as_retriever(
+    search_type="mmr",           # Enable MMR
+    search_kwargs={
+        "k": 5,                   # Final chunks a retornar
+        "fetch_k": 20,            # Candidate pool
+        "lambda_mult": 0.5,       # Balance relevance/diversity
+    }
+)
+
+results = retriever.get_relevant_documents("¿Cuál es el check-in time?")
+
+TUNING λ (lambda_mult):
+----------------------
+- λ = 1.0: Solo relevancia (= similarity search normal)
+- λ = 0.5: Balance (recomendado)
+- λ = 0.0: Solo diversidad (chunks muy diferentes entre sí)
+
+VENTAJAS:
+---------
+✅ Usa el context window eficientemente
+✅ Trae información diversa
+✅ Evita repetición
+✅ Mejora respuestas para queries abiertas
+
+DESVENTAJAS:
+-----------
+❌ Más lento que similarity search (requiere calcular similitudes entre chunks)
+❌ Puede traer chunks "demasiado diversos" si λ es bajo
+
+CUÁNDO USAR:
+-----------
+✅ Queries abiertas ("Cuéntame sobre la propiedad")
+✅ Cuando recuperas muchos chunks (k > 5)
+✅ Knowledge base con contenido repetitivo
+
+❌ Queries precisas de fact-finding ("¿Cuál es el WiFi password?")
+❌ Cuando velocidad > calidad
+
+================================================================================
+TÉCNICA #6: PROMPT CACHING (ANTHROPIC/OPENAI 2025)
+================================================================================
+
+QUÉ ES:
+-------
+Cachear partes del prompt que se repiten en múltiples llamadas.
+
+FUNCIONAMIENTO:
+--------------
+Sin caching:
+  Request 1:
+    System prompt: 2,000 tokens
+    KB entries: 10,000 tokens
+    User message: 100 tokens
+    Total input: 12,100 tokens (PAGAS POR TODO)
+  
+  Request 2:
+    System prompt: 2,000 tokens (MISMO)
+    KB entries: 10,000 tokens (MISMO)
+    User message: 100 tokens (DIFERENTE)
+    Total input: 12,100 tokens (PAGAS POR TODO OTRA VEZ)
+
+Con caching:
+  Request 1:
+    System prompt: 2,000 tokens (cacheado)
+    KB entries: 10,000 tokens (cacheado)
+    User message: 100 tokens
+    Total: 12,100 tokens write, 0 read
+  
+  Request 2:
+    System prompt: 2,000 tokens (cache HIT)
+    KB entries: 10,000 tokens (cache HIT)
+    User message: 100 tokens (nuevo)
+    Total: 100 tokens write, 12,000 read
+    
+    Costo read = ~10% del costo write
+    Ahorro: ~90%
+
+IMPLEMENTACIÓN (Anthropic Claude):
+---------------------------------
+import anthropic
+
+client = anthropic.Anthropic()
+
+# Primer request
+response = client.messages.create(
+    model="claude-3-5-sonnet-20241022",
+    max_tokens=1024,
+    system=[
+        {
+            "type": "text",
+            "text": "You are a vacation rental host...",  # System prompt
+            "cache_control": {"type": "ephemeral"}  # CACHEAR ESTO
+        },
+        {
+            "type": "text",
+            "text": "Knowledge base:\n- Check-in: 3 PM\n- WiFi: ABC123\n...",  # KB
+            "cache_control": {"type": "ephemeral"}  # CACHEAR ESTO
+        }
+    ],
+    messages=[
+        {"role": "user", "content": "What's the WiFi password?"}  # NO cacheado
+    ]
+)
+
+# Segundo request (mismo system prompt y KB)
+response = client.messages.create(
+    model="claude-3-5-sonnet-20241022",
+    max_tokens=1024,
+    system=[
+        {
+            "type": "text",
+            "text": "You are a vacation rental host...",  # CACHE HIT
+            "cache_control": {"type": "ephemeral"}
+        },
+        {
+            "type": "text",
+            "text": "Knowledge base:\n- Check-in: 3 PM\n...",  # CACHE HIT
+            "cache_control": {"type": "ephemeral"}
+        }
+    ],
+    messages=[
+        {"role": "user", "content": "When is check-in?"}  # Nuevo query
+    ]
+)
+
+REQUISITOS:
+----------
+- Anthropic: Bloques cacheables deben ser >= 1,024 tokens
+- OpenAI: Prompt caching automático (no requiere config)
+- Cache dura ~5 minutos (Anthropic)
+
+VENTAJAS:
+---------
+✅ Ahorra 90% en tokens repetidos
+✅ Respuestas más rápidas (no re-procesa contexto cacheado)
+✅ Permite usar contextos MÁS GRANDES sin explotar costos
+
+DESVENTAJAS:
+-----------
+❌ Solo útil si el contexto se repite (chat, multiple queries)
+❌ Cache expira (5-10 min dependiendo del provider)
+❌ Requiere mínimo de tokens para cachear
+
+CUÁNDO USAR:
+-----------
+✅ SIEMPRE en producción con chat/multiple queries
+✅ System prompts grandes (1,000+ tokens)
+✅ Knowledge base estático que se usa repetidamente
+
+❌ One-shot queries (no hay siguiente llamada para aprovechar cache)
+❌ Contexto que cambia constantemente
+
+================================================================================
+COMPARACIÓN FINAL: ¿QUÉ TÉCNICAS USAR?
+================================================================================
+
+ESCENARIO 1: STARTUP / MVP (Presupuesto Bajo)
+----------------------------------------------
+Stack recomendado:
+1. RecursiveCharacterTextSplitter (gratis, rápido)
+2. Embeddings: text-embedding-3-small (barato)
+3. Vector DB: ChromaDB local (gratis)
+4. Prompt caching (si usas Claude/OpenAI)
+
+Resultado:
+- Costo: ~$0-50/mes
+- Calidad: 7/10
+- Velocidad: Alta
+
+ESCENARIO 2: PRODUCCIÓN PEQUEÑA (< 100 Documentos)
+-------------------------------------------------
+Stack recomendado:
+1. Semantic Chunking (mejor calidad)
+2. Embeddings: text-embedding-3-large
+3. Vector DB: Pinecone/Weaviate (managed)
+4. MMR retrieval
+5. Prompt caching
+
+Resultado:
+- Costo: ~$100-300/mes
+- Calidad: 8.5/10
+- Velocidad: Media
+
+ESCENARIO 3: PRODUCCIÓN ENTERPRISE (100+ Documentos)
+---------------------------------------------------
+Stack recomendado:
+1. Contextual Retrieval (Anthropic 2025)
+2. Hierarchical Retrieval
+3. Embeddings: text-embedding-3-large
+4. Vector DB: Pinecone/Weaviate con metadata filters
+5. MMR retrieval con reranking
+6. Prompt caching
+
+Resultado:
+- Costo: ~$500-2,000/mes
+- Calidad: 9.5/10
+- Velocidad: Media-Alta
+
+PARA CHATBOTAI (TU CASO):
+-------------------------
+Recomendación Stack:
+
+FASE 1 (Esta semana):
+1. Implementar KB Retriever con embeddings (Solución 5A del txt anterior)
+2. Usar RecursiveCharacterTextSplitter con token-based sizing
+3. Chunk size: 512 tokens, overlap: 64 tokens
+4. Implementar Prompt Caching (Claude/OpenAI)
+
+FASE 2 (Próximas 2 semanas):
+5. Agregar MMR retrieval
+6. Implementar Contextual Retrieval para KB entries críticas
+7. Intent Detection (ya lo tienes en Solución #4)
+
+FASE 3 (Próximo mes):
+8. Hierarchical Retrieval si creces a 50+ properties
+9. Semantic Chunking para documentos complejos (manuales PDF)
+
+Resultado esperado:
+- Mejora inmediata: 70-80% (Fase 1)
+- Mejora total: 90%+ (Fase 3)
+- Costo adicional: ~$50-150/mes (embeddings + vector DB)
+
+================================================================================
+RECURSOS Y REFERENCIAS
+================================================================================
+
+LIBRERÍAS PRINCIPALES:
+---------------------
+- sentence-transformers: Embeddings locales, gratis
+  pip install sentence-transformers
+
+- LangChain: Text splitters, retrievers
+  pip install langchain langchain-experimental langchain-openai
+
+- ChromaDB: Vector DB local
+  pip install chromadb
+
+- tiktoken: Token counting preciso
+  pip install tiktoken
+
+DOCUMENTACIÓN:
+-------------
+- AWS RAG Best Practices:
+  https://docs.aws.amazon.com/prescriptive-guidance/latest/writing-best-practices-rag/
+
+- LlamaIndex Production RAG:
+  https://docs.llamaindex.ai/en/stable/optimizing/production_rag/
+
+- Anthropic Contextual Retrieval:
+  https://www.anthropic.com/news/contextual-retrieval (2025)
+
+- Field Guide to AI Context Management:
+  https://fieldguidetoai.com/guides/context-management
+
+PAPERS/ARTÍCULOS CLAVE:
+----------------------
+- "Lost in the Middle: How Language Models Use Long Contexts" (2023)
+  Demuestra que modelos olvidan información en el medio de contextos largos
+
+- "Retrieval-Augmented Generation for Large Language Models: A Survey" (2024)
+  Survey completo de técnicas RAG
+
+- Anthropic "Contextual Retrieval" Blog Post (2025)
+  49% reducción en retrieval failures
+
+================================================================================
+FIN DEL DOCUMENTO
+================================================================================
+
+Creado: 27 de marzo 2026
+Última actualización: 27 de marzo 2026
+
+Para implementación práctica, volver a AI_Response_Focus_Solutions.txt
+y combinar con las técnicas descritas aquí.

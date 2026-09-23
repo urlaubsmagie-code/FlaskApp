@@ -85,7 +85,7 @@
             {% if conversation.platform == 'smoobu' and conversation.smoobu_reservation_id %}
             {# ponytail: plain link, Smoobu redirects through its own login if needed #}
             <a class="btn btn-icon" id="smoobuBookingBtn" target="_blank" rel="noopener"
-               href="https://login.smoobu.com/de/booking/edit/{{ conversation.smoobu_reservation_id }}"
+               href="https://login.smoobu.com/de/booking/detail/{{ conversation.smoobu_reservation_id }}"
                title="In Smoobu öffnen (Gast- und Buchungsdaten)">
                 <i class="fas fa-up-right-from-square"></i>
             </a>
@@ -128,7 +128,7 @@
             </button>
             {% if conversation.platform == 'smoobu' and conversation.smoobu_reservation_id %}
             <a class="overflow-menu-item" target="_blank" rel="noopener"
-               href="https://login.smoobu.com/de/booking/edit/{{ conversation.smoobu_reservation_id }}">
+               href="https://login.smoobu.com/de/booking/detail/{{ conversation.smoobu_reservation_id }}">
                 <i class="fas fa-up-right-from-square"></i>
                 <span>In Smoobu öffnen</span>
             </a>
@@ -241,6 +241,13 @@
                     </span>
                     <span class="message-time">{{ message.sent_at|to_local if message.sent_at else '' }}</span>
                 </div>
+                {% set media = message.media %}
+                {% if media %}
+                    {% if media.kind == 'image' %}<a class="message-media" href="{{ media.url }}" target="_blank" rel="noopener"><img src="{{ media.url }}" alt="" loading="lazy"></a>
+                    {% elif media.kind == 'audio' %}<audio class="message-media" controls preload="none" src="{{ media.url }}"></audio>
+                    {% elif media.kind == 'video' %}<video class="message-media" controls preload="metadata" src="{{ media.url }}"></video>
+                    {% else %}<a class="message-media message-media-file" href="{{ media.url }}" target="_blank" rel="noopener"><i class="fas fa-file"></i> Datei öffnen</a>{% endif %}
+                {% endif %}
                 <div class="message-text">{{ message.content }}</div>
                 {% if message.platform_message_id and message.platform_message_id.startswith('email:') %}
                 <div class="email-source-tag" data-i18n="conversation.emailSource">via E-Mail-Abgleich</div>
@@ -326,7 +333,7 @@
         </div>
         <form class="message-form" id="messageForm" onsubmit="sendMessage(event)">
             <textarea
-                id="messageInput"
+                id="messageInput" aria-label="Nachricht"
                 data-i18n-placeholder="conversation.placeholder"
                 placeholder="Nachricht eingeben..."
                 rows="2"
@@ -336,6 +343,7 @@
                 <i class="fas fa-paper-plane"></i> <span data-i18n="conversation.send">Senden</span>
             </button>
         </form>
+        <p id="sendStatus" class="composer-hint" role="status" aria-live="polite"></p>
         <div class="send-hint">
             <span class="draft-indicator" id="draftIndicator" data-i18n="conversation.draft">Entwurf gespeichert</span>
             {% if gmail_connected and conversation.platform == 'email' %}
@@ -352,7 +360,9 @@
     </div>
 </div>
 
-<script src="{{ url_for('chatbot.static', filename='js/polling.js') }}?v=8"></script>
+
+
+<script src="{{ url_for('chatbot.static', filename='js/polling.js') }}?v=9"></script>
 <script>
     window.CONV_CONFIG = {
         conversationId: {{ conversation.id }},
@@ -375,7 +385,7 @@
     };
 </script>
 <script src="{{ url_for('chatbot.static', filename='js/guided-tour.js') }}?v=1"></script>
-<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=49"></script>
+<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}?v=56"></script>
 {% if request.args.get('diag') %}
 {# Throwaway on-device layout probe: ?diag=1 on any chat. Remove with the
    /viewport-check route once the mobile layout is settled. #}

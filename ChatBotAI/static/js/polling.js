@@ -5,6 +5,32 @@
  * and request cancellation via AbortController.
  */
 
+const connectionFeedback = {
+    failures: new Set(),
+    checking: false,
+    render() {
+        let banner = document.getElementById('connectionNotice');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'connectionNotice';
+            banner.className = 'connection-notice';
+            banner.setAttribute('role', 'status');
+            banner.setAttribute('aria-live', 'polite');
+            document.body.appendChild(banner);
+        }
+        const key = navigator.onLine === false ? 'ux.offline'
+            : this.failures.size ? 'ux.refreshFailed' : this.checking ? 'ux.reconnecting' : null;
+        banner.hidden = !key;
+        banner.textContent = key ? i18n.t(key) : '';
+    },
+    success(poller) { this.failures.delete(poller); this.checking = false; this.render(); },
+    failure(poller) { this.failures.add(poller); this.render(); }
+};
+window.addEventListener('offline', () => connectionFeedback.render());
+window.addEventListener('online', () => { connectionFeedback.checking = true; connectionFeedback.render(); });
+document.addEventListener('languageChanged', () => connectionFeedback.render());
+connectionFeedback.render();
+
 class PollingManager {
     /**
      * Create a new PollingManager instance
@@ -92,6 +118,7 @@ class PollingManager {
             // Guard: Check if still polling after async operation
             if (this.isPolling) {
                 this.onUpdate(data);
+                connectionFeedback.success(this);
                 this._scheduleNext();
             }
         } catch (error) {
@@ -102,6 +129,7 @@ class PollingManager {
 
             // Call error handler if still polling
             if (this.isPolling) {
+                connectionFeedback.failure(this);
                 this.onError(error);
                 this._scheduleNext();
             }

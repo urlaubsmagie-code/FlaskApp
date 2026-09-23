@@ -3,13 +3,20 @@ Smoobu Service for ChatBotAI
 Handles all interactions with the Smoobu messaging and reservation API.
 """
 
+import base64
+import hashlib
+import hmac
+import json
 import logging
 import re
+import uuid
+from urllib.parse import urlparse
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from typing import Optional, Dict, List, Any
 
 import requests
+from sqlalchemy import or_ as db_or
 from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
@@ -107,13 +114,22 @@ def _res_guest_counts(res):
 class SmoobuService:
     """Service for interacting with the Smoobu API"""
 
-    def __init__(self, api_url: str = 'https://login.smoobu.com/api', api_key: str = ''):
+    def __init__(self, api_url: str = 'https://login.smoobu.com/api', api_key: str = '',
+                 slot: int = 1):
         self.api_url = api_url.rstrip('/')
         self._api_key = api_key
+        # Which account slot this instance serves (1 = the original account).
+        self.slot = slot
         # In-memory cache for the DB-stored key. Loaded on first access,
         # invalidated by reload_api_key() when the user updates the setting.
         self._cached_api_key: Optional[str] = None
         self._api_key_cache_loaded: bool = False
+        self._cached_account_id: Optional[str] = None
+        self._account_id_cache_loaded: bool = False
+        self._cached_secret: Optional[str] = None
+        self._secret_cache_loaded: bool = False
+        self._cached_sync_from: Optional[datetime] = None
+        self._sync_from_cache_loaded: bool = False
 
     @property
     def api_key(self) -> str:
@@ -121,13 +137,117 @@ class SmoobuService:
         if not self._api_key_cache_loaded:
             try:
                 from ..models import AISettings
-                db_key = AISettings.get('smoobu_api_key')
+                db_key = AISettings.get(settings_key(self.slot))
                 self._cached_api_key = db_key or None
             except Exception:
                 self._cached_api_key = None
             self._api_key_cache_loaded = True
 
         return self._cached_api_key or self._api_key
+
+    @property
+    def api_secret(self) -> Optional[str]:
+        """HMAC secret for this key, if the key uses Smoobu's new token auth.
+
+        Empty for legacy keys, which authenticate with the single Api-Key header.
+        """
+        if not self._secret_cache_loaded:
+            try:
+                from ..models import AISettings
+                self._cached_secret = AISettings.get(secret_settings_key(self.slot)) or None
+            except Exception:
+                self._cached_secret = None
+            self._secret_cache_loaded = True
+        return self._cached_secret
+
+    @property
+    def sync_from(self) -> Optional[datetime]:
+        """Only import messages newer than this (None = import everything)."""
+        if not self._sync_from_cache_loaded:
+            self._cached_sync_from = None
+            try:
+                from ..models import AISettings
+                raw = AISettings.get(sync_from_settings_key(self.slot))
+                if raw:
+                    self._cached_sync_from = datetime.fromisoformat(raw.replace('Z', ''))
+            except Exception:
+                logger.warning("Bad smoobu sync_from value for slot %s", self.slot)
+            self._sync_from_cache_loaded = True
+        return self._cached_sync_from
+
+    def _too_old(self, when) -> bool:
+        """True when a message/thread predates this account's cutoff."""
+        cutoff = self.sync_from
+        return bool(cutoff and when and when < cutoff)
+
+    @property
+    def account_id(self) -> Optional[str]:
+        """Smoobu account id for this key — the same number webhooks send as 'user'.
+
+        Stored at connect time (see fetch_account_id); read-through cached here.
+        """
+        if not self._account_id_cache_loaded:
+            try:
+                from ..models import AISettings
+                self._cached_account_id = AISettings.get(account_settings_key(self.slot)) or None
+            except Exception:
+                self._cached_account_id = None
+            self._account_id_cache_loaded = True
+        return self._cached_account_id
+
+    def fetch_account_id(self) -> Optional[str]:
+        """Ask Smoobu who this key belongs to (GET /me) and persist the id."""
+        resp = self._request('GET', '/me')
+        if resp is None or resp.status_code != 200:
+            return None
+        try:
+            account_id = str((resp.json() or {}).get('id') or '')
+        except ValueError:
+            return None
+        if not account_id:
+            return None
+        try:
+            from ..models import AISettings
+            AISettings.set(account_settings_key(self.slot), account_id,
+                           description=f'Smoobu account id (slot {self.slot})')
+        except Exception:
+            logger.exception("Failed to store Smoobu account id for slot %s", self.slot)
+        self._cached_account_id = account_id
+        self._account_id_cache_loaded = True
+        return account_id
+
+    def ensure_account_id(self) -> Optional[str]:
+        """Resolve and store this key's account id if we don't have it yet.
+
+        Self-heal for the account connected before multi-account existed: its key
+        was saved without ever calling /me. Called at the start of each daemon
+        cycle (never on a request path). For the primary account it also stamps
+        the rows that predate the tag, so they stop relying on the NULL fallback.
+        """
+        if self.account_id or not self.is_configured():
+            return self.account_id
+        account_id = self.fetch_account_id()
+        if account_id and self.slot == 1:
+            self._backfill_untagged_rows(account_id)
+        return account_id
+
+    @staticmethod
+    def _backfill_untagged_rows(account_id: str) -> None:
+        from ..models import db, Conversation, Property
+        try:
+            Conversation.query.filter(
+                Conversation.smoobu_reservation_id.isnot(None),
+                Conversation.smoobu_account_id.is_(None),
+            ).update({'smoobu_account_id': account_id}, synchronize_session=False)
+            Property.query.filter(
+                Property.smoobu_apartment_id.isnot(None),
+                Property.smoobu_account_id.is_(None),
+            ).update({'smoobu_account_id': account_id}, synchronize_session=False)
+            db.session.commit()
+            logger.info("Tagged pre-existing Smoobu rows with account %s", account_id)
+        except Exception:
+            db.session.rollback()
+            logger.exception("Failed to backfill Smoobu account tags")
 
     def reload_api_key(self) -> None:
         """Invalidate the cached API key so the next access re-reads from the DB.
@@ -136,10 +256,40 @@ class SmoobuService:
         """
         self._cached_api_key = None
         self._api_key_cache_loaded = False
+        self._cached_account_id = None
+        self._account_id_cache_loaded = False
+        self._cached_secret = None
+        self._secret_cache_loaded = False
+        self._cached_sync_from = None
+        self._sync_from_cache_loaded = False
 
     # Track rate-limit state across requests
     _rate_limit_remaining: Optional[int] = None
     _rate_limit_retry_after: Optional[float] = None
+
+    @staticmethod
+    def _hmac_headers(method: str, url: str, body: bytes, key: str, secret: str) -> Dict[str, str]:
+        """Smoobu HMAC auth headers.
+
+        Canonical string, newline separated:
+            METHOD \n PATH \n QUERY \n TIMESTAMP \n NONCE \n SHA256(body) \n API_KEY
+        signed with HMAC-SHA256 (the secret is used as the literal string Smoobu
+        showed, NOT base64-decoded) and Base64 encoded. PATH includes the /api
+        prefix; QUERY is the alphabetically sorted query string.
+        """
+        parsed = urlparse(url)
+        query = '&'.join(sorted(parsed.query.split('&'))) if parsed.query else ''
+        timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        nonce = str(uuid.uuid4())
+        canonical = '\n'.join([
+            method.upper(), parsed.path, query, timestamp, nonce,
+            hashlib.sha256(body).hexdigest(), key,
+        ])
+        signature = base64.b64encode(
+            hmac.new(secret.encode('utf-8'), canonical.encode('utf-8'), hashlib.sha256).digest()
+        ).decode('ascii')
+        return {'X-API-Key': key, 'X-Timestamp': timestamp,
+                'X-Nonce': nonce, 'X-Signature': signature}
 
     def _request(self, method: str, endpoint: str, **kwargs) -> Optional[requests.Response]:
         """Centralized HTTP request with Api-Key header, rate-limit handling, and retry."""
@@ -157,8 +307,23 @@ class SmoobuService:
 
         url = f"{self.api_url}/{endpoint.lstrip('/')}"
         headers = kwargs.pop('headers', {})
-        headers['Api-Key'] = key
         headers.setdefault('Content-Type', 'application/json')
+
+        # Body is serialized here (not by requests) so the signature is computed
+        # over the exact bytes that go on the wire.
+        body_json = kwargs.pop('json', None)
+        if body_json is not None:
+            kwargs['data'] = json.dumps(body_json)
+        body_bytes = (kwargs.get('data') or '')
+        if isinstance(body_bytes, str):
+            body_bytes = body_bytes.encode('utf-8')
+
+        secret = self.api_secret
+        if secret:
+            headers.update(self._hmac_headers(method, url, body_bytes, key, secret))
+        else:
+            # Legacy single-header auth. Smoobu sunsets it on 2026-09-25.
+            headers['Api-Key'] = key
 
         timeout = kwargs.pop('timeout', 30)
         # Non-idempotent calls (message send) opt out of the 429 retry: re-POSTing
@@ -176,9 +341,16 @@ class SmoobuService:
                 remaining = response.headers.get('X-RateLimit-Remaining')
                 if remaining is not None:
                     self._rate_limit_remaining = int(remaining)
+                # X-RateLimit-Retry-After is sent on EVERY response — it is the
+                # window reset time (~60s out), not a "you are blocked" signal.
+                # Only a 429 (or an exhausted quota) may make us wait, otherwise
+                # every single call would sleep up to a minute first.
                 retry_after = response.headers.get('X-RateLimit-Retry-After')
-                if retry_after:
+                if retry_after and (response.status_code == 429
+                                    or (remaining is not None and int(remaining) <= 0)):
                     self._rate_limit_retry_after = float(retry_after)
+                else:
+                    self._rate_limit_retry_after = None
 
                 if remaining is not None and int(remaining) < 50:
                     logger.warning(f"Smoobu rate limit low: {remaining} requests remaining")
@@ -248,6 +420,9 @@ class SmoobuService:
         """Get connection status."""
         key = self.api_key
         return {
+            'slot': self.slot,
+            'account_id': self.account_id,
+            'auth': 'hmac' if self.api_secret else 'legacy',
             'configured': bool(key),
             'authenticated': self.is_authenticated() if key else False,
             'api_key_masked': f"...{key[-4:]}" if key and len(key) > 4 else ''
@@ -257,7 +432,14 @@ class SmoobuService:
         """Clear stored API key."""
         try:
             from ..models import AISettings
-            AISettings.set('smoobu_api_key', '', description='Smoobu API key')
+            AISettings.set(settings_key(self.slot), '',
+                           description=f'Smoobu API key (slot {self.slot})')
+            AISettings.set(secret_settings_key(self.slot), '',
+                           description=f'Smoobu HMAC secret (slot {self.slot})')
+            AISettings.set(account_settings_key(self.slot), '',
+                           description=f'Smoobu account id (slot {self.slot})')
+            AISettings.set(sync_from_settings_key(self.slot), '',
+                           description=f'Smoobu sync cutoff (slot {self.slot})')
             self.reload_api_key()
         except Exception as e:
             logger.error(f"Failed to clear Smoobu API key: {e}")
@@ -366,12 +548,33 @@ class SmoobuService:
         body: Dict[str, Any] = {'messageBody': message_text}
         if subject:
             body['subject'] = subject
-        resp = self._request('POST',
-                             f'/reservations/{reservation_id}/messages/send-message-to-guest',
-                             json=body, allow_retry=False)
-        if resp and resp.status_code in (200, 201):
-            return resp.json()
-        return None
+        from .delivery_audit import record_delivery_event
+        import hashlib
+        import uuid
+        attempt_id = uuid.uuid4().hex
+        record_delivery_event(attempt_id, 'started', platform='smoobu',
+                              reservation_id=str(reservation_id), account_slot=self.slot,
+                              content_sha256=hashlib.sha256(message_text.encode('utf-8')).hexdigest(),
+                              content_length=len(message_text))
+        status = None
+        try:
+            resp = self._request('POST',
+                                 f'/reservations/{reservation_id}/messages/send-message-to-guest',
+                                 json=body, allow_retry=False)
+            status = resp.status_code if resp is not None else None
+            if status in (200, 201):
+                result = resp.json()
+                record_delivery_event(attempt_id, 'finished', outcome='accepted', http_status=status)
+                return result
+            # No response / a server failure cannot prove the guest did not
+            # receive it. Keep that ambiguity visible rather than auto-retrying.
+            outcome = 'rejected' if status is not None and 400 <= status < 500 else 'unknown'
+            record_delivery_event(attempt_id, 'finished', outcome=outcome, http_status=status)
+            return None
+        except Exception as exc:
+            record_delivery_event(attempt_id, 'finished', outcome='unknown', http_status=status,
+                                  error_type=type(exc).__name__)
+            raise
 
     # =========================================================================
     # Reservations API
@@ -615,6 +818,12 @@ class SmoobuService:
 
                 existing_conv = conv_by_platform_id.get(f"smoobu-{reservation_id}")
 
+                # Unknown reservation older than the account cutoff: don't fetch
+                # its messages every cycle just to throw them all away.
+                if not existing_conv and self._too_old(
+                        _parse_smoobu_timestamp(thread.get('modified_at'))):
+                    continue
+
                 # Fast-path skip: for a conversation we already have, only pay the
                 # per-reservation message API call if Smoobu says the reservation
                 # changed since our newest stored message. Re-fetching every
@@ -745,6 +954,7 @@ class SmoobuService:
                                 conv = Conversation.query.get(conv_id)
                                 if conv and not conv.smoobu_reservation_id:
                                     conv.smoobu_reservation_id = reservation_id
+                                    conv.smoobu_account_id = self.account_id
                                     db.session.commit()
                     else:
                         # Store owner/host messages (type=2, outbox)
@@ -787,6 +997,7 @@ class SmoobuService:
                                 platform_id=f"smoobu-{reservation_id}",
                                 subject=thread.get('subject') or f"Reservation {reservation_id}",
                                 smoobu_reservation_id=reservation_id,
+                                smoobu_account_id=self.account_id,
                                 property_id=property_id
                             )
                             db.session.add(conv)
@@ -936,6 +1147,110 @@ class SmoobuService:
         logger.info(f"Smoobu sync complete: {result['imported']} new messages imported")
         return result
 
+    def sync_recent_threads(self, max_pages: Optional[int] = 5) -> Dict[str, Any]:
+        """Sync the most-recent Smoobu message threads (mirrors the Smoobu inbox).
+
+        Smoobu's own inbox is backed by GET /threads, ordered by most-recent
+        activity. The /reservations-based daemon sweep can miss freshly-created,
+        owner-outbound-only threads (welcome / invoice / marketing sends) because
+        their discovery depends on reservation timing. Walking the first N pages
+        of /threads each cycle catches exactly those, cheaply: a per-reservation
+        message fetch is only paid for a thread whose newest message we have NOT
+        stored yet.
+
+        Args:
+            max_pages: How many /threads pages to walk (Smoobu returns 25/page).
+                Small number (default 5 = 125 newest threads) for the steady-state
+                daemon sweep; pass None to walk ALL pages (one-time backfill).
+
+        Returns:
+            Dict with threads_seen, synced (threads that needed a fetch) and
+            imported (new messages stored).
+        """
+        from ..models import Conversation, Message
+
+        result = {'success': False, 'threads_seen': 0, 'synced': 0,
+                  'imported': 0, 'errors': []}
+
+        PAGE_CAP = 800  # hard safety cap for the "all pages" backfill
+        threads: List[Dict[str, Any]] = []
+        page = 1
+        while True:
+            data = self.get_threads(page=page, page_size=100)
+            if not data:
+                break
+            if isinstance(data, dict):
+                page_threads = (data.get('threads') or data.get('data')
+                                or data.get('entries') or [])
+                page_count = data.get('page_count')
+            elif isinstance(data, list):
+                page_threads = data
+                page_count = None
+            else:
+                break
+            if not page_threads:
+                break
+            threads.extend(page_threads)
+
+            if max_pages is not None and page >= max_pages:
+                break
+            if page_count and page >= page_count:
+                break
+            if page >= PAGE_CAP:
+                break
+            page += 1
+
+        result['threads_seen'] = len(threads)
+
+        for t in threads:
+            rid = ''
+            try:
+                booking = t.get('booking') if isinstance(t.get('booking'), dict) else {}
+                rid = str(booking.get('id') or t.get('reservationId')
+                          or t.get('reservation_id') or t.get('id') or '')
+                if not rid:
+                    continue
+
+                # Smoobu nests the newest message under latest_message.id. If we
+                # already stored that exact message, the thread is in sync and we
+                # skip the per-reservation fetch entirely (DB lookup only).
+                latest = t.get('latest_message') or t.get('lastMessage') or {}
+                latest_id = str(latest.get('id') or '') if isinstance(latest, dict) else ''
+
+                # Below this account's cutoff the thread is history — skip before
+                # paying for the per-reservation fetch.
+                if isinstance(latest, dict) and self._too_old(
+                        _parse_smoobu_timestamp(latest.get('created_at'))):
+                    continue
+
+                conv = Conversation.query.filter_by(
+                    platform_id=f"smoobu-{rid}"
+                ).first()
+
+                if conv and latest_id:
+                    pmid = f"smoobu-{rid}-{latest_id}"
+                    already = Message.query.filter_by(
+                        conversation_id=conv.id, platform_message_id=pmid
+                    ).first()
+                    if already:
+                        continue  # newest message already stored
+
+                # New thread, or newest message not yet stored -> sync. Reuses the
+                # battle-tested per-reservation path (dedup + conversation creation
+                # + last_message_at / is_read handling).
+                res = self.sync_conversation_messages(rid)
+                result['synced'] += 1
+                result['imported'] += res.get('imported', 0)
+            except Exception as e:
+                logger.exception("sync_recent_threads: error on thread rid=%s", rid)
+                result['errors'].append(f"thread {rid}: {e}")
+
+        result['success'] = True
+        logger.info(
+            "Smoobu /threads sweep: %d threads seen, %d synced, %d new message(s) imported",
+            result['threads_seen'], result['synced'], result['imported'])
+        return result
+
     def _resolve_property_id(self, thread: Dict[str, Any]) -> Optional[int]:
         """Resolve our Property.id from a thread/reservation's apartment ref.
 
@@ -954,8 +1269,25 @@ class SmoobuService:
                                or thread.get('apartmentId') or '')
         if not apartment_id:
             return None
-        prop = Property.query.filter_by(smoobu_apartment_id=apartment_id).first()
+        prop = self._property_for_apartment(apartment_id)
         return prop.id if prop else None
+
+    def _property_for_apartment(self, apartment_id: str):
+        """Property for an apartment id **within this account**.
+
+        Apartment ids are only unique per Smoobu account, so an account-blind
+        lookup could hand back another account's apartment. Rows synced before
+        multi-account existed have a NULL tag and belong to the primary account.
+        """
+        from ..models import Property
+        q = Property.query.filter_by(smoobu_apartment_id=str(apartment_id))
+        account_id = self.account_id
+        if self.slot == 1:
+            q = q.filter(db_or(Property.smoobu_account_id == account_id,
+                               Property.smoobu_account_id.is_(None)))
+        else:
+            q = q.filter(Property.smoobu_account_id == account_id)
+        return q.first()
 
     def sync_conversation_messages(self, reservation_id: str,
                                    force: bool = False) -> Dict[str, Any]:
@@ -1066,6 +1398,11 @@ class SmoobuService:
                     msg.get('created_at') or msg.get('createdAt') or msg.get('date')
                 )
 
+                # Account cutoff: a newly connected account starts fresh instead
+                # of pulling its whole history into the inbox.
+                if self._too_old(msg_time):
+                    continue
+
                 # Skip messages older than sync watermark
                 if conv and conv.last_synced_message_at and msg_time:
                     if msg_time <= conv.last_synced_message_at:
@@ -1110,9 +1447,48 @@ class SmoobuService:
                                 platform_id=f"smoobu-{reservation_id}"
                             ).first()
                 else:
-                    # Owner/host message
+                    # Owner/host message. Create the conversation if this is an
+                    # owner-outbound-only thread we've never seen (welcome /
+                    # invoice / marketing send on a brand-new booking, before any
+                    # guest reply). Previously this did `if not conv: continue`,
+                    # which silently dropped these threads when they arrived via
+                    # the webhook / /threads sweep — they only appeared if the
+                    # /reservations daemon happened to discover them. Mirror
+                    # sync_messages so owner-only chats are created here too.
                     if not conv:
-                        continue
+                        from .guest_matching import find_existing_guest
+                        guest = find_existing_guest(
+                            email=prefetched_guest_email or None,
+                            name=prefetched_guest_name or None,
+                        )
+                        if not guest:
+                            guest = Guest(
+                                name=prefetched_guest_name or f"Guest {reservation_id}",
+                                email=prefetched_guest_email or None,
+                            )
+                            db.session.add(guest)
+                            try:
+                                db.session.flush()
+                            except IntegrityError:
+                                # Concurrent webhook beat us to it (email unique).
+                                db.session.rollback()
+                                guest = find_existing_guest(
+                                    email=prefetched_guest_email or None,
+                                    name=prefetched_guest_name or None,
+                                )
+                                if not guest:
+                                    raise
+                        conv = Conversation(
+                            guest_id=guest.id,
+                            platform='smoobu',
+                            platform_id=f"smoobu-{reservation_id}",
+                            subject=f"Reservation {reservation_id}",
+                            smoobu_reservation_id=reservation_id,
+                            smoobu_account_id=self.account_id,
+                            property_id=prefetched_property_id,
+                        )
+                        db.session.add(conv)
+                        db.session.commit()
 
                     # Check for existing by platform_message_id
                     existing = Message.query.filter_by(
@@ -1220,6 +1596,9 @@ class SmoobuService:
                 changed = True
             if not final_conv.smoobu_reservation_id:
                 final_conv.smoobu_reservation_id = reservation_id
+                changed = True
+            if not final_conv.smoobu_account_id and self.account_id:
+                final_conv.smoobu_account_id = self.account_id
                 changed = True
             if final_conv.property_id is None and prefetched_property_id:
                 final_conv.property_id = prefetched_property_id
@@ -1644,12 +2023,16 @@ class SmoobuService:
                     fields = self._extract_property_fields(apt)
 
                 # Check if property already exists
-                existing = Property.query.filter_by(smoobu_apartment_id=apt_id).first()
+                existing = self._property_for_apartment(apt_id)
                 if existing:
                     # Update all fields
                     changed = False
                     if existing.name != name:
                         existing.name = name
+                        changed = True
+                    # Stamp legacy rows (synced before multi-account) with their account
+                    if not existing.smoobu_account_id and self.account_id:
+                        existing.smoobu_account_id = self.account_id
                         changed = True
                     for key, value in fields.items():
                         if getattr(existing, key, None) != value:
@@ -1664,6 +2047,7 @@ class SmoobuService:
                     prop = Property(
                         name=name,
                         smoobu_apartment_id=apt_id,
+                        smoobu_account_id=self.account_id,
                         **fields
                     )
                     db.session.add(prop)
@@ -1680,21 +2064,95 @@ class SmoobuService:
         return result
 
 
-# Global instance
-_smoobu_service: Optional[SmoobuService] = None
+# =============================================================================
+# Account registry
+#
+# UMI talks to more than one Smoobu account (the Sonnenhof apartment lives in a
+# separate one). Each account is one SmoobuService with its own API key. The
+# account is never typed in by hand: the key identifies itself via GET /me, and
+# every webhook carries the same id in its "user" field.
+#
+# Settings keys: slot 1 is the original 'smoobu_api_key' (unchanged, so the
+# existing setup keeps working); further slots are 'smoobu_api_key_2', ...
+# =============================================================================
+
+MAX_SMOOBU_ACCOUNTS = 3  # ponytail: fixed slots beat an accounts table for 2-3 keys
+
+# Global instances, one per configured slot (slot number -> service)
+_smoobu_services: Dict[int, SmoobuService] = {}
+
+
+def settings_key(slot: int) -> str:
+    """AISettings key holding the API key for a slot (slot 1 = legacy name)."""
+    return 'smoobu_api_key' if slot == 1 else f'smoobu_api_key_{slot}'
+
+
+def secret_settings_key(slot: int) -> str:
+    """AISettings key holding the HMAC secret for a slot (empty = legacy auth)."""
+    return 'smoobu_api_secret' if slot == 1 else f'smoobu_api_secret_{slot}'
+
+
+def sync_from_settings_key(slot: int) -> str:
+    """AISettings key holding the 'ignore messages older than this' cutoff.
+
+    Set when a *new* account is connected so it starts with the messages that
+    arrive from then on, instead of importing years of history into the inbox.
+    """
+    return 'smoobu_sync_from' if slot == 1 else f'smoobu_sync_from_{slot}'
+
+
+def account_settings_key(slot: int) -> str:
+    """AISettings key holding the resolved Smoobu account id for a slot."""
+    return 'smoobu_account_id' if slot == 1 else f'smoobu_account_id_{slot}'
 
 
 def init_smoobu_service(app) -> SmoobuService:
-    """Initialize the Smoobu service with Flask app configuration."""
-    global _smoobu_service
-    _smoobu_service = SmoobuService(
-        api_url=app.config.get('SMOOBU_API_URL', 'https://login.smoobu.com/api'),
-        api_key=app.config.get('SMOOBU_API_KEY', '')
-    )
-    logger.info("Smoobu Service initialized")
-    return _smoobu_service
+    """Initialize all configured Smoobu accounts. Returns slot 1 (back-compat)."""
+    global _smoobu_services
+    api_url = app.config.get('SMOOBU_API_URL', 'https://login.smoobu.com/api')
+    _smoobu_services = {
+        slot: SmoobuService(
+            api_url=api_url,
+            # Only slot 1 inherits the env/config key; extra slots are DB-only.
+            api_key=app.config.get('SMOOBU_API_KEY', '') if slot == 1 else '',
+            slot=slot,
+        )
+        for slot in range(1, MAX_SMOOBU_ACCOUNTS + 1)
+    }
+    logger.info("Smoobu Service initialized (%d slots)", len(_smoobu_services))
+    return _smoobu_services[1]
 
 
 def get_smoobu_service() -> Optional[SmoobuService]:
-    """Get the current Smoobu service instance."""
-    return _smoobu_service
+    """Get the primary (slot 1) Smoobu service instance.
+
+    Kept for the many call sites that are not conversation-scoped. Anything
+    that sends or syncs for a specific chat must use get_smoobu_service_for().
+    """
+    return _smoobu_services.get(1)
+
+
+def get_smoobu_services() -> List[SmoobuService]:
+    """Every configured account, primary first. Used by the sync daemon."""
+    return [svc for _, svc in sorted(_smoobu_services.items()) if svc.is_configured()]
+
+
+def get_smoobu_service_by_account(account_id) -> Optional[SmoobuService]:
+    """Find the service for a Smoobu account id (the webhook 'user' field)."""
+    if not account_id:
+        return None
+    wanted = str(account_id)
+    for _, svc in sorted(_smoobu_services.items()):
+        if svc.is_configured() and str(svc.account_id or '') == wanted:
+            return svc
+    return None
+
+
+def get_smoobu_service_for(obj) -> Optional[SmoobuService]:
+    """Service for a Conversation/Property, by its smoobu_account_id tag.
+
+    Falls back to slot 1 for rows written before multi-account existed (their
+    tag is NULL) — that is exactly the old single-account behaviour.
+    """
+    svc = get_smoobu_service_by_account(getattr(obj, 'smoobu_account_id', None))
+    return svc or get_smoobu_service()

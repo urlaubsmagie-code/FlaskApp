@@ -1,0 +1,498 @@
+================================================================================
+                    CHATBOTAI - FUTURE PLANNING & IDEAS
+                         Created: 2026-02-23
+================================================================================
+
+This document tracks feature ideas, enhancements, and improvements for the
+ChatBotAI project. Items are organized by priority and category.
+
+Status Legend:
+  [ ] Not started
+  [~] In progress
+  [X] Completed
+
+
+================================================================================
+                    PRIORITY 1 - HIGH VALUE, QUICK WINS
+================================================================================
+
+[X] 1. KEYBOARD SHORTCUT: CTRL+ENTER TO SEND (Batch 1 - 2026-02-23)
+    ........................................
+    Category: UX
+    Effort: Small (10 min)
+    Description:
+      Add Ctrl+Enter (or Cmd+Enter on Mac) to submit messages from the
+      textarea in conversation view. Currently the user must click the
+      Send button, which slows down fast-paced conversations.
+
+    Where: templates/chatbot/conversation.html (textarea keydown listener)
+
+
+[X] 2. RELATIVE TIMESTAMPS IN INBOX (Batch 1 - 2026-02-23)
+    ................................
+    Category: UX
+    Effort: Small (30 min)
+    Description:
+      Replace static timestamps (e.g. "23.02 14:30") in the inbox with
+      relative times: "Just now", "5 min ago", "2 hours ago", "Yesterday",
+      "3 days ago". Keep the exact timestamp as a title attribute on hover.
+      Much easier to scan at a glance.
+
+    Where: static/js/inbox helpers, polling update functions
+
+
+[X] 3. TOAST NOTIFICATION CLEANUP (Batch 1 - 2026-02-23)
+    .............................
+    Category: UX / Code Quality
+    Effort: Small (30 min)
+    Description:
+      Replace remaining alert() calls (e.g. sendMessage error handler) with
+      the existing showNotification() toast system. Add auto-dismiss timer,
+      stacking for multiple toasts, and a subtle slide-in animation.
+
+    Where: templates/chatbot/conversation.html, static/js/app.js
+
+
+[X] 4. SMOOTH SCROLL & MESSAGE ANIMATIONS (Batch 1 - 2026-02-23)
+    .....................................
+    Category: UI Polish
+    Effort: Small (20 min)
+    Description:
+      - Use scrollIntoView({ behavior: 'smooth' }) instead of instant jump
+        when new messages arrive.
+      - Add a subtle fade-in or slide-up animation when new messages appear
+        in the conversation view.
+
+    Where: conversation.html (scrollToBottom, addMessageToUI)
+
+
+[X] 5. DESKTOP BROWSER NOTIFICATIONS (Batch 2 - 2026-02-23)
+    .................................
+    Category: Feature
+    Effort: Small (1 hour)
+    Description:
+      When a new guest message arrives via polling and the browser tab is not
+      focused, trigger a browser Notification with the guest name and message
+      preview. Request permission once on first visit.
+      This makes the dashboard useful as a passive monitor - the host can
+      work on other things and get alerted instantly.
+
+    Where: static/js/polling.js, conversation.html, inbox.html
+
+
+================================================================================
+                    PRIORITY 2 - HIGH VALUE FEATURES
+================================================================================
+
+[X] 6. QUICK REPLY TEMPLATES (CANNED RESPONSES) (Batch 3 - 2026-02-23)
+    ............................................
+    Category: Feature (Major)
+    Effort: Medium (3-4 hours)
+    Description:
+      Hosts repeatedly send the same information: WiFi passwords, check-in
+      instructions, house rules, directions, parking info. A template system
+      would save massive time every day.
+
+    Implementation:
+      - New database table: reply_templates (id, name, content, category)
+      - Settings page: CRUD interface to manage templates
+      - Conversation view: dropdown button next to message input
+      - Template variables: {guest_name}, {property_name}, {check_in_time}
+      - Variables auto-replaced when template is inserted into textarea
+      - Host can edit before sending (not auto-sent)
+
+    Example templates:
+      - "WiFi Info" -> "WiFi Name: ApartmentXY, Password: ..."
+      - "Check-in" -> "Hi {guest_name}, check-in is at {check_in_time}..."
+      - "Directions" -> "From the train station, take..."
+      - "House Rules" -> "Please note the following..."
+
+
+[X] 7. PROPERTY MANAGEMENT UI (Batch 3 - 2026-02-23)
+    .........................
+    Category: Feature
+    Effort: Medium (2-3 hours)
+    Description:
+      The Property model is fully built but the Settings page only has a
+      placeholder. Add a real CRUD form so the host can manage properties:
+      name, address, description, amenities, WiFi password, check-in/out
+      times, house rules, pet policy, max guests, bedrooms.
+
+      This directly improves AI response quality because property info is
+      already injected into AI prompts - it just needs real data.
+
+    Implementation:
+      - Settings page: expandable property cards with edit/delete
+      - Add Property modal with all fields
+      - Amenities as tag input (type and press Enter to add)
+      - Link conversations to specific properties
+      - API: POST/PUT/DELETE /api/properties
+
+
+[X] 8. DASHBOARD STATISTICS CARD (Batch 3 - 2026-02-23)
+    ............................
+    Category: Feature / UI
+    Effort: Medium (2-3 hours)
+    Description:
+      Add a stats summary bar at the top of the inbox page:
+      - Total conversations (all time / this month)
+      - Unread count (prominent badge)
+      - Messages today / this week
+      - Average response time
+      - Active guests count
+      - Optional: small sparkline chart for message volume
+
+    Implementation:
+      - New API endpoint: GET /api/stats
+      - Stats card component above the filter bar
+      - Compact, non-intrusive design (collapsible)
+      - Updated on each polling cycle
+
+
+[X] 9. AI TYPING INDICATOR (Batch 2 - 2026-02-23)
+    ......................
+    Category: UX
+    Effort: Small-Medium (1 hour)
+    Description:
+      When AI is generating a response (15-30 seconds), show a pulsing
+      "..." bubble in the message area (like WhatsApp/iMessage typing
+      indicator) instead of only disabling the button. Makes the wait
+      feel much shorter and more natural.
+
+    Implementation:
+      - Insert a temporary "typing" message div when AI request starts
+      - CSS animation: three dots pulsing in sequence
+      - Remove and replace with actual AI message when response arrives
+      - Show "AI is thinking..." label
+
+
+[X] 10. DARK MODE TOGGLE (Batch 2 - 2026-02-23)
+     ...................
+     Category: UI
+     Effort: Medium (2 hours)
+     Description:
+       The sidebar is already dark (#1e293b). CSS variables are already set
+       up perfectly for theme switching. Add a dark mode that swaps:
+         --bg-primary: #0f172a
+         --bg-secondary: #1e293b
+         --text-primary: #f1f5f9
+         --border-color: #334155
+       Store preference in localStorage alongside language.
+
+     Implementation:
+       - Define :root[data-theme="dark"] CSS variable overrides
+       - Toggle button in sidebar footer (next to language selector)
+       - Moon/sun icon toggle
+       - Persist in localStorage
+
+
+================================================================================
+                    PRIORITY 3 - VALUABLE ENHANCEMENTS
+================================================================================
+
+[ ] 11. CONVERSATION DATE GROUPING
+     .............................
+     Category: UI
+     Effort: Small-Medium (1 hour)
+     Description:
+       Group inbox conversations visually with date dividers:
+       "Today", "Yesterday", "This Week", "This Month", "Older".
+       Makes scanning much faster when there are many conversations.
+
+     Where: inbox.html rendering, polling update logic
+
+
+[ ] 12. MESSAGE DATE DIVIDERS
+     .......................
+     Category: UI
+     Effort: Small (45 min)
+     Description:
+       In conversation view, add centered date dividers between messages
+       from different days: "--- February 23, 2026 ---"
+       Avoids showing the full date on every single message bubble.
+
+     Where: conversation.html message rendering
+
+
+[X] 13. GUEST AVATAR COLORS (Batch 2 - 2026-02-23)
+     .....................
+     Category: UI Polish
+     Effort: Small (30 min)
+     Description:
+       Assign each guest a consistent avatar color based on a hash of their
+       name. Pick from a palette of 8-10 distinct colors. Makes scanning
+       the inbox much faster as you can identify guests by color.
+
+     Implementation:
+       - Hash function: simple string hash -> color index
+       - Palette: blue, green, orange, purple, teal, pink, red, indigo
+       - Apply to conversation-avatar in inbox and guest-avatar in header
+
+
+[ ] 14. AUTO-SAVE DRAFT MESSAGES
+     ..........................
+     Category: UX
+     Effort: Small (45 min)
+     Description:
+       If the host starts typing a reply and navigates away (back to inbox,
+       closes tab, etc.), save the draft text to localStorage keyed by
+       conversation ID. Restore it when they return to that conversation.
+
+     Implementation:
+       - Save on input event (debounced)
+       - Restore on page load
+       - Clear on successful send
+       - Key format: chatbot_draft_{conversationId}
+
+
+[ ] 15. GUEST MERGE TOOL
+     ...................
+     Category: Feature
+     Effort: Medium (3 hours)
+     Description:
+       When the same person contacts via email and then WhatsApp, two guest
+       profiles may be created. A merge tool would:
+       - Show "Merge with another guest" button on guest profile
+       - Search/select the duplicate guest
+       - Combine all details, conversations, and platform IDs
+       - Delete the duplicate record
+
+     Implementation:
+       - API: POST /api/guests/<id>/merge with target_guest_id
+       - Move all conversations and details to the primary guest
+       - Copy over any platform IDs the primary is missing
+       - Confirmation dialog showing what will be merged
+
+
+[ ] 16. EXPORT CONVERSATIONS
+     ......................
+     Category: Feature
+     Effort: Medium (2 hours)
+     Description:
+       Allow exporting a conversation or guest profile as PDF or plain text.
+       Useful for record-keeping, sharing with co-hosts, or printing.
+
+     Implementation:
+       - "Export" button on conversation and guest profile pages
+       - Formats: Plain text (.txt), CSV, or PDF
+       - Include guest info, all messages with timestamps, memory items
+       - API: GET /api/conversations/<id>/export?format=txt
+
+
+[ ] 17. LOADING SKELETONS
+     ...................
+     Category: UI Polish
+     Effort: Small-Medium (1 hour)
+     Description:
+       Show animated skeleton placeholders (gray pulsing bars) while data
+       loads instead of blank screens. Apply to:
+       - Inbox conversation list (3-4 skeleton cards)
+       - Conversation messages area
+       - Guest profile sections
+
+     Implementation:
+       - CSS class .skeleton with pulse animation
+       - Skeleton HTML templates shown by default
+       - Replaced by real content when data arrives
+
+
+[ ] 18. SCHEDULED MESSAGES (SEND LATER)
+     .................................
+     Category: Feature
+     Effort: Medium-Large (4 hours)
+     Description:
+       Allow the host to compose a message and schedule it for later.
+       Useful for: "Send check-in instructions at 2 PM on arrival day"
+
+     Implementation:
+       - "Send Later" button next to Send
+       - Date/time picker
+       - New table: scheduled_messages (id, conversation_id, content, send_at)
+       - Background task to check and send due messages
+       - Visual indicator in conversation for pending scheduled messages
+
+
+[ ] 19. NOTIFICATION SOUND
+     ...................
+     Category: UX
+     Effort: Small (30 min)
+     Description:
+       Play a subtle notification sound when a new guest message arrives
+       (via polling). Include a setting to enable/disable the sound.
+       Pairs well with desktop browser notifications (#5).
+
+     Implementation:
+       - Small .mp3 or .wav file in static/audio/
+       - Audio element created in JS, played on new guest message
+       - Toggle in Settings page
+       - Respect browser autoplay policies (only after user interaction)
+
+
+[ ] 20. CONVERSATION PINNING / STARRING
+     ..................................
+     Category: Feature
+     Effort: Small-Medium (1.5 hours)
+     Description:
+       Allow the host to pin or star important conversations so they
+       appear at the top of the inbox, regardless of last message date.
+
+     Implementation:
+       - Add is_pinned boolean to Conversation model
+       - Star icon on conversation cards
+       - Pinned conversations sorted to top
+       - API: PATCH /api/conversations/<id>/pin
+
+
+================================================================================
+                    PRIORITY 4 - LONG-TERM / AMBITIOUS
+================================================================================
+
+[ ] 21. WHATSAPP BUSINESS API INTEGRATION
+     ....................................
+     Category: Integration
+     Effort: Large
+     Description:
+       Connect to WhatsApp Business API (via Meta Cloud API or Twilio)
+       to receive and send WhatsApp messages directly from the dashboard.
+       This would be the second real platform integration after Gmail.
+
+
+[ ] 22. AIRBNB / BOOKING.COM EMAIL FORWARDING
+     .......................................
+     Category: Integration
+     Effort: Medium
+     Description:
+       Set up automatic email forwarding from Airbnb/Booking notifications
+       to the Gmail account. Parse the forwarded emails to extract guest
+       info and create conversations automatically.
+
+
+[ ] 23. MOBILE-RESPONSIVE OVERHAUL
+     ............................
+     Category: UI
+     Effort: Medium-Large
+     Description:
+       Improve mobile experience with:
+       - Hamburger menu for sidebar
+       - Full-width conversation cards
+       - Bottom navigation bar
+       - Swipe gestures (swipe to archive, swipe to mark read)
+       - Touch-friendly buttons and inputs
+
+
+[ ] 24. REAL-TIME WEBSOCKETS (REPLACE POLLING)
+     .......................................
+     Category: Infrastructure
+     Effort: Large
+     Description:
+       Replace polling with Flask-SocketIO for instant message delivery.
+       Reduces server load and provides true real-time updates.
+       Consider: Flask-SocketIO or Server-Sent Events (SSE).
+
+
+[ ] 25. ANALYTICS DASHBOARD
+     .....................
+     Category: Feature
+     Effort: Large
+     Description:
+       Dedicated analytics page with charts:
+       - Messages per day/week/month (line chart)
+       - Response time distribution (histogram)
+       - Platform breakdown (pie chart)
+       - Guest retention rate
+       - AI vs manual response ratio
+       - Peak messaging hours (heatmap)
+       Library: Chart.js (lightweight, no dependencies)
+
+
+[ ] 26. MULTI-USER / CO-HOST SUPPORT
+     ...............................
+     Category: Feature
+     Effort: Large
+     Description:
+       Allow multiple team members to access the dashboard:
+       - User accounts with Flask-Login
+       - Role-based access (admin, host, viewer)
+       - Message assignment ("assign to co-host")
+       - Activity log (who responded to what)
+
+
+================================================================================
+                    CODE QUALITY & TECHNICAL DEBT
+================================================================================
+
+[ ] A. REPLACE INLINE SCRIPTS WITH EXTERNAL JS FILES
+     ................................................
+     The conversation.html and guest_profile.html templates have large
+     inline <script> blocks. Extract these into dedicated JS files:
+       - static/js/conversation.js
+       - static/js/guest-profile.js
+     Benefits: caching, cleaner templates, easier maintenance.
+
+
+[ ] B. API ERROR RESPONSE STANDARDIZATION
+     ....................................
+     Standardize all API error responses to a consistent format:
+       { "error": "message", "code": "ERROR_CODE" }
+     Makes frontend error handling more predictable.
+
+
+[ ] C. INPUT VALIDATION MIDDLEWARE
+     ............................
+     Add a reusable validation layer for API endpoints instead of
+     repeating validation logic in each route handler.
+
+
+[ ] D. AUTOMATED TESTS
+     ..................
+     Add pytest tests for:
+       - API endpoints (status codes, response format)
+       - Memory extraction (given input X, expect output Y)
+       - Guest identification logic (cross-platform matching)
+       - Filter and search functionality
+
+
+[ ] E. RATE LIMITING ON AI ENDPOINTS
+     ...............................
+     Add rate limiting to AI generation endpoints to prevent accidental
+     spam-clicking from queuing multiple expensive Ollama requests.
+
+
+================================================================================
+                    IMPLEMENTATION ORDER (SUGGESTED)
+================================================================================
+
+Batch 1 - Quick Wins (can do in one session):
+  #1  Ctrl+Enter to send
+  #3  Toast notification cleanup
+  #4  Smooth scroll & animations
+  #2  Relative timestamps
+
+Batch 2 - High-Value Features:
+  #5  Desktop notifications
+  #9  AI typing indicator
+  #10 Dark mode
+  #13 Guest avatar colors
+
+Batch 3 - Major Features:
+  #6  Quick reply templates
+  #7  Property management UI
+  #8  Dashboard statistics
+
+Batch 4 - Polish & Depth:
+  #11 Conversation date grouping
+  #12 Message date dividers
+  #14 Auto-save drafts
+  #15 Guest merge tool
+
+Batch 5 - Advanced:
+  #16 Export conversations
+  #18 Scheduled messages
+  #20 Conversation pinning
+  #25 Analytics dashboard
+
+
+================================================================================
+                         END OF FUTURE PLANNING
+                    Last Updated: 2026-02-23 (Batches 1-3 completed)
+================================================================================

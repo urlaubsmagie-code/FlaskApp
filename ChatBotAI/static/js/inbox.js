@@ -77,9 +77,9 @@ function createConversationCard(conv) {
     card.dataset.lastSender = (conv.last_message && conv.last_message.sender_type) || '';
     if (conv.escalated) card.classList.add('escalated');
 
-    const guestName = (conv.guest && (conv.guest.name || conv.guest.email)) || 'Unknown Guest';
+    const guestName = (conv.guest && (conv.guest.name || conv.guest.email)) || i18n.t('ux.unknownGuest');
 
-    let preview = 'No messages yet';
+    let preview = i18n.t('ux.noMessages');
     if (conv.last_message && conv.last_message.content) {
         let prefix = '';
         if (conv.last_message.sender_type === 'owner') prefix = (conv.last_message.sender_name || i18n.t('inbox.senderMe') || 'Ich') + ': ';
@@ -113,7 +113,7 @@ function createConversationCard(conv) {
                 <span class="guest-name">${escapeHtml(guestName)}</span>
                 <span class="conversation-time" data-timestamp="${conv.last_message_at || ''}" title="${formatAbsoluteTime(conv.last_message_at)}">${formatRelativeTime(conv.last_message_at)}</span>
             </div>
-            <div class="conversation-subject">${escapeHtml(conv.property_name || conv.subject || 'No subject')}${conv.check_in && conv.check_out ? ` <span class="stay-dates">${formatStayDates(conv.check_in, conv.check_out)}</span>` : ''}</div>
+            <div class="conversation-subject">${escapeHtml(conv.property_name || conv.subject || i18n.t('ux.noSubject'))}${conv.check_in && conv.check_out ? ` <span class="stay-dates">${formatStayDates(conv.check_in, conv.check_out)}</span>` : ''}</div>
             <div class="conversation-preview">${escapeHtml(preview)}</div>
         </div>
         <div class="conversation-meta">
@@ -163,7 +163,7 @@ function updateConversationCard(card, conv) {
 
     const previewEl = card.querySelector('.conversation-preview');
     if (previewEl) {
-        let preview = 'No messages yet';
+        let preview = i18n.t('ux.noMessages');
         if (conv.last_message && conv.last_message.content) {
             let prefix = '';
             if (conv.last_message.sender_type === 'owner') prefix = (conv.last_message.sender_name || i18n.t('inbox.senderMe') || 'Ich') + ': ';
@@ -577,7 +577,7 @@ function renderSearchResults(data) {
         if (existingIds.has(convId)) continue;
 
         const iconClass = platformIcons[result.platform] || 'fas fa-comment';
-        const guestName = escapeHtml(result.guest_name || 'Unknown Guest');
+        const guestName = escapeHtml(result.guest_name || i18n.t('ux.unknownGuest'));
         const subject = escapeHtml(result.property_name || result.subject || '');
         const matchLabel = result.match_count > 1 ? `<span class="match-count">(${result.match_count} matches)</span>` : '';
         // Defense-in-depth: escape everything, re-allow <mark> only.
@@ -684,7 +684,7 @@ async function populateGuestDropdown() {
             if (count > 0) {
                 const option = document.createElement('option');
                 option.value = guest.id;
-                const displayName = guest.name || guest.email || 'Unknown Guest';
+                const displayName = guest.name || guest.email || i18n.t('ux.unknownGuest');
                 option.textContent = `${displayName} (${count})`;
                 dropdown.appendChild(option);
             }
@@ -843,9 +843,9 @@ const inboxPoller = new PollingManager({
         const { ts, unread } = await checkResp.json();
 
         if (lastKnownTimestamp === null || ts !== lastKnownTimestamp || unread !== lastKnownUnread) {
+            await fullInboxFetch(signal);
             lastKnownTimestamp = ts;
             lastKnownUnread = unread;
-            await fullInboxFetch(signal);
         }
         return null;
     },

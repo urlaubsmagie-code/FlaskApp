@@ -51,8 +51,7 @@ def test_holding_messages_escalate(text):
 NOT_ESCALATING = [
     "Das WLAN-Passwort ist urlaubsmagie2026.",                        # plain answer
     "Ja, das Leitungswasser kannst du bedenkenlos trinken.",          # plain answer
-    "Liebe Grüße, Elena, Imke, Anna-Lena, und Sebastian - "
-    "Team Urlaubsmagie",                                              # sign-off mentions "Team"
+    "Viele Grüße, Euer Urlaubsmagie Team",                            # sign-off mentions "Team"
     "Melde dich gerne, wenn du noch Fragen hast!",                    # GUEST reaches out (du, not mich)
     "Sag mir einfach Bescheid, wenn du etwas brauchst.",              # guest tells us
     "Der Check-in ist ab 15:00 Uhr.",                                 # plain answer

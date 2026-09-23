@@ -42,6 +42,8 @@ def test_rich_guest_reply_renders():
         guest_profile={"name": "Max"},
     )
     assert "UMI" in out
-    assert "Du always" in out
+    assert "Never use Sie" in out
+    # Party size decides du vs ihr — plural is the default when unknown.
+    assert "1 guest" in out and "2 or more guests" in out
     assert "Sign-off rule" in out
     assert "06 May 2026" in out

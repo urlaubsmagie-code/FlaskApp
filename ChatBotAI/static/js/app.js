@@ -86,9 +86,11 @@ function showNotification(message, type = 'info', duration = 3000) {
     toast.className = `notification-toast ${type}`;
     toast.innerHTML = `
         <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
-        <span>${message}</span>
+        <span class="notification-message"></span>
         <button class="toast-close" onclick="this.parentElement.classList.remove('show');setTimeout(()=>{this.parentElement.remove();_repositionToasts();},300);" aria-label="Close">&times;</button>
     `;
+
+    toast.querySelector('.notification-message').textContent = message;
 
     // Add to page, then stack — _repositionToasts measures real heights.
     document.body.appendChild(toast);

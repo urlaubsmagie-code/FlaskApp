@@ -1,0 +1,3298 @@
+================================================================================
+              CHATBOTAI - DETAILED EXECUTION PLANS FOR ALL FEATURES
+                           Created: 2026-02-23
+================================================================================
+
+This file contains step-by-step implementation plans with exact code snippets
+for every feature listed in ChatBotAI_Future_Planning.txt. Each plan references
+actual existing code patterns from the project.
+
+TABLE OF CONTENTS:
+  BATCH 1 - QUICK WINS:
+    #1  Ctrl+Enter to Send Messages
+    #2  Relative Timestamps in Inbox
+    #3  Toast Notification Cleanup
+    #4  Smooth Scroll & Message Animations
+    #5  Desktop Browser Notifications
+
+  BATCH 2 - HIGH VALUE:
+    #6  Quick Reply Templates (Canned Responses)
+    #7  Property Management UI
+    #8  Dashboard Statistics Card
+    #9  AI Typing Indicator
+    #10 Dark Mode Toggle
+
+  BATCH 3 - MAJOR FEATURES:
+    #11 Conversation Date Grouping in Inbox
+    #12 Message Date Dividers in Conversation View
+    #13 Guest Avatar Colors (Hash-Based)
+    #14 Auto-Save Draft Messages (localStorage)
+    #15 Guest Merge Tool
+    #16 Export Conversations
+
+  BATCH 4 - POLISH:
+    #17 Loading Skeletons
+    #18 Scheduled Messages
+    #19 Notification Sound
+    #20 Conversation Pinning/Starring
+
+  CODE QUALITY:
+    #A  Extract Inline Scripts to External JS Files
+    #B  API Error Response Standardization
+    #C  Input Validation Middleware
+    #D  Automated Tests (pytest)
+    #E  Rate Limiting on AI Endpoints
+
+
+================================================================================
+================================================================================
+                        BATCH 1 - QUICK WINS
+================================================================================
+================================================================================
+
+
+================================================================================
+FEATURE #1: CTRL+ENTER TO SEND MESSAGES
+================================================================================
+
+--- Description ---
+Add Ctrl+Enter (or Cmd+Enter on Mac) keyboard shortcut to submit messages
+from the textarea in the conversation view. Currently users must click Send.
+
+--- Files to Modify ---
+1. templates/chatbot/conversation.html (add keydown listener)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Add keydown event listener to the textarea in conversation.html.
+Find the existing DOMContentLoaded block at the bottom of conversation.html
+and add the keyboard handler right after messagePoller.start().
+
+In templates/chatbot/conversation.html, inside the <script> block, add after
+the line "messagePoller.start();":
+
+```javascript
+    // Ctrl+Enter / Cmd+Enter to send
+    document.getElementById('messageInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            document.getElementById('messageForm').dispatchEvent(new Event('submit', { cancelable: true }));
+        }
+    });
+```
+
+Step 2: Add a visual hint below the textarea so users discover the shortcut.
+In conversation.html, find the message-form and add a hint after the closing
+</form> tag but still inside .message-input-container:
+
+```html
+    <div class="input-hint" style="font-size: 0.75rem; color: var(--text-light); margin-top: 4px;">
+        <span data-i18n="conversation.sendHint">Ctrl+Enter zum Senden</span>
+    </div>
+```
+
+--- i18n Translation Keys ---
+Add to static/js/i18n.js:
+
+German (de):
+  'conversation.sendHint': 'Ctrl+Enter zum Senden',
+
+English (en):
+  'conversation.sendHint': 'Ctrl+Enter to send',
+
+--- CSS Additions ---
+None required. The inline style handles the hint.
+
+--- Testing ---
+1. Open any conversation page
+2. Type a message in the textarea
+3. Press Ctrl+Enter (Windows/Linux) or Cmd+Enter (Mac)
+4. Verify the message is sent and appears in the thread
+5. Verify the textarea is cleared after sending
+6. Verify Enter alone still creates a new line (does not send)
+
+
+================================================================================
+FEATURE #2: RELATIVE TIMESTAMPS IN INBOX
+================================================================================
+
+--- Description ---
+Replace static timestamps ("23.02 14:30") in the inbox with relative times:
+"Just now", "5m ago", "2h ago", "Yesterday", "3d ago". Keep exact time as
+a title attribute for hover tooltip.
+
+--- Files to Modify ---
+1. templates/chatbot/inbox.html (Jinja template + JS functions)
+2. static/js/i18n.js (translation keys for relative time words)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Update the Jinja template to use data attributes instead of
+formatted text. In inbox.html, find the conversation-time span inside
+the conversation card loop:
+
+Replace:
+```html
+<span class="conversation-time">{{ conv.updated_at.strftime('%d.%m %H:%M') if conv.updated_at else '' }}</span>
+```
+
+With:
+```html
+<span class="conversation-time" data-timestamp="{{ conv.updated_at.isoformat() if conv.updated_at else '' }}" title="{{ conv.updated_at.strftime('%d.%m.%Y %H:%M') if conv.updated_at else '' }}">{{ conv.updated_at.strftime('%d.%m %H:%M') if conv.updated_at else '' }}</span>
+```
+
+Step 2: Add a formatRelativeTimeI18n function in the inbox <script> block
+that uses i18n keys. Add this function before the createConversationCard
+function:
+
+```javascript
+    /**
+     * Format timestamp as relative time with i18n support
+     */
+    function formatRelativeTimeInbox(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffSecs = Math.floor(diffMs / 1000);
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffSecs < 60) return i18n.t('time.justNow');
+        if (diffMins < 60) return diffMins + i18n.t('time.minutesAgo');
+        if (diffHours < 24) return diffHours + i18n.t('time.hoursAgo');
+        if (diffDays === 1) return i18n.t('time.yesterday');
+        if (diffDays < 7) return diffDays + i18n.t('time.daysAgo');
+
+        return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+    }
+```
+
+Step 3: Update all timestamps on page load and periodically. Add this to
+the DOMContentLoaded handler:
+
+```javascript
+    function updateAllRelativeTimestamps() {
+        document.querySelectorAll('.conversation-time[data-timestamp]').forEach(el => {
+            const ts = el.dataset.timestamp;
+            if (ts) {
+                el.textContent = formatRelativeTimeInbox(ts);
+            }
+        });
+    }
+
+    // Update timestamps immediately and every 60 seconds
+    updateAllRelativeTimestamps();
+    setInterval(updateAllRelativeTimestamps, 60000);
+```
+
+Step 4: Update the createConversationCard function to use relative time.
+Find the line that sets conversation-time and change:
+
+Replace:
+```javascript
+<span class="conversation-time">${formatConversationTime(conv.updated_at)}</span>
+```
+
+With:
+```javascript
+<span class="conversation-time" data-timestamp="${conv.updated_at || ''}" title="${formatConversationTime(conv.updated_at)}">${formatRelativeTimeInbox(conv.updated_at)}</span>
+```
+
+Step 5: Also update the updateConversationCard function. Find the time
+update section:
+
+Replace:
+```javascript
+timeEl.textContent = formatConversationTime(conv.updated_at);
+```
+
+With:
+```javascript
+timeEl.dataset.timestamp = conv.updated_at || '';
+timeEl.title = formatConversationTime(conv.updated_at);
+timeEl.textContent = formatRelativeTimeInbox(conv.updated_at);
+```
+
+--- i18n Translation Keys ---
+Add to static/js/i18n.js:
+
+German (de):
+  'time.justNow': 'Gerade eben',
+  'time.minutesAgo': 'min',
+  'time.hoursAgo': 'h',
+  'time.yesterday': 'Gestern',
+  'time.daysAgo': 'T',
+
+English (en):
+  'time.justNow': 'Just now',
+  'time.minutesAgo': 'm ago',
+  'time.hoursAgo': 'h ago',
+  'time.yesterday': 'Yesterday',
+  'time.daysAgo': 'd ago',
+
+--- CSS Additions ---
+None required.
+
+--- Testing ---
+1. Open the inbox with multiple conversations of varying ages
+2. Verify recent conversations show "Just now", "5m ago", etc.
+3. Verify older conversations show "Yesterday" or "3d ago"
+4. Hover over a timestamp to see the exact date/time tooltip
+5. Wait 60 seconds and verify timestamps update automatically
+6. Switch language to English and verify translations change
+
+
+================================================================================
+FEATURE #3: TOAST NOTIFICATION CLEANUP
+================================================================================
+
+--- Description ---
+Replace all remaining alert() calls with the existing showNotification()
+toast system. Add toast stacking for multiple simultaneous notifications.
+
+--- Files to Modify ---
+1. templates/chatbot/conversation.html (replace alert in sendMessage catch)
+2. templates/chatbot/settings.html (replace alert calls in testAI, form save)
+3. static/js/app.js (add toast stacking logic)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Update showNotification() in app.js to support stacking. Replace
+the entire showNotification function:
+
+```javascript
+/**
+ * Show notification toast with stacking support
+ */
+function showNotification(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `notification-toast ${type}`;
+    toast.innerHTML = `
+        <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+        <span>${message}</span>
+        <button class="toast-close" onclick="this.parentElement.classList.remove('show'); setTimeout(() => this.parentElement.remove(), 300);">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+
+    document.body.appendChild(toast);
+
+    // Stack toasts: calculate offset based on existing toasts
+    const existingToasts = document.querySelectorAll('.notification-toast.show');
+    let bottomOffset = 20;
+    existingToasts.forEach(t => {
+        bottomOffset += t.offsetHeight + 8;
+    });
+    toast.style.bottom = bottomOffset + 'px';
+
+    // Animate in
+    setTimeout(() => toast.classList.add('show'), 10);
+
+    // Remove after delay
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+```
+
+Step 2: Add toast-close button styles to the notification styles in app.js
+DOMContentLoaded. Add these rules inside the existing style.textContent:
+
+```css
+.notification-toast .toast-close {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.7);
+    cursor: pointer;
+    padding: 0 0 0 8px;
+    font-size: 0.75rem;
+}
+.notification-toast .toast-close:hover {
+    color: white;
+}
+```
+
+Step 3: In conversation.html, find the sendMessage catch block:
+
+Replace:
+```javascript
+.catch(err => {
+    console.error('Failed to send message:', err);
+    alert('Failed to send message. Please try again.');
+});
+```
+
+With:
+```javascript
+.catch(err => {
+    console.error('Failed to send message:', err);
+    showNotification(i18n.t('notify.sendFailed'), 'error');
+});
+```
+
+Step 4: In settings.html, replace the testAI alert() calls:
+
+Replace:
+```javascript
+if (data.error) {
+    alert('AI Test Failed: ' + data.error);
+} else {
+    alert('AI Test Successful!\n\nExtracted Info:\n' + JSON.stringify(data.extracted_info, null, 2));
+}
+```
+
+With:
+```javascript
+if (data.error) {
+    showNotification(i18n.t('settings.server.testFailed') + ': ' + data.error, 'error');
+} else {
+    showNotification(i18n.t('settings.server.testSuccess'), 'success');
+    console.log('Extracted info:', data.extracted_info);
+}
+```
+
+Step 5: In settings.html, replace the aiSettingsForm submit alert() calls:
+
+Replace:
+```javascript
+if (data.success) {
+    alert('Settings saved successfully!');
+} else {
+    alert('Failed to save settings');
+}
+```
+
+With:
+```javascript
+if (data.success) {
+    showNotification(i18n.t('notify.saved'), 'success');
+} else {
+    showNotification(i18n.t('notify.error'), 'error');
+}
+```
+
+Replace the catch:
+```javascript
+.catch(err => {
+    alert('Error saving settings: ' + err.message);
+});
+```
+
+With:
+```javascript
+.catch(err => {
+    showNotification(i18n.t('notify.error') + ': ' + err.message, 'error');
+});
+```
+
+Step 6: In settings.html, replace the addProperty placeholder:
+
+Replace:
+```javascript
+function addProperty() {
+    alert('Property management UI coming soon!');
+}
+```
+
+With:
+```javascript
+function addProperty() {
+    showNotification(i18n.t('settings.properties.comingSoon'), 'info');
+}
+```
+
+--- i18n Translation Keys ---
+Add to static/js/i18n.js:
+
+German (de):
+  'notify.sendFailed': 'Nachricht konnte nicht gesendet werden',
+  'settings.server.testFailed': 'KI-Test fehlgeschlagen',
+  'settings.server.testSuccess': 'KI-Test erfolgreich! Details in der Konsole.',
+  'settings.properties.comingSoon': 'Unterkünfteverwaltung kommt bald!',
+
+English (en):
+  'notify.sendFailed': 'Failed to send message',
+  'settings.server.testFailed': 'AI test failed',
+  'settings.server.testSuccess': 'AI test successful! See console for details.',
+  'settings.properties.comingSoon': 'Property management coming soon!',
+
+--- CSS Additions ---
+None beyond the toast-close button style added in Step 2.
+
+--- Testing ---
+1. In conversation view, disconnect network and try to send a message
+   -> Should see error toast, NOT an alert() dialog
+2. In settings, save AI settings -> Should see success toast
+3. In settings, test AI connection -> Should see toast, not alert
+4. Trigger multiple notifications quickly -> Verify they stack vertically
+5. Click the X button on a toast -> Verify it dismisses immediately
+
+
+================================================================================
+FEATURE #4: SMOOTH SCROLL & MESSAGE ANIMATIONS
+================================================================================
+
+--- Description ---
+Use smooth scrolling when new messages arrive. Add fade-in animation for
+new messages appearing in the conversation view.
+
+--- Files to Modify ---
+1. templates/chatbot/conversation.html (scrollToBottom, addMessageToUI)
+2. static/css/style.css (animation keyframes)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Update scrollToBottom() in conversation.html:
+
+Replace:
+```javascript
+function scrollToBottom() {
+    const container = document.getElementById('messagesContainer');
+    container.scrollTop = container.scrollHeight;
+}
+```
+
+With:
+```javascript
+function scrollToBottom(smooth = true) {
+    const container = document.getElementById('messagesContainer');
+    if (smooth) {
+        container.scrollTo({
+            top: container.scrollHeight,
+            behavior: 'smooth'
+        });
+    } else {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+```
+
+Step 2: Update the initial scroll on page load to be instant (not smooth):
+
+Find in DOMContentLoaded:
+```javascript
+scrollToBottom();
+```
+
+Replace with:
+```javascript
+scrollToBottom(false);  // Instant scroll on page load
+```
+
+Step 3: Add animation class to new messages in addMessageToUI. Find:
+
+```javascript
+container.appendChild(messageDiv);
+```
+
+Replace with:
+```javascript
+messageDiv.classList.add('message-enter');
+container.appendChild(messageDiv);
+// Trigger reflow then remove class to start animation
+requestAnimationFrame(() => {
+    messageDiv.classList.add('message-enter-active');
+});
+```
+
+Step 4: Add CSS animation keyframes to static/css/style.css at the end:
+
+```css
+/* Message Entry Animation */
+.message-enter {
+    opacity: 0;
+    transform: translateY(12px);
+}
+
+.message-enter.message-enter-active {
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+```
+
+--- i18n Translation Keys ---
+None required.
+
+--- CSS Additions ---
+See Step 4 above.
+
+--- Testing ---
+1. Open a conversation and send a message
+   -> New message should slide up and fade in smoothly
+2. Have another tab simulate an incoming guest message
+   -> Message should appear with animation and scroll smoothly
+3. Load a conversation page with many messages
+   -> Should scroll to bottom instantly (no smooth animation on load)
+
+
+================================================================================
+FEATURE #5: DESKTOP BROWSER NOTIFICATIONS
+================================================================================
+
+--- Description ---
+When a new guest message arrives via polling and the browser tab is not
+focused, trigger a browser Notification with guest name and message preview.
+
+--- Files to Modify ---
+1. templates/chatbot/conversation.html (notification on new message)
+2. templates/chatbot/inbox.html (notification on new unread conversation)
+3. templates/chatbot/base.html (permission request)
+4. static/js/i18n.js (translation keys)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Add notification permission request in base.html. Add this inside
+the existing DOMContentLoaded script:
+
+```javascript
+    // Request notification permission on first interaction
+    if ('Notification' in window && Notification.permission === 'default') {
+        document.addEventListener('click', function requestNotifPerm() {
+            Notification.requestPermission();
+            document.removeEventListener('click', requestNotifPerm);
+        }, { once: true });
+    }
+```
+
+Step 2: Create a helper function. Add this to the base.html script or
+create it in a shared location:
+
+```javascript
+    function sendBrowserNotification(title, body, url) {
+        if (!('Notification' in window)) return;
+        if (Notification.permission !== 'granted') return;
+        if (document.visibilityState === 'visible') return;  // Only when tab hidden
+
+        const notification = new Notification(title, {
+            body: body.length > 100 ? body.substring(0, 100) + '...' : body,
+            icon: '/chatbot/static/img/favicon.png',
+            tag: url  // Prevents duplicate notifications for same conversation
+        });
+
+        notification.onclick = function() {
+            window.focus();
+            if (url) window.location.href = url;
+            notification.close();
+        };
+
+        // Auto-close after 8 seconds
+        setTimeout(() => notification.close(), 8000);
+    }
+```
+
+Step 3: In conversation.html, trigger notification when a new guest message
+arrives via polling. Update the updateMessages function:
+
+Find:
+```javascript
+if (hasNewMessages) {
+    scrollToBottom();
+}
+```
+
+Replace with:
+```javascript
+if (hasNewMessages) {
+    scrollToBottom();
+    // Browser notification for guest messages when tab is hidden
+    const lastNewMsg = messages[messages.length - 1];
+    if (lastNewMsg && lastNewMsg.sender_type === 'guest') {
+        sendBrowserNotification(
+            '{{ guest.name or "Guest" }}',
+            lastNewMsg.content,
+            window.location.href
+        );
+    }
+}
+```
+
+Step 4: In inbox.html, trigger notification for new unread conversations.
+In the updateInboxList function, after creating a new card, add:
+
+Find the block that creates a new card:
+```javascript
+} else {
+    // Create new card
+    const newCard = createConversationCard(conv);
+```
+
+After the card creation and insertion logic, add:
+```javascript
+    // Notify for new unread conversations
+    if (!conv.is_read && conv.last_message && conv.last_message.sender_type === 'guest') {
+        const guestName = (conv.guest && (conv.guest.name || conv.guest.email)) || 'Guest';
+        sendBrowserNotification(
+            guestName,
+            conv.last_message.content,
+            `/chatbot/conversation/${conv.id}`
+        );
+    }
+```
+
+--- i18n Translation Keys ---
+None strictly required (browser notifications use dynamic content).
+
+--- CSS Additions ---
+None required.
+
+--- Testing ---
+1. Open the inbox in one tab
+2. In another tab, create a test conversation via /api/test/create-conversation
+3. Switch back to another tab/window so the inbox tab is hidden
+4. Verify a browser notification appears with guest name and message preview
+5. Click the notification -> Verify it focuses the tab and navigates
+6. With the tab visible, verify NO notification appears (only when hidden)
+
+
+================================================================================
+================================================================================
+                        BATCH 2 - HIGH VALUE
+================================================================================
+================================================================================
+
+
+================================================================================
+FEATURE #6: QUICK REPLY TEMPLATES (CANNED RESPONSES)
+================================================================================
+
+--- Description ---
+A template system for commonly sent messages: WiFi info, check-in
+instructions, house rules, etc. Saves massive time for vacation rental hosts.
+
+--- Files to Modify/Create ---
+1. models.py (new ReplyTemplate model)
+2. routes.py (CRUD API endpoints)
+3. templates/chatbot/conversation.html (template dropdown)
+4. templates/chatbot/settings.html (template management UI)
+5. static/css/style.css (template UI styles)
+6. static/js/i18n.js (translation keys)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Add the ReplyTemplate model to models.py. Add before the AISettings
+class:
+
+```python
+class ReplyTemplate(db.Model):
+    """
+    Quick reply templates for common responses.
+    Hosts can create canned responses with variable placeholders.
+    """
+    __tablename__ = 'reply_template'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    category = db.Column(db.String(100), default='general')  # general, check_in, check_out, info, rules
+    sort_order = db.Column(db.Integer, default=0)
+
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<ReplyTemplate {self.id}: {self.name}>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'content': self.content,
+            'category': self.category,
+            'sort_order': self.sort_order,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+```
+
+Step 2: Import ReplyTemplate in routes.py. Update the import line:
+
+```python
+from .models import db, Guest, GuestDetail, Conversation, Message, Property, AISettings, ReplyTemplate
+```
+
+Step 3: Add CRUD API endpoints in routes.py. Add before the WEBHOOK ROUTES
+section:
+
+```python
+# ============================================================================
+# REPLY TEMPLATE ROUTES
+# ============================================================================
+
+@chatbot_bp.route('/api/templates', methods=['GET'])
+def api_get_templates():
+    """Get all reply templates"""
+    templates = ReplyTemplate.query.order_by(ReplyTemplate.sort_order, ReplyTemplate.name).all()
+    return jsonify({
+        'templates': [t.to_dict() for t in templates],
+        'total': len(templates)
+    })
+
+
+@chatbot_bp.route('/api/templates', methods=['POST'])
+def api_create_template():
+    """Create a new reply template"""
+    data = request.get_json()
+    if not data or 'name' not in data or 'content' not in data:
+        return jsonify({'error': 'Name and content are required'}), 400
+
+    template = ReplyTemplate(
+        name=data['name'].strip(),
+        content=data['content'].strip(),
+        category=data.get('category', 'general').strip(),
+        sort_order=data.get('sort_order', 0)
+    )
+    db.session.add(template)
+    db.session.commit()
+    return jsonify(template.to_dict()), 201
+
+
+@chatbot_bp.route('/api/templates/<int:template_id>', methods=['PUT'])
+def api_update_template(template_id):
+    """Update an existing reply template"""
+    template = ReplyTemplate.query.get_or_404(template_id)
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    if 'name' in data:
+        template.name = data['name'].strip()
+    if 'content' in data:
+        template.content = data['content'].strip()
+    if 'category' in data:
+        template.category = data['category'].strip()
+    if 'sort_order' in data:
+        template.sort_order = data['sort_order']
+
+    db.session.commit()
+    return jsonify(template.to_dict())
+
+
+@chatbot_bp.route('/api/templates/<int:template_id>', methods=['DELETE'])
+def api_delete_template(template_id):
+    """Delete a reply template"""
+    template = ReplyTemplate.query.get_or_404(template_id)
+    db.session.delete(template)
+    db.session.commit()
+    return jsonify({'success': True})
+```
+
+Step 4: Add template dropdown in conversation.html. Find the .input-actions
+div and add a template button:
+
+```html
+<div class="input-actions">
+    <!-- Quick Reply Templates -->
+    <div class="template-dropdown" id="templateDropdown">
+        <button class="btn btn-secondary" onclick="toggleTemplateMenu()" type="button">
+            <i class="fas fa-file-alt"></i> <span data-i18n="conversation.templates">Vorlagen</span>
+        </button>
+        <div class="template-menu" id="templateMenu" style="display: none;">
+            <div class="template-menu-header">
+                <span data-i18n="conversation.templates.title">Schnellantworten</span>
+            </div>
+            <div class="template-list" id="templateList">
+                <p class="no-data" data-i18n="common.loading">Laden...</p>
+            </div>
+        </div>
+    </div>
+    <button class="btn btn-secondary" onclick="suggestAIResponse()" id="suggestAiBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
+        <i class="fas fa-lightbulb"></i> <span data-i18n="conversation.ai.suggest">KI-Vorschlag</span>
+    </button>
+    <button class="btn btn-secondary" onclick="generateAIResponse()" id="generateAiBtn" {% if not conversation.ai_enabled %}disabled{% endif %}>
+        <i class="fas fa-magic"></i> <span data-i18n="conversation.ai.generate">KI-Antwort senden</span>
+    </button>
+</div>
+```
+
+Step 5: Add template JS functions in conversation.html <script>:
+
+```javascript
+    // Quick Reply Templates
+    let templatesLoaded = false;
+
+    function toggleTemplateMenu() {
+        const menu = document.getElementById('templateMenu');
+        const isVisible = menu.style.display !== 'none';
+        menu.style.display = isVisible ? 'none' : 'block';
+        if (!isVisible && !templatesLoaded) {
+            loadTemplates();
+        }
+    }
+
+    async function loadTemplates() {
+        try {
+            const data = await apiRequest('/chatbot/api/templates');
+            const list = document.getElementById('templateList');
+
+            if (data.templates.length === 0) {
+                list.innerHTML = '<p class="no-data">' + i18n.t('conversation.templates.empty') + '</p>';
+                return;
+            }
+
+            list.innerHTML = '';
+            data.templates.forEach(t => {
+                const item = document.createElement('button');
+                item.className = 'template-item';
+                item.innerHTML = `
+                    <span class="template-name">${escapeHtml(t.name)}</span>
+                    <span class="template-category">${escapeHtml(t.category)}</span>
+                `;
+                item.onclick = () => insertTemplate(t);
+                list.appendChild(item);
+            });
+
+            templatesLoaded = true;
+        } catch (err) {
+            console.error('Failed to load templates:', err);
+        }
+    }
+
+    function insertTemplate(template) {
+        const input = document.getElementById('messageInput');
+        let content = template.content;
+
+        // Replace variables
+        content = content.replace(/{guest_name}/g, '{{ guest.name or "Guest" }}');
+        {% if conversation.property %}
+        content = content.replace(/{property_name}/g, '{{ conversation.property.name }}');
+        content = content.replace(/{check_in_time}/g, '{{ conversation.property.check_in_time or "3:00 PM" }}');
+        content = content.replace(/{check_out_time}/g, '{{ conversation.property.check_out_time or "11:00 AM" }}');
+        {% endif %}
+
+        input.value = content;
+        input.focus();
+        // Auto-resize textarea
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 200) + 'px';
+
+        // Close menu
+        document.getElementById('templateMenu').style.display = 'none';
+    }
+
+    // Close template menu when clicking outside
+    document.addEventListener('click', function(e) {
+        const dropdown = document.getElementById('templateDropdown');
+        if (dropdown && !dropdown.contains(e.target)) {
+            document.getElementById('templateMenu').style.display = 'none';
+        }
+    });
+```
+
+Step 6: Add template management in settings.html. Add a new settings-card
+before the Platform Integrations card:
+
+```html
+<!-- Reply Templates -->
+<div class="settings-card">
+    <div class="card-header">
+        <h2><i class="fas fa-file-alt"></i> <span data-i18n="settings.templates.title">Schnellantwort-Vorlagen</span></h2>
+    </div>
+    <div class="card-body">
+        <div id="templatesList">
+            <p class="no-data" data-i18n="common.loading">Laden...</p>
+        </div>
+        <button class="btn btn-primary" onclick="openAddTemplateModal()" style="margin-top: 12px;">
+            <i class="fas fa-plus"></i> <span data-i18n="settings.templates.add">Vorlage hinzufuegen</span>
+        </button>
+    </div>
+</div>
+
+<!-- Add/Edit Template Modal -->
+<dialog id="templateModal" class="edit-modal">
+    <form id="templateForm">
+        <div class="modal-header">
+            <h2 id="templateModalTitle" data-i18n="settings.templates.add">Vorlage hinzufuegen</h2>
+            <button type="button" class="btn-close" onclick="document.getElementById('templateModal').close()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label data-i18n="settings.templates.name">Name</label>
+                <input type="text" id="templateName" required placeholder="z.B. WiFi Info">
+            </div>
+            <div class="form-group">
+                <label data-i18n="settings.templates.category">Kategorie</label>
+                <select id="templateCategory">
+                    <option value="general">Allgemein</option>
+                    <option value="check_in">Check-in</option>
+                    <option value="check_out">Check-out</option>
+                    <option value="info">Information</option>
+                    <option value="rules">Hausregeln</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label data-i18n="settings.templates.content">Inhalt</label>
+                <textarea id="templateContent" rows="6" required
+                    placeholder="Hallo {guest_name}, ..."></textarea>
+                <p class="help-text">Variablen: {guest_name}, {property_name}, {check_in_time}, {check_out_time}</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('templateModal').close()" data-i18n="common.cancel">Abbrechen</button>
+            <button type="submit" class="btn btn-primary" data-i18n="common.save">Speichern</button>
+        </div>
+        <input type="hidden" id="templateEditId" value="">
+    </form>
+</dialog>
+```
+
+Step 7: Add template management JS in settings.html <script>:
+
+```javascript
+    // Template Management
+    let settingsTemplates = [];
+
+    async function loadSettingsTemplates() {
+        try {
+            const data = await apiRequest('/chatbot/api/templates');
+            settingsTemplates = data.templates;
+            renderSettingsTemplates();
+        } catch (err) {
+            console.error('Failed to load templates:', err);
+        }
+    }
+
+    function renderSettingsTemplates() {
+        const container = document.getElementById('templatesList');
+        if (settingsTemplates.length === 0) {
+            container.innerHTML = '<p class="no-data">' + i18n.t('settings.templates.empty') + '</p>';
+            return;
+        }
+
+        container.innerHTML = settingsTemplates.map(t => `
+            <div class="property-item" data-template-id="${t.id}">
+                <div class="property-info">
+                    <span class="property-name">${escapeHtml(t.name)}</span>
+                    <span class="property-address">${escapeHtml(t.category)} - ${escapeHtml(t.content.substring(0, 60))}...</span>
+                </div>
+                <div style="display: flex; gap: 4px;">
+                    <button class="btn btn-sm btn-secondary" onclick="editTemplate(${t.id})">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn btn-sm btn-secondary" onclick="deleteTemplate(${t.id})" style="color: var(--danger-color);">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function openAddTemplateModal() {
+        document.getElementById('templateEditId').value = '';
+        document.getElementById('templateName').value = '';
+        document.getElementById('templateContent').value = '';
+        document.getElementById('templateCategory').value = 'general';
+        document.getElementById('templateModal').showModal();
+    }
+
+    function editTemplate(id) {
+        const t = settingsTemplates.find(t => t.id === id);
+        if (!t) return;
+        document.getElementById('templateEditId').value = id;
+        document.getElementById('templateName').value = t.name;
+        document.getElementById('templateContent').value = t.content;
+        document.getElementById('templateCategory').value = t.category;
+        document.getElementById('templateModal').showModal();
+    }
+
+    async function deleteTemplate(id) {
+        if (!confirm(i18n.t('common.confirmDelete') || 'Delete this template?')) return;
+        try {
+            await apiRequest(`/chatbot/api/templates/${id}`, 'DELETE');
+            showNotification(i18n.t('notify.deleted'), 'success');
+            loadSettingsTemplates();
+        } catch (err) {
+            showNotification(i18n.t('notify.error'), 'error');
+        }
+    }
+
+    document.getElementById('templateForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const editId = document.getElementById('templateEditId').value;
+        const data = {
+            name: document.getElementById('templateName').value.trim(),
+            content: document.getElementById('templateContent').value.trim(),
+            category: document.getElementById('templateCategory').value
+        };
+
+        try {
+            if (editId) {
+                await apiRequest(`/chatbot/api/templates/${editId}`, 'PUT', data);
+            } else {
+                await apiRequest('/chatbot/api/templates', 'POST', data);
+            }
+            showNotification(i18n.t('notify.saved'), 'success');
+            document.getElementById('templateModal').close();
+            loadSettingsTemplates();
+        } catch (err) {
+            showNotification(i18n.t('notify.error'), 'error');
+        }
+    });
+
+    // Load templates on page load
+    document.addEventListener('DOMContentLoaded', loadSettingsTemplates);
+```
+
+--- i18n Translation Keys ---
+Add to static/js/i18n.js:
+
+German (de):
+  'conversation.templates': 'Vorlagen',
+  'conversation.templates.title': 'Schnellantworten',
+  'conversation.templates.empty': 'Keine Vorlagen. Erstellen Sie Vorlagen in den Einstellungen.',
+  'settings.templates.title': 'Schnellantwort-Vorlagen',
+  'settings.templates.add': 'Vorlage hinzufuegen',
+  'settings.templates.name': 'Name',
+  'settings.templates.category': 'Kategorie',
+  'settings.templates.content': 'Inhalt',
+  'settings.templates.empty': 'Noch keine Vorlagen erstellt',
+  'common.confirmDelete': 'Wirklich loeschen?',
+
+English (en):
+  'conversation.templates': 'Templates',
+  'conversation.templates.title': 'Quick Replies',
+  'conversation.templates.empty': 'No templates. Create templates in Settings.',
+  'settings.templates.title': 'Quick Reply Templates',
+  'settings.templates.add': 'Add Template',
+  'settings.templates.name': 'Name',
+  'settings.templates.category': 'Category',
+  'settings.templates.content': 'Content',
+  'settings.templates.empty': 'No templates created yet',
+  'common.confirmDelete': 'Are you sure you want to delete this?',
+
+--- CSS Additions ---
+Add to static/css/style.css:
+
+```css
+/* Template Dropdown */
+.template-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.template-menu {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    width: 280px;
+    max-height: 300px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-lg);
+    z-index: 50;
+    overflow-y: auto;
+    margin-bottom: 8px;
+}
+
+.template-menu-header {
+    padding: 12px 16px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-primary);
+}
+
+.template-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 10px 16px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+    transition: background 0.2s;
+}
+
+.template-item:hover {
+    background: var(--bg-primary);
+}
+
+.template-item:last-child {
+    border-bottom: none;
+}
+
+.template-name {
+    font-weight: 500;
+    font-size: 0.875rem;
+}
+
+.template-category {
+    font-size: 0.75rem;
+    color: var(--text-light);
+}
+```
+
+--- Testing ---
+1. Go to Settings and create 3 templates with variables
+2. Go to a conversation, click Templates button
+3. Verify template list appears above the input
+4. Click a template -> Verify content populates the textarea
+5. Verify {guest_name} is replaced with actual guest name
+6. Edit the text in textarea, then send -> Verify it sends correctly
+7. Go back to Settings, edit a template, delete a template
+
+
+================================================================================
+FEATURE #7: PROPERTY MANAGEMENT UI
+================================================================================
+
+--- Description ---
+Full CRUD UI for the existing Property model. The Property model already
+exists in models.py with all fields. Only the UI is missing.
+
+--- Files to Modify ---
+1. routes.py (add Property CRUD API endpoints)
+2. templates/chatbot/settings.html (replace placeholder with real UI)
+3. static/js/i18n.js (translation keys)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Add Property CRUD API endpoints in routes.py. Add after the
+api_update_settings route:
+
+```python
+# ============================================================================
+# PROPERTY ROUTES
+# ============================================================================
+
+@chatbot_bp.route('/api/properties', methods=['GET'])
+def api_get_properties():
+    """Get all properties"""
+    properties = Property.query.order_by(Property.name).all()
+    return jsonify({
+        'properties': [p.to_dict() for p in properties],
+        'total': len(properties)
+    })
+
+
+@chatbot_bp.route('/api/properties', methods=['POST'])
+def api_create_property():
+    """Create a new property"""
+    data = request.get_json()
+    if not data or 'name' not in data:
+        return jsonify({'error': 'Property name is required'}), 400
+
+    prop = Property(
+        name=data['name'].strip(),
+        address=data.get('address', '').strip() or None,
+        description=data.get('description', '').strip() or None,
+        amenities=data.get('amenities', []),
+        pet_friendly=data.get('pet_friendly', False),
+        max_guests=data.get('max_guests', 4),
+        bedrooms=data.get('bedrooms', 1),
+        bathrooms=data.get('bathrooms', 1.0),
+        price_per_night=data.get('price_per_night'),
+        check_in_time=data.get('check_in_time', '3:00 PM'),
+        check_out_time=data.get('check_out_time', '11:00 AM'),
+        house_rules=data.get('house_rules', '').strip() or None
+    )
+    db.session.add(prop)
+    db.session.commit()
+    return jsonify(prop.to_dict()), 201
+
+
+@chatbot_bp.route('/api/properties/<int:property_id>', methods=['PUT'])
+def api_update_property(property_id):
+    """Update a property"""
+    prop = Property.query.get_or_404(property_id)
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    if 'name' in data:
+        prop.name = data['name'].strip()
+    if 'address' in data:
+        prop.address = data['address'].strip() or None
+    if 'description' in data:
+        prop.description = data['description'].strip() or None
+    if 'amenities' in data:
+        prop.amenities = data['amenities']
+    if 'pet_friendly' in data:
+        prop.pet_friendly = data['pet_friendly']
+    if 'max_guests' in data:
+        prop.max_guests = data['max_guests']
+    if 'bedrooms' in data:
+        prop.bedrooms = data['bedrooms']
+    if 'bathrooms' in data:
+        prop.bathrooms = data['bathrooms']
+    if 'price_per_night' in data:
+        prop.price_per_night = data['price_per_night']
+    if 'check_in_time' in data:
+        prop.check_in_time = data['check_in_time']
+    if 'check_out_time' in data:
+        prop.check_out_time = data['check_out_time']
+    if 'house_rules' in data:
+        prop.house_rules = data['house_rules'].strip() or None
+
+    db.session.commit()
+    return jsonify(prop.to_dict())
+
+
+@chatbot_bp.route('/api/properties/<int:property_id>', methods=['DELETE'])
+def api_delete_property(property_id):
+    """Delete a property"""
+    prop = Property.query.get_or_404(property_id)
+    db.session.delete(prop)
+    db.session.commit()
+    return jsonify({'success': True})
+```
+
+Step 2: Replace the Properties card in settings.html with a full management
+UI. Replace the entire Properties settings-card div:
+
+```html
+<!-- Properties -->
+<div class="settings-card">
+    <div class="card-header">
+        <h2><i class="fas fa-home"></i> <span data-i18n="settings.properties.title">Unterkuenfte</span></h2>
+    </div>
+    <div class="card-body">
+        <p class="help-text" style="margin-bottom: 15px;" data-i18n="settings.properties.help">
+            Unterkuenfte helfen der KI, relevantere Antworten zu geben.
+        </p>
+        <div id="propertiesList"></div>
+        <button class="btn btn-primary" onclick="openPropertyModal()" style="margin-top: 12px;">
+            <i class="fas fa-plus"></i> <span data-i18n="settings.properties.add">Unterkunft hinzufuegen</span>
+        </button>
+    </div>
+</div>
+
+<!-- Property Modal -->
+<dialog id="propertyModal" class="edit-modal" style="max-width: 500px;">
+    <form id="propertyForm">
+        <div class="modal-header">
+            <h2 id="propertyModalTitle" data-i18n="settings.properties.add">Unterkunft hinzufuegen</h2>
+            <button type="button" class="btn-close" onclick="document.getElementById('propertyModal').close()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+            <div class="form-group">
+                <label>Name *</label>
+                <input type="text" id="propName" required placeholder="Ferienwohnung Alpenblick">
+            </div>
+            <div class="form-group">
+                <label>Adresse</label>
+                <input type="text" id="propAddress" placeholder="Bergstr. 42, 83700 Rottach-Egern">
+            </div>
+            <div class="form-group">
+                <label>Beschreibung</label>
+                <textarea id="propDescription" rows="3" placeholder="Gemuetliche Ferienwohnung mit Bergblick..."></textarea>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group">
+                    <label>Max. Gaeste</label>
+                    <input type="number" id="propMaxGuests" value="4" min="1" max="20">
+                </div>
+                <div class="form-group">
+                    <label>Schlafzimmer</label>
+                    <input type="number" id="propBedrooms" value="1" min="0" max="20">
+                </div>
+                <div class="form-group">
+                    <label>Badezimmer</label>
+                    <input type="number" id="propBathrooms" value="1" min="0" max="10" step="0.5">
+                </div>
+                <div class="form-group">
+                    <label>Preis/Nacht (EUR)</label>
+                    <input type="number" id="propPrice" step="0.01" min="0" placeholder="85.00">
+                </div>
+                <div class="form-group">
+                    <label>Check-in</label>
+                    <input type="text" id="propCheckIn" value="3:00 PM">
+                </div>
+                <div class="form-group">
+                    <label>Check-out</label>
+                    <input type="text" id="propCheckOut" value="11:00 AM">
+                </div>
+            </div>
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="propPetFriendly"> Haustierfreundlich
+                </label>
+            </div>
+            <div class="form-group">
+                <label>Ausstattung (kommagetrennt)</label>
+                <input type="text" id="propAmenities" placeholder="WiFi, Parkplatz, Pool, Waschmaschine">
+            </div>
+            <div class="form-group">
+                <label>Hausregeln</label>
+                <textarea id="propHouseRules" rows="3" placeholder="Kein Rauchen, Nachtruhe ab 22 Uhr..."></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('propertyModal').close()" data-i18n="common.cancel">Abbrechen</button>
+            <button type="submit" class="btn btn-primary" data-i18n="common.save">Speichern</button>
+        </div>
+        <input type="hidden" id="propEditId" value="">
+    </form>
+</dialog>
+```
+
+Step 3: Add property management JS in settings.html. Replace the old
+addProperty function and add:
+
+```javascript
+    // Property Management
+    let propertiesData = [];
+
+    async function loadProperties() {
+        try {
+            const data = await apiRequest('/chatbot/api/properties');
+            propertiesData = data.properties;
+            renderProperties();
+        } catch (err) {
+            console.error('Failed to load properties:', err);
+        }
+    }
+
+    function renderProperties() {
+        const container = document.getElementById('propertiesList');
+        if (propertiesData.length === 0) {
+            container.innerHTML = '<p class="no-data">' + i18n.t('settings.properties.empty') + '</p>';
+            return;
+        }
+        container.innerHTML = propertiesData.map(p => `
+            <div class="property-item">
+                <div class="property-info">
+                    <span class="property-name">${escapeHtml(p.name)}</span>
+                    <span class="property-address">${escapeHtml(p.address || 'No address')}</span>
+                </div>
+                <div class="property-meta">
+                    <span><i class="fas fa-bed"></i> ${p.bedrooms}</span>
+                    <span><i class="fas fa-users"></i> ${p.max_guests}</span>
+                    ${p.pet_friendly ? '<span><i class="fas fa-paw"></i></span>' : ''}
+                </div>
+                <div style="display: flex; gap: 4px;">
+                    <button class="btn btn-sm btn-secondary" onclick="editProperty(${p.id})"><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-sm btn-secondary" onclick="deleteProperty(${p.id})" style="color: var(--danger-color);"><i class="fas fa-trash"></i></button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function openPropertyModal() {
+        document.getElementById('propEditId').value = '';
+        document.getElementById('propName').value = '';
+        document.getElementById('propAddress').value = '';
+        document.getElementById('propDescription').value = '';
+        document.getElementById('propMaxGuests').value = '4';
+        document.getElementById('propBedrooms').value = '1';
+        document.getElementById('propBathrooms').value = '1';
+        document.getElementById('propPrice').value = '';
+        document.getElementById('propCheckIn').value = '3:00 PM';
+        document.getElementById('propCheckOut').value = '11:00 AM';
+        document.getElementById('propPetFriendly').checked = false;
+        document.getElementById('propAmenities').value = '';
+        document.getElementById('propHouseRules').value = '';
+        document.getElementById('propertyModal').showModal();
+    }
+
+    function editProperty(id) {
+        const p = propertiesData.find(p => p.id === id);
+        if (!p) return;
+        document.getElementById('propEditId').value = id;
+        document.getElementById('propName').value = p.name;
+        document.getElementById('propAddress').value = p.address || '';
+        document.getElementById('propDescription').value = p.description || '';
+        document.getElementById('propMaxGuests').value = p.max_guests;
+        document.getElementById('propBedrooms').value = p.bedrooms;
+        document.getElementById('propBathrooms').value = p.bathrooms;
+        document.getElementById('propPrice').value = p.price_per_night || '';
+        document.getElementById('propCheckIn').value = p.check_in_time || '3:00 PM';
+        document.getElementById('propCheckOut').value = p.check_out_time || '11:00 AM';
+        document.getElementById('propPetFriendly').checked = p.pet_friendly;
+        document.getElementById('propAmenities').value = (p.amenities || []).join(', ');
+        document.getElementById('propHouseRules').value = p.house_rules || '';
+        document.getElementById('propertyModal').showModal();
+    }
+
+    async function deleteProperty(id) {
+        if (!confirm('Delete this property?')) return;
+        try {
+            await apiRequest(`/chatbot/api/properties/${id}`, 'DELETE');
+            showNotification(i18n.t('notify.deleted'), 'success');
+            loadProperties();
+        } catch (err) {
+            showNotification(i18n.t('notify.error'), 'error');
+        }
+    }
+
+    document.getElementById('propertyForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const editId = document.getElementById('propEditId').value;
+        const amenitiesStr = document.getElementById('propAmenities').value;
+        const data = {
+            name: document.getElementById('propName').value.trim(),
+            address: document.getElementById('propAddress').value.trim(),
+            description: document.getElementById('propDescription').value.trim(),
+            max_guests: parseInt(document.getElementById('propMaxGuests').value) || 4,
+            bedrooms: parseInt(document.getElementById('propBedrooms').value) || 1,
+            bathrooms: parseFloat(document.getElementById('propBathrooms').value) || 1,
+            price_per_night: parseFloat(document.getElementById('propPrice').value) || null,
+            check_in_time: document.getElementById('propCheckIn').value.trim(),
+            check_out_time: document.getElementById('propCheckOut').value.trim(),
+            pet_friendly: document.getElementById('propPetFriendly').checked,
+            amenities: amenitiesStr ? amenitiesStr.split(',').map(a => a.trim()).filter(a => a) : [],
+            house_rules: document.getElementById('propHouseRules').value.trim()
+        };
+
+        try {
+            if (editId) {
+                await apiRequest(`/chatbot/api/properties/${editId}`, 'PUT', data);
+            } else {
+                await apiRequest('/chatbot/api/properties', 'POST', data);
+            }
+            showNotification(i18n.t('notify.saved'), 'success');
+            document.getElementById('propertyModal').close();
+            loadProperties();
+        } catch (err) {
+            showNotification(i18n.t('notify.error'), 'error');
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', loadProperties);
+```
+
+--- i18n Translation Keys ---
+Existing keys already cover most needs. No new keys strictly required.
+
+--- Testing ---
+1. Go to Settings, click "Add Property"
+2. Fill in all fields, save -> Verify property appears in list
+3. Click edit on the property -> Verify fields are pre-filled
+4. Modify fields and save -> Verify changes persist
+5. Delete a property -> Verify it disappears
+6. Create a test conversation and link it to the property
+7. Generate an AI response -> Verify property info is used in context
+
+
+================================================================================
+FEATURE #8: DASHBOARD STATISTICS CARD
+================================================================================
+
+--- Description ---
+Stats summary bar at the top of the inbox: total conversations, unread count,
+messages today, active guests.
+
+--- Files to Modify ---
+1. routes.py (new /api/stats endpoint)
+2. templates/chatbot/inbox.html (stats card HTML + JS)
+3. static/css/style.css (stats card styles)
+4. static/js/i18n.js (translation keys)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Add the stats API endpoint in routes.py. Add after api_get_all_guests:
+
+```python
+@chatbot_bp.route('/api/stats', methods=['GET'])
+def api_get_stats():
+    """Get dashboard statistics"""
+    from sqlalchemy import func
+
+    total_conversations = Conversation.query.count()
+    unread_count = Conversation.query.filter_by(is_read=False).count()
+    active_conversations = Conversation.query.filter_by(status='active').count()
+    total_guests = Guest.query.count()
+
+    # Messages today
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    messages_today = Message.query.filter(Message.sent_at >= today_start).count()
+    guest_messages_today = Message.query.filter(
+        Message.sent_at >= today_start,
+        Message.sender_type == 'guest'
+    ).count()
+
+    return jsonify({
+        'total_conversations': total_conversations,
+        'unread_count': unread_count,
+        'active_conversations': active_conversations,
+        'total_guests': total_guests,
+        'messages_today': messages_today,
+        'guest_messages_today': guest_messages_today
+    })
+```
+
+Step 2: Add stats card HTML in inbox.html. Place it right after the
+page-header div and before the filter-bar div:
+
+```html
+    <!-- Stats Bar -->
+    <div class="stats-bar" id="statsBar">
+        <div class="stat-card">
+            <div class="stat-value" id="statUnread">-</div>
+            <div class="stat-label" data-i18n="stats.unread">Ungelesen</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="statActive">-</div>
+            <div class="stat-label" data-i18n="stats.active">Aktiv</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="statMessagesToday">-</div>
+            <div class="stat-label" data-i18n="stats.messagesToday">Nachrichten heute</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="statGuests">-</div>
+            <div class="stat-label" data-i18n="stats.totalGuests">Gaeste</div>
+        </div>
+    </div>
+```
+
+Step 3: Add JS to load stats in inbox.html <script>. Add this function
+and call it in DOMContentLoaded:
+
+```javascript
+    async function loadStats() {
+        try {
+            const response = await fetch('/chatbot/api/stats');
+            if (!response.ok) return;
+            const data = await response.json();
+            document.getElementById('statUnread').textContent = data.unread_count;
+            document.getElementById('statActive').textContent = data.active_conversations;
+            document.getElementById('statMessagesToday').textContent = data.messages_today;
+            document.getElementById('statGuests').textContent = data.total_guests;
+        } catch (err) {
+            console.error('Failed to load stats:', err);
+        }
+    }
+```
+
+In DOMContentLoaded, add: loadStats();
+
+Also update stats on each poll cycle. In the inboxPoller onUpdate callback:
+```javascript
+onUpdate: (data) => {
+    updateInboxList(data.conversations);
+    loadStats();  // Refresh stats on each poll
+},
+```
+
+--- i18n Translation Keys ---
+German (de):
+  'stats.unread': 'Ungelesen',
+  'stats.active': 'Aktiv',
+  'stats.messagesToday': 'Nachrichten heute',
+  'stats.totalGuests': 'Gaeste',
+
+English (en):
+  'stats.unread': 'Unread',
+  'stats.active': 'Active',
+  'stats.messagesToday': 'Messages today',
+  'stats.totalGuests': 'Guests',
+
+--- CSS Additions ---
+```css
+/* Stats Bar */
+.stats-bar {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.stat-card {
+    flex: 1;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    padding: 16px 20px;
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    text-transform: uppercase;
+    margin-top: 4px;
+}
+```
+
+--- Testing ---
+1. Open the inbox -> Verify stats bar shows correct numbers
+2. Create a test conversation -> Refresh -> Verify unread count increases
+3. Open the conversation (marks as read) -> Return to inbox
+4. Verify unread count decreased
+
+
+================================================================================
+FEATURE #9: AI TYPING INDICATOR
+================================================================================
+
+--- Description ---
+Show a pulsing "..." typing indicator bubble while AI is generating a
+response, making the 15-30 second wait feel more natural.
+
+--- Files to Modify ---
+1. templates/chatbot/conversation.html (typing indicator logic)
+2. static/css/style.css (typing animation)
+3. static/js/i18n.js (translation keys)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Create the typing indicator show/hide functions in conversation.html
+<script>:
+
+```javascript
+    function showTypingIndicator() {
+        const container = document.getElementById('messagesContainer');
+        // Remove any existing indicator
+        removeTypingIndicator();
+
+        const indicator = document.createElement('div');
+        indicator.className = 'message ai typing-indicator';
+        indicator.id = 'aiTypingIndicator';
+        indicator.innerHTML = `
+            <div class="message-avatar"><i class="fas fa-robot"></i></div>
+            <div class="message-content">
+                <div class="message-header">
+                    <span class="sender-name">${i18n.t('conversation.ai')}</span>
+                </div>
+                <div class="typing-dots">
+                    <span></span><span></span><span></span>
+                </div>
+            </div>
+        `;
+        container.appendChild(indicator);
+        scrollToBottom();
+    }
+
+    function removeTypingIndicator() {
+        const indicator = document.getElementById('aiTypingIndicator');
+        if (indicator) indicator.remove();
+    }
+```
+
+Step 2: Add showTypingIndicator() at the start of generateAIResponse():
+
+Find in generateAIResponse():
+```javascript
+btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>...`;
+```
+
+Add before the fetch call:
+```javascript
+showTypingIndicator();
+```
+
+Add in the .finally() block:
+```javascript
+removeTypingIndicator();
+```
+
+Step 3: Do the same for suggestAIResponse():
+Add showTypingIndicator() before the fetch, and removeTypingIndicator()
+in .finally().
+
+--- CSS Additions ---
+```css
+/* AI Typing Indicator */
+.typing-dots {
+    display: flex;
+    gap: 4px;
+    padding: 4px 0;
+}
+
+.typing-dots span {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.7);
+    animation: typingPulse 1.4s infinite ease-in-out;
+}
+
+.typing-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes typingPulse {
+    0%, 60%, 100% { transform: scale(0.6); opacity: 0.4; }
+    30% { transform: scale(1); opacity: 1; }
+}
+```
+
+--- Testing ---
+1. Open a conversation with a guest message
+2. Click "Send AI Response"
+3. Verify a typing indicator (3 pulsing dots) appears as a message bubble
+4. Verify the indicator disappears when the AI response appears
+5. Verify the indicator also appears for "AI Suggest"
+
+
+================================================================================
+FEATURE #10: DARK MODE TOGGLE
+================================================================================
+
+--- Description ---
+Toggle between light and dark themes. CSS variables are already set up for
+easy theme switching. Store preference in localStorage.
+
+--- Files to Modify ---
+1. static/css/style.css (dark theme variable overrides)
+2. templates/chatbot/base.html (toggle button + JS)
+3. static/js/i18n.js (translation keys)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Add dark theme CSS variable overrides in style.css. Add right after
+the existing :root block:
+
+```css
+/* Dark Mode Variables */
+:root[data-theme="dark"] {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-light: #64748b;
+    --border-color: #334155;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme="dark"] .message.guest .message-content {
+    background: #334155;
+    color: #f1f5f9;
+}
+
+:root[data-theme="dark"] .memory-item {
+    background: #334155;
+}
+
+:root[data-theme="dark"] .property-item {
+    background: #334155;
+}
+
+:root[data-theme="dark"] dialog.edit-modal {
+    background: #1e293b;
+    color: #f1f5f9;
+}
+
+:root[data-theme="dark"] dialog.edit-modal .modal-header,
+:root[data-theme="dark"] dialog.edit-modal .modal-footer {
+    border-color: #334155;
+}
+
+:root[data-theme="dark"] dialog.edit-modal .form-group input,
+:root[data-theme="dark"] dialog.edit-modal .form-group textarea,
+:root[data-theme="dark"] dialog.edit-modal .form-group select {
+    background: #0f172a;
+    border-color: #334155;
+    color: #f1f5f9;
+}
+
+:root[data-theme="dark"] .setting-select,
+:root[data-theme="dark"] .setting-input,
+:root[data-theme="dark"] .setting-textarea,
+:root[data-theme="dark"] .notes-textarea,
+:root[data-theme="dark"] .message-form textarea,
+:root[data-theme="dark"] .search-box input {
+    background: #0f172a;
+    border-color: #334155;
+    color: #f1f5f9;
+}
+```
+
+Step 2: Add toggle button in base.html sidebar-footer, right before the
+language-selector div:
+
+```html
+<!-- Theme Toggle -->
+<div class="theme-toggle">
+    <button id="themeToggle" onclick="toggleTheme()" class="btn-icon" style="background: none; border: none; color: var(--text-light); cursor: pointer; padding: 8px; width: 100%; display: flex; align-items: center; gap: 8px; border-radius: var(--border-radius);">
+        <i class="fas fa-moon" id="themeIcon"></i>
+        <span id="themeLabel" data-i18n="settings.theme.dark">Dark Mode</span>
+    </button>
+</div>
+```
+
+Step 3: Add theme JS in base.html <script>:
+
+```javascript
+    // Theme management
+    function initTheme() {
+        const saved = localStorage.getItem('chatbot_theme') || 'light';
+        applyTheme(saved);
+    }
+
+    function toggleTheme() {
+        const current = document.documentElement.getAttribute('data-theme') || 'light';
+        const next = current === 'dark' ? 'light' : 'dark';
+        applyTheme(next);
+        localStorage.setItem('chatbot_theme', next);
+    }
+
+    function applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        const icon = document.getElementById('themeIcon');
+        const label = document.getElementById('themeLabel');
+        if (icon) {
+            icon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+        }
+        if (label) {
+            label.textContent = theme === 'dark' ? i18n.t('settings.theme.light') : i18n.t('settings.theme.dark');
+        }
+    }
+
+    // Initialize theme immediately (before DOMContentLoaded to prevent flash)
+    initTheme();
+```
+
+--- i18n Translation Keys ---
+German (de):
+  'settings.theme.dark': 'Dunkler Modus',
+  'settings.theme.light': 'Heller Modus',
+
+English (en):
+  'settings.theme.dark': 'Dark Mode',
+  'settings.theme.light': 'Light Mode',
+
+--- Testing ---
+1. Click the moon icon in the sidebar -> Verify dark theme applies
+2. Refresh the page -> Verify dark theme persists (localStorage)
+3. Click again -> Verify it toggles back to light
+4. Check all pages (inbox, conversation, guest profile, settings)
+5. Verify all modals and forms are readable in dark mode
+
+
+================================================================================
+================================================================================
+                        BATCH 3 - MAJOR FEATURES
+================================================================================
+================================================================================
+
+
+================================================================================
+FEATURE #11: CONVERSATION DATE GROUPING IN INBOX
+================================================================================
+
+--- Description ---
+Group inbox conversations with date dividers: "Today", "Yesterday",
+"This Week", "Older".
+
+--- Files to Modify ---
+1. templates/chatbot/inbox.html (rendering logic)
+2. static/css/style.css (date divider styles)
+3. static/js/i18n.js (translation keys)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Add a date grouping function in inbox.html <script>:
+
+```javascript
+    function getDateGroup(dateString) {
+        if (!dateString) return 'older';
+        const date = new Date(dateString);
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+        const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 7);
+
+        if (date >= today) return 'today';
+        if (date >= yesterday) return 'yesterday';
+        if (date >= weekAgo) return 'thisWeek';
+        return 'older';
+    }
+
+    function getDateGroupLabel(group) {
+        const labels = {
+            'today': i18n.t('inbox.dateGroup.today'),
+            'yesterday': i18n.t('inbox.dateGroup.yesterday'),
+            'thisWeek': i18n.t('inbox.dateGroup.thisWeek'),
+            'older': i18n.t('inbox.dateGroup.older')
+        };
+        return labels[group] || group;
+    }
+```
+
+Step 2: Modify updateInboxList to insert date dividers. After the sorting
+and before card insertion, add divider logic. After the forEach loop that
+processes conversations, add date dividers:
+
+```javascript
+    function insertDateDividers() {
+        const container = document.getElementById('conversationList');
+        // Remove existing dividers
+        container.querySelectorAll('.date-divider').forEach(d => d.remove());
+
+        let lastGroup = null;
+        const cards = container.querySelectorAll('.conversation-card');
+
+        cards.forEach(card => {
+            if (card.style.display === 'none') return;
+            const group = getDateGroup(card.dataset.updatedAt);
+            if (group !== lastGroup) {
+                const divider = document.createElement('div');
+                divider.className = 'date-divider';
+                divider.textContent = getDateGroupLabel(group);
+                card.parentNode.insertBefore(divider, card);
+                lastGroup = group;
+            }
+        });
+    }
+```
+
+Call insertDateDividers() at the end of updateInboxList() and after
+filterState.applyFilters().
+
+--- i18n Translation Keys ---
+German (de):
+  'inbox.dateGroup.today': 'Heute',
+  'inbox.dateGroup.yesterday': 'Gestern',
+  'inbox.dateGroup.thisWeek': 'Diese Woche',
+  'inbox.dateGroup.older': 'Aelter',
+
+English (en):
+  'inbox.dateGroup.today': 'Today',
+  'inbox.dateGroup.yesterday': 'Yesterday',
+  'inbox.dateGroup.thisWeek': 'This Week',
+  'inbox.dateGroup.older': 'Older',
+
+--- CSS Additions ---
+```css
+/* Date Divider in Inbox */
+.date-divider {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-light);
+    text-transform: uppercase;
+    padding: 8px 16px;
+    margin-top: 8px;
+    letter-spacing: 0.05em;
+}
+```
+
+
+================================================================================
+FEATURE #12: MESSAGE DATE DIVIDERS IN CONVERSATION VIEW
+================================================================================
+
+--- Description ---
+Add centered date dividers between messages from different days in the
+conversation view: "--- February 23, 2026 ---"
+
+--- Files to Modify ---
+1. templates/chatbot/conversation.html (Jinja template + JS)
+2. static/css/style.css (divider styles)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Add date dividers in the Jinja template. Replace the messages loop:
+
+```html
+{% set prev_date = namespace(value=None) %}
+{% for message in messages %}
+    {% set msg_date = message.sent_at.strftime('%Y-%m-%d') if message.sent_at else None %}
+    {% if msg_date and msg_date != prev_date.value %}
+        <div class="message-date-divider">
+            <span>{{ message.sent_at.strftime('%B %d, %Y') }}</span>
+        </div>
+        {% set prev_date.value = msg_date %}
+    {% endif %}
+    <div class="message {{ message.sender_type }}" data-message-id="{{ message.id }}">
+        ... (existing message HTML unchanged)
+    </div>
+{% endfor %}
+```
+
+Step 2: Update addMessageToUI to insert date dividers for dynamically added
+messages:
+
+```javascript
+    let lastMessageDate = null;
+
+    // Initialize from existing messages
+    const existingMsgs = document.querySelectorAll('.message[data-message-id]');
+    if (existingMsgs.length > 0) {
+        const lastMsg = existingMsgs[existingMsgs.length - 1];
+        const timeEl = lastMsg.querySelector('.message-time');
+        if (timeEl) {
+            // Parse the date from the displayed time
+            lastMessageDate = timeEl.textContent.split(' ')[0]; // "23.02.2026"
+        }
+    }
+
+    // In addMessageToUI, before appending, check if date changed:
+    function addMessageToUI(message, senderType) {
+        const container = document.getElementById('messagesContainer');
+        const msgDate = message.sent_at ? new Date(message.sent_at).toLocaleDateString('en-CA') : null;
+
+        if (msgDate && msgDate !== lastMessageDate) {
+            const divider = document.createElement('div');
+            divider.className = 'message-date-divider';
+            const dateObj = new Date(message.sent_at);
+            divider.innerHTML = `<span>${dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>`;
+            container.appendChild(divider);
+            lastMessageDate = msgDate;
+        }
+
+        // ... rest of existing addMessageToUI code
+    }
+```
+
+--- CSS Additions ---
+```css
+/* Message Date Divider */
+.message-date-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 16px 0;
+    align-self: center;
+}
+
+.message-date-divider span {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    background: var(--bg-primary);
+    padding: 4px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+```
+
+
+================================================================================
+FEATURE #13: GUEST AVATAR COLORS (HASH-BASED)
+================================================================================
+
+--- Description ---
+Assign each guest a consistent avatar color based on a hash of their name.
+
+--- Files to Modify ---
+1. templates/chatbot/inbox.html (apply color to avatars)
+2. static/css/style.css (color palette)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Add a hash-to-color function in inbox.html <script>:
+
+```javascript
+    const AVATAR_COLORS = [
+        '#2563eb', '#7c3aed', '#db2777', '#ea580c',
+        '#16a34a', '#0891b2', '#4f46e5', '#c026d3',
+        '#059669', '#d97706'
+    ];
+
+    function getAvatarColor(name) {
+        if (!name) return AVATAR_COLORS[0];
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) {
+            hash = name.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+    }
+```
+
+Step 2: Apply colors to existing cards on page load and in
+createConversationCard. In createConversationCard, after creating the card:
+
+```javascript
+    const avatarEl = card.querySelector('.conversation-avatar');
+    if (avatarEl) {
+        avatarEl.style.backgroundColor = getAvatarColor(guestName);
+    }
+```
+
+Step 3: Apply to server-rendered cards on DOMContentLoaded:
+
+```javascript
+    document.querySelectorAll('.conversation-card').forEach(card => {
+        const nameEl = card.querySelector('.guest-name');
+        const avatarEl = card.querySelector('.conversation-avatar');
+        if (nameEl && avatarEl) {
+            avatarEl.style.backgroundColor = getAvatarColor(nameEl.textContent);
+        }
+    });
+```
+
+Step 4: Also apply in conversation.html header. Add to DOMContentLoaded:
+
+```javascript
+    const guestAvatar = document.querySelector('.guest-avatar');
+    const guestNameText = '{{ guest.name or guest.email or "Guest" }}';
+    if (guestAvatar) {
+        guestAvatar.style.backgroundColor = getAvatarColor(guestNameText);
+    }
+```
+
+Copy the AVATAR_COLORS array and getAvatarColor function to conversation.html.
+
+--- Testing ---
+1. Open inbox with multiple guests -> Each should have a distinct color
+2. Same guest always gets the same color
+3. Colors persist across page loads
+
+
+================================================================================
+FEATURE #14: AUTO-SAVE DRAFT MESSAGES
+================================================================================
+
+--- Description ---
+Save draft text to localStorage when typing. Restore when returning to
+the conversation.
+
+--- Files to Modify ---
+1. templates/chatbot/conversation.html (draft save/restore logic)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Add draft management in conversation.html <script>:
+
+```javascript
+    const DRAFT_KEY = `chatbot_draft_${conversationId}`;
+
+    // Restore draft on page load
+    function restoreDraft() {
+        const draft = localStorage.getItem(DRAFT_KEY);
+        if (draft) {
+            const input = document.getElementById('messageInput');
+            input.value = draft;
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 200) + 'px';
+        }
+    }
+
+    // Save draft on input (debounced)
+    const saveDraft = debounce(function() {
+        const input = document.getElementById('messageInput');
+        const content = input.value.trim();
+        if (content) {
+            localStorage.setItem(DRAFT_KEY, content);
+        } else {
+            localStorage.removeItem(DRAFT_KEY);
+        }
+    }, 500);
+
+    // Clear draft on successful send
+    function clearDraft() {
+        localStorage.removeItem(DRAFT_KEY);
+    }
+
+    // Attach listeners
+    document.getElementById('messageInput').addEventListener('input', saveDraft);
+```
+
+Step 2: Call restoreDraft() in DOMContentLoaded after scrollToBottom.
+
+Step 3: Call clearDraft() in the sendMessage success handler, right after
+input.value = ''.
+
+--- Testing ---
+1. Start typing in a conversation, navigate away
+2. Return to the same conversation -> Draft text should be restored
+3. Send the message -> Draft should be cleared
+4. Open a different conversation -> No draft leak between conversations
+
+
+================================================================================
+FEATURE #15: GUEST MERGE TOOL
+================================================================================
+
+--- Description ---
+Merge duplicate guest profiles that may arise from the same person
+contacting via different platforms.
+
+--- Files to Modify ---
+1. routes.py (merge API endpoint)
+2. templates/chatbot/guest_profile.html (merge button + modal)
+3. static/js/i18n.js (translation keys)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Add merge API endpoint in routes.py:
+
+```python
+@chatbot_bp.route('/api/guests/<int:guest_id>/merge', methods=['POST'])
+def api_merge_guests(guest_id):
+    """Merge another guest into this guest"""
+    primary = Guest.query.get_or_404(guest_id)
+    data = request.get_json()
+
+    if not data or 'merge_guest_id' not in data:
+        return jsonify({'error': 'merge_guest_id is required'}), 400
+
+    merge_id = data['merge_guest_id']
+    if merge_id == guest_id:
+        return jsonify({'error': 'Cannot merge guest with itself'}), 400
+
+    secondary = Guest.query.get_or_404(merge_id)
+
+    # Move conversations
+    Conversation.query.filter_by(guest_id=merge_id).update({'guest_id': guest_id})
+
+    # Move details (skip exact duplicates)
+    for detail in GuestDetail.query.filter_by(guest_id=merge_id).all():
+        existing = GuestDetail.query.filter_by(
+            guest_id=guest_id,
+            detail_type=detail.detail_type,
+            detail_key=detail.detail_key,
+            detail_value=detail.detail_value
+        ).first()
+        if not existing:
+            detail.guest_id = guest_id
+        else:
+            db.session.delete(detail)
+
+    # Copy missing platform IDs
+    if secondary.email and not primary.email:
+        primary.email = secondary.email
+    if secondary.phone and not primary.phone:
+        primary.phone = secondary.phone
+    if secondary.whatsapp_id and not primary.whatsapp_id:
+        primary.whatsapp_id = secondary.whatsapp_id
+    if secondary.airbnb_id and not primary.airbnb_id:
+        primary.airbnb_id = secondary.airbnb_id
+    if secondary.booking_id and not primary.booking_id:
+        primary.booking_id = secondary.booking_id
+
+    # Combine stay counts
+    primary.total_stays = (primary.total_stays or 0) + (secondary.total_stays or 0)
+
+    # Merge notes
+    if secondary.notes:
+        primary.notes = (primary.notes or '') + '\n---\n' + secondary.notes
+
+    # Delete secondary guest
+    db.session.delete(secondary)
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'merged_guest_id': merge_id,
+        'primary_guest': primary.to_dict()
+    })
+```
+
+Step 2: Add merge UI in guest_profile.html. Add a "Merge" button in the
+card-header of the Guest Info Card:
+
+```html
+<button type="button" class="btn btn-sm btn-secondary" onclick="openMergeModal()">
+    <i class="fas fa-compress-arrows-alt"></i> <span data-i18n="guest.merge">Zusammenfuehren</span>
+</button>
+```
+
+Step 3: Add merge modal and JS:
+
+```html
+<dialog id="mergeModal" class="edit-modal">
+    <div class="modal-header">
+        <h2 data-i18n="guest.merge.title">Gast zusammenfuehren</h2>
+        <button type="button" class="btn-close" onclick="document.getElementById('mergeModal').close()">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    <div class="modal-body">
+        <p data-i18n="guest.merge.desc">Waehlen Sie den Gast, der mit diesem Profil zusammengefuehrt werden soll.</p>
+        <select id="mergeGuestSelect" class="setting-select" style="width: 100%; margin: 12px 0;"></select>
+        <p class="help-text" data-i18n="guest.merge.warning">Alle Konversationen und Erinnerungen werden uebertragen. Das andere Profil wird geloescht.</p>
+    </div>
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('mergeModal').close()">Abbrechen</button>
+        <button type="button" class="btn btn-primary" onclick="executeMerge()">Zusammenfuehren</button>
+    </div>
+</dialog>
+```
+
+```javascript
+    async function openMergeModal() {
+        const select = document.getElementById('mergeGuestSelect');
+        select.innerHTML = '<option value="">-- Gast waehlen --</option>';
+
+        try {
+            const data = await apiRequest('/chatbot/api/guests');
+            data.guests.forEach(g => {
+                if (g.id !== guestId) {
+                    const option = document.createElement('option');
+                    option.value = g.id;
+                    option.textContent = `${g.name || g.email || 'Unknown'} (ID: ${g.id})`;
+                    select.appendChild(option);
+                }
+            });
+            document.getElementById('mergeModal').showModal();
+        } catch (err) {
+            showNotification('Failed to load guests', 'error');
+        }
+    }
+
+    async function executeMerge() {
+        const mergeId = document.getElementById('mergeGuestSelect').value;
+        if (!mergeId) {
+            showNotification('Please select a guest', 'error');
+            return;
+        }
+        if (!confirm('This action cannot be undone. Continue?')) return;
+
+        try {
+            await apiRequest(`/chatbot/api/guests/${guestId}/merge`, 'POST', {
+                merge_guest_id: parseInt(mergeId)
+            });
+            showNotification('Guests merged successfully', 'success');
+            location.reload();
+        } catch (err) {
+            showNotification('Merge failed: ' + err.message, 'error');
+        }
+    }
+```
+
+--- i18n Translation Keys ---
+German (de):
+  'guest.merge': 'Zusammenfuehren',
+  'guest.merge.title': 'Gast zusammenfuehren',
+  'guest.merge.desc': 'Waehlen Sie den Gast, der in dieses Profil zusammengefuehrt werden soll.',
+  'guest.merge.warning': 'Alle Konversationen und Erinnerungen werden uebertragen. Das andere Profil wird geloescht.',
+
+English (en):
+  'guest.merge': 'Merge',
+  'guest.merge.title': 'Merge Guest',
+  'guest.merge.desc': 'Select the guest to merge into this profile.',
+  'guest.merge.warning': 'All conversations and memories will be transferred. The other profile will be deleted.',
+
+
+================================================================================
+FEATURE #16: EXPORT CONVERSATIONS
+================================================================================
+
+--- Description ---
+Export a conversation as plain text or CSV for record-keeping.
+
+--- Files to Modify ---
+1. routes.py (export API endpoint)
+2. templates/chatbot/conversation.html (export button)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Add export API endpoint in routes.py:
+
+```python
+@chatbot_bp.route('/api/conversations/<int:conversation_id>/export', methods=['GET'])
+def api_export_conversation(conversation_id):
+    """Export conversation as plain text or CSV"""
+    from flask import Response
+    import csv
+    import io
+
+    conversation = Conversation.query.get_or_404(conversation_id)
+    messages = conversation.messages.order_by(Message.sent_at.asc()).all()
+    guest = conversation.guest
+    fmt = request.args.get('format', 'txt')
+
+    if fmt == 'csv':
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['Timestamp', 'Sender', 'Content'])
+        for msg in messages:
+            writer.writerow([
+                msg.sent_at.isoformat() if msg.sent_at else '',
+                msg.sender_type,
+                msg.content
+            ])
+        content = output.getvalue()
+        mimetype = 'text/csv'
+        filename = f'conversation_{conversation_id}.csv'
+    else:
+        lines = []
+        lines.append(f'Conversation Export')
+        lines.append(f'Guest: {guest.name or guest.email or "Unknown"}')
+        lines.append(f'Platform: {conversation.platform}')
+        lines.append(f'Subject: {conversation.subject or "N/A"}')
+        lines.append(f'Exported: {datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")}')
+        lines.append('=' * 60)
+        lines.append('')
+        for msg in messages:
+            time = msg.sent_at.strftime('%Y-%m-%d %H:%M') if msg.sent_at else 'Unknown'
+            sender = msg.sender_type.upper()
+            lines.append(f'[{time}] {sender}:')
+            lines.append(msg.content)
+            lines.append('')
+        content = '\n'.join(lines)
+        mimetype = 'text/plain'
+        filename = f'conversation_{conversation_id}.txt'
+
+    return Response(
+        content,
+        mimetype=mimetype,
+        headers={'Content-Disposition': f'attachment; filename={filename}'}
+    )
+```
+
+Step 2: Add export button in conversation.html. In the .conversation-actions
+div, add:
+
+```html
+<div class="btn-group" style="position: relative;">
+    <button class="btn btn-icon" onclick="toggleExportMenu()" title="Export">
+        <i class="fas fa-download"></i>
+    </button>
+    <div class="export-menu" id="exportMenu" style="display: none; position: absolute; right: 0; top: 100%; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: var(--shadow-md); z-index: 50; min-width: 150px;">
+        <a href="/chatbot/api/conversations/{{ conversation.id }}/export?format=txt" class="export-option" style="display: block; padding: 10px 16px; font-size: 0.875rem;">
+            <i class="fas fa-file-alt"></i> Text (.txt)
+        </a>
+        <a href="/chatbot/api/conversations/{{ conversation.id }}/export?format=csv" class="export-option" style="display: block; padding: 10px 16px; font-size: 0.875rem;">
+            <i class="fas fa-file-csv"></i> CSV (.csv)
+        </a>
+    </div>
+</div>
+```
+
+```javascript
+    function toggleExportMenu() {
+        const menu = document.getElementById('exportMenu');
+        menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+    }
+
+    document.addEventListener('click', function(e) {
+        const menu = document.getElementById('exportMenu');
+        if (menu && !e.target.closest('.btn-group')) {
+            menu.style.display = 'none';
+        }
+    });
+```
+
+
+================================================================================
+================================================================================
+                        BATCH 4 - POLISH
+================================================================================
+================================================================================
+
+
+================================================================================
+FEATURE #17: LOADING SKELETONS
+================================================================================
+
+--- Description ---
+Show animated skeleton placeholders while data loads.
+
+--- Files to Modify ---
+1. static/css/style.css (skeleton animations)
+2. templates/chatbot/inbox.html (skeleton cards)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Add skeleton CSS to style.css:
+
+```css
+/* Loading Skeletons */
+.skeleton {
+    background: linear-gradient(90deg, var(--border-color) 25%, var(--bg-primary) 50%, var(--border-color) 75%);
+    background-size: 200% 100%;
+    animation: skeletonShimmer 1.5s infinite;
+    border-radius: 4px;
+}
+
+@keyframes skeletonShimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.skeleton-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    margin-bottom: 8px;
+}
+
+.skeleton-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+}
+
+.skeleton-text {
+    height: 14px;
+    margin-bottom: 8px;
+}
+
+.skeleton-text.short { width: 40%; }
+.skeleton-text.medium { width: 65%; }
+.skeleton-text.long { width: 90%; }
+```
+
+Step 2: Add skeleton HTML in inbox.html. Inside the #conversationList div,
+before the Jinja loop, add:
+
+```html
+<div class="skeleton-container" id="skeletonLoader">
+    {% for i in range(4) %}
+    <div class="skeleton-card">
+        <div class="skeleton skeleton-avatar"></div>
+        <div style="flex: 1;">
+            <div class="skeleton skeleton-text medium"></div>
+            <div class="skeleton skeleton-text short"></div>
+            <div class="skeleton skeleton-text long"></div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+```
+
+Step 3: Hide skeletons when real data loads. On DOMContentLoaded:
+
+```javascript
+    // Hide skeleton once real cards are present
+    const skeleton = document.getElementById('skeletonLoader');
+    if (skeleton && document.querySelectorAll('.conversation-card').length > 0) {
+        skeleton.style.display = 'none';
+    }
+```
+
+In the updateInboxList function, add at the top:
+```javascript
+    const skeleton = document.getElementById('skeletonLoader');
+    if (skeleton) skeleton.style.display = 'none';
+```
+
+
+================================================================================
+FEATURE #18: SCHEDULED MESSAGES
+================================================================================
+
+--- Description ---
+Allow hosts to compose messages and schedule them for later delivery.
+
+--- Files to Modify/Create ---
+1. models.py (new ScheduledMessage model)
+2. routes.py (schedule API endpoints)
+3. templates/chatbot/conversation.html (send later UI)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Add ScheduledMessage model to models.py:
+
+```python
+class ScheduledMessage(db.Model):
+    """Messages scheduled for future delivery"""
+    __tablename__ = 'scheduled_message'
+
+    id = db.Column(db.Integer, primary_key=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey('conversation.id', ondelete='CASCADE'), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    scheduled_at = db.Column(db.DateTime, nullable=False)
+    sent = db.Column(db.Boolean, default=False)
+    sent_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    conversation = db.relationship('Conversation', backref='scheduled_messages')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'conversation_id': self.conversation_id,
+            'content': self.content,
+            'scheduled_at': self.scheduled_at.isoformat() if self.scheduled_at else None,
+            'sent': self.sent,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+```
+
+Step 2: Add API endpoints in routes.py:
+
+```python
+@chatbot_bp.route('/api/conversations/<int:conversation_id>/schedule', methods=['POST'])
+def api_schedule_message(conversation_id):
+    """Schedule a message for later"""
+    from .models import ScheduledMessage
+    conversation = Conversation.query.get_or_404(conversation_id)
+    data = request.get_json()
+
+    if not data or 'content' not in data or 'scheduled_at' not in data:
+        return jsonify({'error': 'Content and scheduled_at are required'}), 400
+
+    scheduled = ScheduledMessage(
+        conversation_id=conversation_id,
+        content=data['content'].strip(),
+        scheduled_at=datetime.fromisoformat(data['scheduled_at'])
+    )
+    db.session.add(scheduled)
+    db.session.commit()
+    return jsonify(scheduled.to_dict()), 201
+
+
+@chatbot_bp.route('/api/scheduled/send-due', methods=['POST'])
+def api_send_due_scheduled():
+    """Send all scheduled messages that are due"""
+    from .models import ScheduledMessage
+    now = datetime.utcnow()
+    due = ScheduledMessage.query.filter(
+        ScheduledMessage.sent == False,
+        ScheduledMessage.scheduled_at <= now
+    ).all()
+
+    results = []
+    for scheduled in due:
+        message = Message(
+            conversation_id=scheduled.conversation_id,
+            sender_type='owner',
+            content=scheduled.content,
+            sent_at=datetime.utcnow()
+        )
+        db.session.add(message)
+        scheduled.sent = True
+        scheduled.sent_at = datetime.utcnow()
+        results.append(scheduled.to_dict())
+
+    db.session.commit()
+    return jsonify({'sent': len(results), 'results': results})
+```
+
+Step 3: Add "Send Later" button in conversation.html next to Send:
+
+```html
+<button type="button" class="btn btn-secondary" onclick="openScheduleModal()">
+    <i class="fas fa-clock"></i>
+</button>
+```
+
+Add the schedule modal and JS to pick date/time and submit.
+
+
+================================================================================
+FEATURE #19: NOTIFICATION SOUND
+================================================================================
+
+--- Description ---
+Play a subtle notification sound when new guest messages arrive.
+
+--- Files to Modify ---
+1. templates/chatbot/base.html (audio element + settings check)
+2. static/js/i18n.js (translation keys)
+
+--- Step-by-Step Implementation ---
+
+Step 1: You need a notification sound file. Place a short .mp3 file at:
+static/audio/notification.mp3
+
+Step 2: Add an audio element and sound function in base.html:
+
+```javascript
+    // Notification sound
+    const notificationAudio = new Audio('/chatbot/static/audio/notification.mp3');
+    notificationAudio.volume = 0.3;
+
+    function playNotificationSound() {
+        const soundEnabled = localStorage.getItem('chatbot_notification_sound') !== 'false';
+        if (soundEnabled) {
+            notificationAudio.currentTime = 0;
+            notificationAudio.play().catch(() => {});  // Ignore autoplay restrictions
+        }
+    }
+```
+
+Step 3: Call playNotificationSound() in the same places where browser
+notifications are triggered (conversation.html updateMessages and
+inbox.html updateInboxList for new unread conversations).
+
+Step 4: Add a toggle in the sidebar footer:
+
+```html
+<div style="margin-bottom: 8px;">
+    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.875rem; color: var(--text-light); cursor: pointer;">
+        <input type="checkbox" id="soundToggle" checked onchange="localStorage.setItem('chatbot_notification_sound', this.checked)">
+        <i class="fas fa-volume-up"></i> <span data-i18n="settings.sound">Ton</span>
+    </label>
+</div>
+```
+
+Initialize checkbox state on load:
+```javascript
+document.getElementById('soundToggle').checked =
+    localStorage.getItem('chatbot_notification_sound') !== 'false';
+```
+
+
+================================================================================
+FEATURE #20: CONVERSATION PINNING/STARRING
+================================================================================
+
+--- Description ---
+Allow hosts to pin important conversations to the top of the inbox.
+
+--- Files to Modify ---
+1. models.py (add is_pinned column)
+2. routes.py (pin/unpin endpoint + sort pinned first)
+3. templates/chatbot/inbox.html (star icon + visual treatment)
+4. static/css/style.css (pin styles)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Add is_pinned column to Conversation model. In models.py, in the
+Conversation class, add after is_read:
+
+```python
+    is_pinned = db.Column(db.Boolean, default=False, server_default='0', nullable=False)
+```
+
+Step 2: Run a database migration:
+```bash
+flask db migrate -m "Add is_pinned to conversation"
+flask db upgrade
+```
+
+Step 3: Add pin API endpoint in routes.py:
+
+```python
+@chatbot_bp.route('/api/conversations/<int:conversation_id>/pin', methods=['PATCH'])
+def api_toggle_pin(conversation_id):
+    """Toggle pin status for a conversation"""
+    conversation = Conversation.query.get_or_404(conversation_id)
+    conversation.is_pinned = not conversation.is_pinned
+    db.session.commit()
+    return jsonify({'success': True, 'is_pinned': conversation.is_pinned})
+```
+
+Step 4: Update the conversations API to sort pinned first. In
+api_get_conversations, change the order_by:
+
+```python
+pagination = query.order_by(
+    Conversation.is_pinned.desc(),
+    Conversation.updated_at.desc()
+).paginate(page=page, per_page=per_page, error_out=False)
+```
+
+Step 5: Update to_dict in Conversation model to include is_pinned:
+
+Add to the data dictionary in to_dict():
+```python
+'is_pinned': self.is_pinned,
+```
+
+Step 6: In inbox.html, add a pin icon to conversation cards. In the
+Jinja template, inside .conversation-meta, add before the platform badge:
+
+```html
+{% if conv.is_pinned %}
+    <span class="pin-badge" title="Pinned"><i class="fas fa-thumbtack"></i></span>
+{% endif %}
+```
+
+Step 7: In the JS createConversationCard function, add pin support:
+
+```javascript
+const pinBadge = conv.is_pinned ? '<span class="pin-badge" title="Pinned"><i class="fas fa-thumbtack"></i></span>' : '';
+```
+
+Add pinBadge before the platform badge in the meta section.
+
+Step 8: Add a data attribute to the card:
+```javascript
+card.dataset.isPinned = conv.is_pinned ? 'true' : 'false';
+```
+
+--- CSS Additions ---
+```css
+.pin-badge {
+    color: var(--warning-color);
+    font-size: 0.75rem;
+}
+
+.conversation-card[data-is-pinned="true"] {
+    border-left: 3px solid var(--warning-color);
+}
+```
+
+
+================================================================================
+================================================================================
+                        CODE QUALITY
+================================================================================
+================================================================================
+
+
+================================================================================
+FEATURE #A: EXTRACT INLINE SCRIPTS TO EXTERNAL JS FILES
+================================================================================
+
+--- Description ---
+Move large inline <script> blocks from templates into external JS files
+for caching, cleaner templates, and easier maintenance.
+
+--- Files to Create ---
+1. static/js/conversation.js (from conversation.html inline script)
+2. static/js/guest-profile.js (from guest_profile.html inline script)
+3. static/js/settings.js (from settings.html inline script)
+4. static/js/inbox-page.js (from inbox.html inline script)
+
+--- Step-by-Step Implementation ---
+
+Step 1: For each template, extract the <script> content into a new JS file.
+
+For conversation.html:
+- Create static/js/conversation.js
+- Move all JS code from the inline <script> block
+- Replace Jinja variables with data attributes on HTML elements:
+  - {{ conversation.id }} -> data-conversation-id on a container div
+  - {{ 'true' if conversation.ai_enabled else 'false' }} -> data-ai-enabled
+  - {{ guest.name or "Guest" }} -> data-guest-name
+- Read these values at the top of the JS file:
+  ```javascript
+  const conversationContainer = document.querySelector('[data-conversation-id]');
+  const conversationId = parseInt(conversationContainer.dataset.conversationId);
+  const guestName = conversationContainer.dataset.guestName;
+  let aiEnabled = conversationContainer.dataset.aiEnabled === 'true';
+  ```
+
+Step 2: In the template, add data attributes to a container element:
+```html
+<div class="conversation-container"
+     data-conversation-id="{{ conversation.id }}"
+     data-ai-enabled="{{ 'true' if conversation.ai_enabled else 'false' }}"
+     data-guest-name="{{ guest.name or 'Guest' }}">
+```
+
+Step 3: Replace the inline <script> with an external script tag:
+```html
+<script src="{{ url_for('chatbot.static', filename='js/conversation.js') }}"></script>
+```
+
+Step 4: Repeat for guest_profile.html and settings.html.
+
+--- Testing ---
+Verify all functionality works identically after extraction.
+
+
+================================================================================
+FEATURE #B: API ERROR RESPONSE STANDARDIZATION
+================================================================================
+
+--- Description ---
+Standardize all API error responses to a consistent format.
+
+--- Files to Modify ---
+1. routes.py (all error responses)
+2. __init__.py or a new utils/errors.py (error helper)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Create a helper function. Add to routes.py or a new file:
+
+```python
+def api_error(message, code='UNKNOWN_ERROR', status=400):
+    """Standardized API error response"""
+    return jsonify({
+        'error': message,
+        'code': code,
+        'status': status
+    }), status
+```
+
+Step 2: Replace all error responses in routes.py. Examples:
+
+Replace:
+```python
+return jsonify({'error': 'Content is required'}), 400
+```
+
+With:
+```python
+return api_error('Content is required', 'MISSING_CONTENT', 400)
+```
+
+Replace:
+```python
+return jsonify({'error': 'AI service not initialized'}), 503
+```
+
+With:
+```python
+return api_error('AI service not initialized', 'AI_UNAVAILABLE', 503)
+```
+
+Step 3: Add error handler for 404 and 500 in the blueprint:
+
+```python
+@chatbot_bp.errorhandler(404)
+def handle_404(e):
+    if request.path.startswith('/chatbot/api/'):
+        return api_error('Resource not found', 'NOT_FOUND', 404)
+    return render_template('chatbot/404.html'), 404
+
+@chatbot_bp.errorhandler(500)
+def handle_500(e):
+    if request.path.startswith('/chatbot/api/'):
+        return api_error('Internal server error', 'INTERNAL_ERROR', 500)
+    return render_template('chatbot/500.html'), 500
+```
+
+Step 4: Update frontend apiRequest to use the code field:
+
+```javascript
+async function apiRequest(url, method = 'GET', data = null) {
+    // ... existing code ...
+    if (!response.ok) {
+        const errorCode = json.code || 'UNKNOWN';
+        throw new Error(json.error || `Request failed (${errorCode})`);
+    }
+}
+```
+
+
+================================================================================
+FEATURE #C: INPUT VALIDATION MIDDLEWARE
+================================================================================
+
+--- Description ---
+Add reusable validation decorators for API endpoints.
+
+--- Files to Create ---
+1. utils/validation.py
+
+--- Step-by-Step Implementation ---
+
+Step 1: Create utils/validation.py:
+
+```python
+"""Reusable validation decorators for API endpoints"""
+
+from functools import wraps
+from flask import request, jsonify
+
+
+def require_json(*required_fields):
+    """Decorator to validate JSON body contains required fields"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            data = request.get_json()
+            if not data:
+                return jsonify({
+                    'error': 'Request body must be JSON',
+                    'code': 'INVALID_JSON'
+                }), 400
+
+            missing = [field for field in required_fields if field not in data]
+            if missing:
+                return jsonify({
+                    'error': f'Missing required fields: {", ".join(missing)}',
+                    'code': 'MISSING_FIELDS'
+                }), 400
+
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+def validate_content_length(max_length=10000):
+    """Decorator to validate content length"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            data = request.get_json()
+            if data:
+                for key, value in data.items():
+                    if isinstance(value, str) and len(value) > max_length:
+                        return jsonify({
+                            'error': f'Field "{key}" exceeds maximum length of {max_length}',
+                            'code': 'CONTENT_TOO_LONG'
+                        }), 400
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+```
+
+Step 2: Use in routes.py:
+
+```python
+from .utils.validation import require_json
+
+@chatbot_bp.route('/api/conversations/<int:conversation_id>/messages', methods=['POST'])
+@require_json('content')
+def api_send_message(conversation_id):
+    # No more manual validation needed for 'content' field
+    conversation = Conversation.query.get_or_404(conversation_id)
+    data = request.get_json()
+    # ... rest of handler
+```
+
+Step 3: Create utils/__init__.py (if not existing) as an empty file.
+
+
+================================================================================
+FEATURE #D: AUTOMATED TESTS (pytest)
+================================================================================
+
+--- Description ---
+Add pytest test suite for API endpoints and service logic.
+
+--- Files to Create ---
+1. tests/__init__.py
+2. tests/conftest.py (test fixtures)
+3. tests/test_api.py (API endpoint tests)
+4. tests/test_memory_service.py (memory extraction tests)
+5. tests/test_guest_identification.py (cross-platform matching)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Create tests/conftest.py with fixtures:
+
+```python
+import pytest
+from ChatBotAI.app import create_app
+from ChatBotAI.config import TestingConfig
+from ChatBotAI.models import db as _db, Guest, Conversation, Message
+
+
+@pytest.fixture(scope='session')
+def app():
+    """Create application for testing"""
+    app = create_app(TestingConfig)
+    with app.app_context():
+        _db.create_all()
+    yield app
+    with app.app_context():
+        _db.drop_all()
+
+
+@pytest.fixture
+def client(app):
+    """Test client"""
+    return app.test_client()
+
+
+@pytest.fixture
+def db(app):
+    """Database session for tests"""
+    with app.app_context():
+        _db.create_all()
+        yield _db
+        _db.session.rollback()
+        # Clean up all tables
+        for table in reversed(_db.metadata.sorted_tables):
+            _db.session.execute(table.delete())
+        _db.session.commit()
+
+
+@pytest.fixture
+def sample_guest(db):
+    """Create a sample guest"""
+    guest = Guest(name='Test Guest', email='test@example.com')
+    db.session.add(guest)
+    db.session.commit()
+    return guest
+
+
+@pytest.fixture
+def sample_conversation(db, sample_guest):
+    """Create a sample conversation"""
+    conv = Conversation(
+        guest_id=sample_guest.id,
+        platform='email',
+        platform_id='test-conv-001',
+        subject='Test Conversation',
+        status='active',
+        ai_enabled=True
+    )
+    db.session.add(conv)
+    db.session.commit()
+    return conv
+```
+
+Step 2: Create tests/test_api.py:
+
+```python
+import json
+import pytest
+
+
+class TestConversationsAPI:
+    def test_get_conversations(self, client):
+        response = client.get('/chatbot/api/conversations')
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert 'conversations' in data
+        assert 'total' in data
+
+    def test_send_message(self, client, sample_conversation):
+        response = client.post(
+            f'/chatbot/api/conversations/{sample_conversation.id}/messages',
+            json={'content': 'Hello, test message'},
+            content_type='application/json'
+        )
+        assert response.status_code == 201
+        data = json.loads(response.data)
+        assert data['content'] == 'Hello, test message'
+        assert data['sender_type'] == 'owner'
+
+    def test_send_message_no_content(self, client, sample_conversation):
+        response = client.post(
+            f'/chatbot/api/conversations/{sample_conversation.id}/messages',
+            json={},
+            content_type='application/json'
+        )
+        assert response.status_code == 400
+
+    def test_get_messages(self, client, sample_conversation):
+        response = client.get(
+            f'/chatbot/api/conversations/{sample_conversation.id}/messages'
+        )
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert 'messages' in data
+
+    def test_toggle_ai(self, client, sample_conversation):
+        response = client.post(
+            f'/chatbot/api/conversations/{sample_conversation.id}/toggle-ai'
+        )
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert 'ai_enabled' in data
+
+    def test_conversation_not_found(self, client):
+        response = client.get('/chatbot/api/conversations/99999/messages')
+        assert response.status_code == 404
+
+
+class TestGuestsAPI:
+    def test_get_all_guests(self, client):
+        response = client.get('/chatbot/api/guests')
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert 'guests' in data
+
+    def test_update_guest(self, client, sample_guest):
+        response = client.patch(
+            f'/chatbot/api/guests/{sample_guest.id}',
+            json={'name': 'Updated Name'},
+            content_type='application/json'
+        )
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['name'] == 'Updated Name'
+
+    def test_add_guest_detail(self, client, sample_guest):
+        response = client.post(
+            f'/chatbot/api/guests/{sample_guest.id}/details',
+            json={
+                'detail_type': 'preference',
+                'detail_key': 'room',
+                'detail_value': 'ground floor'
+            },
+            content_type='application/json'
+        )
+        assert response.status_code == 201
+
+
+class TestHealthCheck:
+    def test_health_endpoint(self, client):
+        response = client.get('/chatbot/health')
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['status'] == 'healthy'
+        assert 'database' in data
+```
+
+Step 3: Run tests:
+```bash
+python -m pytest tests/ -v
+```
+
+
+================================================================================
+FEATURE #E: RATE LIMITING ON AI ENDPOINTS
+================================================================================
+
+--- Description ---
+Add rate limiting to AI generation endpoints to prevent spam-clicking
+from queuing multiple expensive Ollama requests.
+
+--- Files to Modify ---
+1. routes.py (add rate limiting)
+2. requirements.txt (add Flask-Limiter if not present)
+
+--- Step-by-Step Implementation ---
+
+Step 1: Install Flask-Limiter:
+```bash
+pip install Flask-Limiter
+```
+
+Step 2: Initialize Flask-Limiter in app.py:
+
+```python
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["200 per minute"],
+    storage_uri="memory://"
+)
+```
+
+In create_app(), add:
+```python
+limiter.init_app(app)
+```
+
+Step 3: Apply rate limits to AI endpoints in routes.py:
+
+```python
+from .app import limiter
+
+@chatbot_bp.route('/api/conversations/<int:conversation_id>/ai-response', methods=['POST'])
+@limiter.limit("3 per minute")
+def api_generate_ai_response(conversation_id):
+    # ... existing code ...
+
+@chatbot_bp.route('/api/conversations/<int:conversation_id>/ai-suggest', methods=['POST'])
+@limiter.limit("5 per minute")
+def api_suggest_ai_response(conversation_id):
+    # ... existing code ...
+```
+
+Step 4: Handle rate limit errors gracefully in the frontend. The error
+will come as a 429 status. In conversation.html, the existing error
+handling already shows errors from the API response. Add specific handling:
+
+```javascript
+// In the fetch catch blocks for AI functions:
+if (err.message && err.message.includes('429')) {
+    showAiError(i18n.t('conversation.ai.rateLimited'));
+}
+```
+
+--- i18n Translation Keys ---
+German (de):
+  'conversation.ai.rateLimited': 'Bitte warten Sie einen Moment, bevor Sie eine weitere KI-Antwort anfordern.',
+
+English (en):
+  'conversation.ai.rateLimited': 'Please wait a moment before requesting another AI response.',
+
+
+================================================================================
+================================================================================
+                          END OF EXECUTION PLANS
+                        Last Updated: 2026-02-23
+================================================================================
+================================================================================

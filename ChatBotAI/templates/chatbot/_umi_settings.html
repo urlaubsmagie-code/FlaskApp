@@ -1,0 +1,168 @@
+        <!-- AI Settings -->
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i class="fas fa-robot"></i> <span data-i18n="settings.ai.title">UMI-Konfiguration</span></h2>
+            </div>
+            <div class="card-body">
+                <form id="aiSettingsForm">
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="masterAiEnabled" data-i18n="settings.ai.masterSwitch">UMI-Hauptschalter</label>
+                            <p class="setting-description" data-i18n="settings.ai.masterSwitch.desc">Wenn AUS, werden keine automatischen Antworten gesendet — gilt für alle Konversationen</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="masterAiEnabled" name="master_ai_enabled"
+                                onchange="saveToggleSetting('master_ai_enabled', this.checked)"
+                                {% if settings|selectattr('key', 'equalto', 'master_ai_enabled')|map(attribute='value')|first != 'false' %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="autoRespondNew" data-i18n="settings.ai.autoRespondNew">Auto-Antwort für neue Konversationen</label>
+                            <p class="setting-description" data-i18n="settings.ai.autoRespondNew.desc">Neue Konversationen starten mit aktivierter automatischer Antwort</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="autoRespondNew" name="auto_respond_new_conversations"
+                                onchange="saveToggleSetting('auto_respond_new_conversations', this.checked)"
+                                {% if settings|selectattr('key', 'equalto', 'auto_respond_new_conversations')|map(attribute='value')|first != 'false' %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="approvalQueueEnabled" data-i18n="settings.ai.approvalQueue">UMI-Freigabe</label>
+                            <p class="setting-description" data-i18n="settings.ai.approvalQueue.desc">UMI-Antworten müssen vor dem Versand genehmigt werden</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="approvalQueueEnabled" name="approval_queue_enabled"
+                                onchange="saveToggleSetting('approval_queue_enabled', this.checked)"
+                                {% if settings|selectattr('key', 'equalto', 'approval_queue_enabled')|map(attribute='value')|first != 'false' %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="autoApproveNew" data-i18n="settings.ai.autoApproveNew">Auto-Freigabe für neue Konversationen</label>
+                            <p class="setting-description" data-i18n="settings.ai.autoApproveNew.desc">Neue Konversationen starten mit aktivierter Auto-Freigabe (UMI sendet sofort)</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="autoApproveNew" name="auto_approve_new_conversations"
+                                onchange="saveToggleSetting('auto_approve_new_conversations', this.checked)"
+                                {% if settings|selectattr('key', 'equalto', 'auto_approve_new_conversations')|map(attribute='value')|first == 'true' %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="inboxInstantSend" data-i18n="settings.ai.inboxInstantSend">UMI-Antwort aus dem Posteingang sofort senden</label>
+                            <p class="setting-description" data-i18n="settings.ai.inboxInstantSend.desc">Achtung: Über das ⋮-Menü im Posteingang erstellte UMI-Antworten gehen ohne Vorschau direkt an den Gast.</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="inboxInstantSend" name="inbox_umi_instant_send"
+                                onchange="saveToggleSetting('inbox_umi_instant_send', this.checked)"
+                                {% if settings|selectattr('key', 'equalto', 'inbox_umi_instant_send')|map(attribute='value')|first == 'true' %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label data-i18n="settings.ai.bulkAutoApprove">Auto-Freigabe für alle Chats</label>
+                            <p class="setting-description" data-i18n="settings.ai.bulkAutoApprove.desc">Auto-Freigabe für alle aktiven Konversationen ein- oder ausschalten</p>
+                        </div>
+                        <div class="button-group">
+                            <button class="btn btn-sm btn-success" onclick="bulkAutoApprove(true)" data-i18n="settings.ai.bulkAutoApprove.enable">Für alle aktivieren</button>
+                            <button class="btn btn-sm btn-danger" onclick="bulkAutoApprove(false)" data-i18n="settings.ai.bulkAutoApprove.disable">Für alle deaktivieren</button>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="memoryExtraction" data-i18n="settings.ai.memoryExtraction">Erinnerungsextraktion</label>
+                            <p class="setting-description" data-i18n="settings.ai.memoryExtraction.desc">Gästeinformationen aus Nachrichten extrahieren und speichern</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="memoryExtraction" name="memory_extraction_enabled"
+                                {% if settings|selectattr('key', 'equalto', 'memory_extraction_enabled')|map(attribute='value')|first == 'true' %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="responseTone" data-i18n="settings.ai.tone">Antwortton</label>
+                            <p class="setting-description" data-i18n="settings.ai.tone.desc">Ton für UMI-generierte Antworten auswählen</p>
+                        </div>
+                        <select id="responseTone" name="ai_response_tone" class="setting-select">
+                            {% set current_tone = settings|selectattr('key', 'equalto', 'ai_response_tone')|map(attribute='value')|first or 'friendly_professional' %}
+                            <option value="friendly_professional" {% if current_tone == 'friendly_professional' %}selected{% endif %} data-i18n="settings.ai.tone.friendly">Freundlich & Professionell</option>
+                            <option value="formal" {% if current_tone == 'formal' %}selected{% endif %} data-i18n="settings.ai.tone.formal">Formell</option>
+                            <option value="casual" {% if current_tone == 'casual' %}selected{% endif %} data-i18n="settings.ai.tone.casual">Locker</option>
+                            <option value="concise" {% if current_tone == 'concise' %}selected{% endif %} data-i18n="settings.ai.tone.concise">Prägnant</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="maxHistory" data-i18n="settings.ai.history">Konversationsverlauf</label>
+                            <p class="setting-description" data-i18n="settings.ai.history.desc">Anzahl der vorherigen Nachrichten für UMI-Kontext</p>
+                        </div>
+                        <input type="number" id="maxHistory" name="max_conversation_history"
+                            value="{{ settings|selectattr('key', 'equalto', 'max_conversation_history')|map(attribute='value')|first or '10' }}"
+                            min="1" max="50" class="setting-input">
+                    </div>
+
+                    <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                        <div class="setting-info" style="margin-bottom: 10px;">
+                            <label for="hostInstructions" data-i18n="settings.ai.hostInstructions">Host-Anweisungen</label>
+                            <p class="setting-description" data-i18n="settings.ai.hostInstructions.desc">Eigene Anweisungen, die UMI bei jeder Antwort berücksichtigen soll</p>
+                        </div>
+                        <textarea id="hostInstructions" name="host_instructions" class="setting-textarea" rows="5"
+                            data-i18n-placeholder="settings.ai.hostInstructions.placeholder"
+                            placeholder="z.B. WiFi-Passwort: SunnyBeach2024&#10;Erwähne unseren 10% Rabatt bei 7+ Nächten&#10;Check-in ab 15 Uhr an der Rezeption">{{ settings|selectattr('key', 'equalto', 'host_instructions')|map(attribute='value')|first or '' }}</textarea>
+                        <p class="setting-description" style="margin-top: 8px;">
+                            <span data-i18n="settings.ai.knowledgeLink">Für strukturierte Fakten (WLAN, Check-in, Umgebung) nutze die</span>
+                            <a href="#" onclick="event.preventDefault(); knowledgeApp.switchTab('knowledge');"
+                               style="color: var(--primary-color);">
+                                <span data-i18n="settings.ai.knowledgeLinkText">Wissensdatenbank →</span>
+                            </a>
+                        </p>
+                    </div>
+
+                    {% if current_user.is_admin %}
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="aiTemperature" data-i18n="settings.ai.temperature">Temperatur</label>
+                            <p class="setting-description" data-i18n="settings.ai.temperature.desc">Kreativität der UMI-Antworten (0.0 = vorhersagbar, 1.0 = kreativ)</p>
+                        </div>
+                        <div class="range-with-value">
+                            <input type="range" id="aiTemperature" name="ai_temperature"
+                                min="0" max="1" step="0.1"
+                                value="{{ settings|selectattr('key', 'equalto', 'ai_temperature')|map(attribute='value')|first or '0.5' }}"
+                                oninput="document.getElementById('tempValue').textContent = this.value">
+                            <span class="range-value" id="tempValue">{{ settings|selectattr('key', 'equalto', 'ai_temperature')|map(attribute='value')|first or '0.5' }}</span>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="aiMaxTokens" data-i18n="settings.ai.maxTokens">Max. Tokens</label>
+                            <p class="setting-description" data-i18n="settings.ai.maxTokens.desc">Maximale Länge der UMI-Antworten (128-4096)</p>
+                        </div>
+                        <input type="number" id="aiMaxTokens" name="ai_max_tokens"
+                            value="{{ settings|selectattr('key', 'equalto', 'ai_max_tokens')|map(attribute='value')|first or '1024' }}"
+                            min="128" max="4096" step="128" class="setting-input">
+                    </div>
+                    {% endif %}
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> <span data-i18n="settings.ai.save">Einstellungen speichern</span>
+                    </button>
+                </form>
+            </div>
+        </div>

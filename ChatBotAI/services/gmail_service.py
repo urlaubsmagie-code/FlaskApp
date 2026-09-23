@@ -20,7 +20,9 @@ Email Filtering:
 import os
 import re
 import base64
+import functools
 import logging
+import threading
 import json
 from datetime import datetime, timedelta
 
@@ -51,6 +53,19 @@ SCOPES = [
 CHATBOT_DIR = Path(__file__).resolve().parent.parent
 
 
+def _serialized(method):
+    """Hold the per-service API lock for the whole call.
+
+    googleapiclient's client is not thread-safe and this service is a singleton;
+    two threads inside it hang the process. Reentrant so nested calls are safe.
+    """
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._api_lock:
+            return method(self, *args, **kwargs)
+    return wrapper
+
+
 class GmailService:
     """Service for Gmail API integration"""
 
@@ -67,6 +82,15 @@ class GmailService:
         self.credentials: Optional[Credentials] = None
         self.service = None
         self._user_email = None
+
+        # googleapiclient's service wraps an httplib2.Http that is NOT
+        # thread-safe, and this service is a process-wide singleton. As long as
+        # only the reconcile daemon called it that never mattered; the moment a
+        # second caller (the inbox sweep, in its own thread) overlapped with the
+        # daemon, the shared connection hung and took the whole process's
+        # logging with it — no traceback, server unreachable until restart.
+        # One lock, held across each API call, is the cheap correct fix.
+        self._api_lock = threading.RLock()
 
         # Email filtering settings (loaded from config)
         self._load_filter_settings()
@@ -299,6 +323,7 @@ class GmailService:
             self.service = build('gmail', 'v1', credentials=self.credentials)
         return self.service
 
+    @_serialized
     def get_user_email(self) -> Optional[str]:
         """Get the authenticated user's email address"""
         if self._user_email:
@@ -313,6 +338,7 @@ class GmailService:
             logger.error(f"Error getting user email: {e}")
             return None
 
+    @_serialized
     def get_recent_emails(self, max_results: int = 10, query: str = None,
                           apply_filter: bool = True) -> List[Dict[str, Any]]:
         """
@@ -395,6 +421,7 @@ class GmailService:
             logger.error(f"Error fetching emails: {e}")
             return []
 
+    @_serialized
     def get_email_by_id(self, message_id: str) -> Optional[Dict[str, Any]]:
         """
         Fetch a single email by ID.
@@ -551,6 +578,7 @@ class GmailService:
             return name.strip(), email.strip()
         return '', address.strip()
 
+    @_serialized
     def send_email(
             self,
             to: str,
@@ -629,6 +657,7 @@ class GmailService:
             logger.error(f"Error sending email: {e}")
             return None
 
+    @_serialized
     def mark_as_read(self, message_id: str) -> bool:
         """Mark an email as read"""
         try:
@@ -660,6 +689,7 @@ class GmailService:
             apply_filter=apply_filter
         )
 
+    @_serialized
     def get_thread(self, thread_id: str) -> List[Dict[str, Any]]:
         """
         Get all messages in a thread.
@@ -690,6 +720,7 @@ class GmailService:
             logger.error(f"Error fetching thread {thread_id}: {e}")
             return []
 
+    @_serialized
     def setup_push_notifications(self, webhook_url: str) -> Optional[Dict]:
         """
         Set up push notifications for new emails.

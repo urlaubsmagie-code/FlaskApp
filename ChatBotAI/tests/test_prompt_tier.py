@@ -14,6 +14,8 @@ from ChatBotAI.services.prompt_tier import detect_tier
     ("kimi-k2:1t-cloud", "rich"),
     ("qwen3-coder:480b-cloud", "rich"),
     ("deepseek-v3.1:671b-cloud", "rich"),
+    ("kimi-k3:cloud", "rich"),
+    ("glm-5.3-flash:cloud", "rich"),
     # Big local models (≥70B) → rich
     ("llama3.1:70b", "rich"),
     ("mistral:200b", "rich"),

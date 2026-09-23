@@ -1,0 +1,70 @@
+Digital Team Ideas & Improvements
+===================================
+Collected: 2026-03-24
+
+1. SENDER NAME IN INBOX PREVIEW — DONE
+----------------------------------------
+Show who sent the last message in the inbox overview, like WhatsApp does.
+Owner messages: "Ich: ..." | AI messages: "KI: ..." | Guest: no prefix (name in header).
+Implemented in inbox.html, inbox.js, i18n.js.
+
+2. AUTO-TEMPLATE REPLIES — NEEDS CLARIFICATION
+------------------------------------------------
+The Digital Team uses Smoobu's automatic template answers (not AI — predefined
+templates triggered by booking events). These are owner-side messages sent
+automatically at various stages:
+  - Booking confirmation (welcome, Gästemappe link, Kurtaxe info)
+  - WhatsApp channel promotion
+  - Pre-arrival reminder (Gästemappe link)
+  - Checkout instructions (Bettwäsche, Müll, Spülmaschine)
+  - Review request (10-Punkte-Bewertung)
+  - Invoice (Rechnung)
+
+How they work:
+  - Auto-templates START conversations (first message is from host, not guest)
+  - Guest may or may not reply later
+  - More templates fire at different booking stages
+
+Problem: if a guest sends a question between auto-templates, the last message
+preview shows the template text — making it look "handled" even though the
+guest's question was never answered. Unread badge is still correct (read cursor
+only tracks guest messages), but the VISUAL APPEARANCE is misleading.
+
+Detection patterns (from screenshots):
+  - All are owner messages ("Sie")
+  - Signatures: "Team Urlaubsmagie", "Urlaubsmagie-Team", "Urlaubsmagie Team",
+    "Imke, Elena, Sebastian & Anna-Lena"
+  - Keywords: "Gästemappe", "guest.smoobu.com", "Kurtaxe", "Bettwäsche",
+    "10-Punkte-Bewertung", "Rechnung", "Online-Check-in"
+
+Possible solutions (WAITING for Digital Team feedback):
+  A) Show "Auto:" prefix instead of "Ich:" for detected auto-templates
+  B) If unread guest messages exist, show last GUEST message in preview instead
+  C) Both A and B combined
+
+Screenshots saved in: Images for claude/TemplateAnswer1-6.png
+
+3. SUPPRESS NOTIFICATIONS WHEN AI IS HANDLING — DONE
+------------------------------------------------------
+If AI auto-respond is enabled, push notifications are skipped.
+Escalation notifications still fire regardless.
+Implemented in message_router.py.
+
+5. SEARCH SHOULD INCLUDE GUEST NAMES
+--------------------------------------
+Currently the inbox search only uses FTS5 on message content. Searching for
+a guest's name (e.g. from Smoobu reservation) returns no results unless the
+name appears in a message body. Fix: also search Guest.name, Guest.email,
+and optionally Property.name so team can find conversations by guest name.
+Status: TODO
+
+4. FIX PUSH NOTIFICATIONS — DONE
+----------------------------------
+Root cause: stale push subscriptions with mismatched VAPID keys.
+Fix: auto-heal in WebPush.init() compares subscription VAPID key on every
+page load and re-subscribes if mismatched. Manual "Reset & Re-subscribe"
+button added to debug page. Debug page now has 3-step diagnostic:
+  1. Test Browser (Notification API)
+  2. Test SW (Service Worker)
+  3. Test Push (full server→FCM→SW chain)
+Also: Edge/WNS subscriptions return 400 (WNS doesn't support standard VAPID).

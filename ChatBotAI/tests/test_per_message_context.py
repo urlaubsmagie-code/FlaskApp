@@ -77,3 +77,60 @@ def test_per_message_route_passes_kb_and_corrections(client, captured):
     assert captured.get('corrections')
     # Still targets the chosen message
     assert captured.get('target_message_override') == 'Wo ist der Busbahnhof?'
+
+
+def test_enhancement_uses_staff_text_and_knowledge_without_saving(client, app, captured):
+    conv, msg = _setup_conversation()
+    msg.content = 'Danke!'
+    db.session.commit()
+    count = Message.query.count()
+    response = client.post(f'/chatbot/api/conversations/{conv.id}/ai-suggest',
+                           json={'enhance_draft': 'checkin ab 15 uhr'})
+    assert response.status_code == 200
+    assert response.json['suggestion'] == 'Test reply'
+    assert captured['enhancement_draft'] == 'checkin ab 15 uhr'
+    assert captured['knowledge_entries']
+    assert captured['is_closing'] is False
+    assert Message.query.count() == count
+
+
+@pytest.mark.parametrize('draft', ['', 12, [], 'x' * 10001])
+def test_enhancement_rejects_invalid_drafts(client, app, draft):
+    conv, _ = _setup_conversation()
+    response = client.post(f'/chatbot/api/conversations/{conv.id}/ai-suggest',
+                           json={'enhance_draft': draft})
+    assert response.status_code == 400
+
+
+def test_enhancement_prompt_keeps_staff_text_separate(monkeypatch):
+    service = object.__new__(AIService)
+    service.timeout = 10
+    messages = []
+    def normal_reply_prompt(*args, **kwargs):
+        raise AssertionError('Enhancement must not inherit the guest-answering prompt')
+    def capture(payload, **kwargs):
+        messages.extend(payload)
+        return 'Kein Problem, wir freuen uns auf euch! Bis bald 😊'
+    monkeypatch.setattr(service, '_build_chat_messages', normal_reply_prompt)
+    monkeypatch.setattr(service, '_call_chat_api', capture)
+    monkeypatch.setattr(service, '_clean_ai_response', lambda value: value)
+    result = service.generate_guest_response({}, [{'sender_type': 'guest', 'content': 'Parking?'}],
+                                            'Parking?', enhancement_draft='Alles gut! Bis bald',
+                                            knowledge_entries=[{'label': 'Parking', 'value': 'Behind house'}])
+    assert result == 'Kein Problem, wir freuen uns auf euch! Bis bald 😊'
+    assert 'Preserve its intended answer' in messages[0]['content']
+    assert 'Do not invent facts' in messages[0]['content']
+    assert 'Behind house' in messages[0]['content']
+    assert 'Do not answer earlier guest questions' in messages[0]['content']
+    assert messages[-1] == {'role': 'user', 'content': 'Alles gut! Bis bald'}
+
+
+def test_staff_can_enhance_an_outgoing_message_without_a_guest_question(client, app, captured):
+    conv, msg = _setup_conversation()
+    db.session.delete(msg)
+    db.session.commit()
+    response = client.post(f'/chatbot/api/conversations/{conv.id}/ai-suggest',
+                           json={'enhance_draft': 'Willkommen, checkin ist ab 15 uhr'})
+    assert response.status_code == 200
+    assert captured['enhancement_draft'] == 'Willkommen, checkin ist ab 15 uhr'
+    assert Message.query.count() == 0

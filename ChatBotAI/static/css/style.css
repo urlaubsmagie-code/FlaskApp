@@ -548,6 +548,7 @@ body.conversation-page {
    Filter Bar
    ============================================================================ */
 .filter-bar {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 16px;
@@ -1489,6 +1490,20 @@ body.conversation-page {
     border-radius: 50%;
 }
 
+/* WhatsApp photo / voice note / video attached to a message */
+.message-media {
+    display: block;
+    max-width: min(280px, 100%);
+    margin: 0.25rem 0;
+}
+.message-media img, video.message-media {
+    display: block;
+    max-width: 100%;
+    max-height: 320px;
+    border-radius: 8px;
+}
+.message-media-file { font-weight: 600; }
+
 .message-text {
     font-size: 0.9375rem;
     line-height: 1.5;
@@ -1799,6 +1814,17 @@ body.conversation-page {
     font-size: 0.9375rem;
 }
 
+.message-send-state {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: 6px;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+.message-send-state.accepted { color: #22c55e; }
+.message-send-state.uncertain { color: #f59e0b; }
+
 .message-form textarea:focus {
     border-color: var(--primary-color);
 }
@@ -1960,6 +1986,7 @@ body.conversation-page {
 
 .memory-value {
     font-weight: 600;
+    white-space: pre-line;   /* Smoobu guest notes are multi-line (booking no., address, deposit) */
 }
 
 .memory-confidence {
@@ -3304,7 +3331,7 @@ dialog.merge-modal {
 
 /* Kanal/Konto filters live in a native <details> dropdown next to search */
 .filter-dropdown {
-    position: relative;
+    position: static;
 }
 
 .filter-dropdown summary {
@@ -3318,19 +3345,26 @@ dialog.merge-modal {
 
 .filter-dropdown-panel {
     position: absolute;
-    right: 0;
+    left: 0;
+    right: auto;
     top: calc(100% + 6px);
     z-index: 50;
     display: flex;
     flex-direction: column;
     gap: 8px;
     width: max-content;
-    max-width: calc(100vw - 32px);
+    max-width: 100%;
+    box-sizing: border-box;
     padding: 8px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     box-shadow: var(--shadow-lg);
+}
+
+.filter-dropdown-panel .filter-group {
+    min-width: 0;
+    flex-wrap: wrap;
 }
 
 /* ============================================================================
@@ -4268,4 +4302,29 @@ dialog.merge-modal {
 
 @media (min-width: 768px) {
     .notification-toast { left: auto; right: 20px; }
+}
+/* Phone inbox and composer safety improvements. */
+[hidden] { display: none !important; }
+button.stat-filter { font: inherit; color: inherit; background: transparent; border: 0; cursor: pointer; }
+.composer-hint { font-size: .8rem; color: var(--text-secondary); margin: 4px 0 8px; }
+.composer-hint:empty { display: none; }
+.draft-preview {
+    width: min(600px, calc(100vw - 32px)); max-height: 85dvh; overflow: auto;
+    background: var(--bg-secondary); color: var(--text-primary);
+    border: 1px solid var(--border-color); border-radius: 12px; padding: 20px;
+}
+.draft-preview::backdrop { background: #0009; }
+.draft-preview pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; padding: 12px; background: var(--bg-primary); }
+.draft-preview-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.connection-notice { position: fixed; top: env(safe-area-inset-top, 0px); left: 50%; transform: translateX(-50%); z-index: 1000; width: min(600px, 95vw); padding: 10px 16px; background: #78350f; color: white; border-radius: 0 0 8px 8px; font-size: .85rem; }
+/* Compact composer; message actions use the original side-positioned rules above. */
+.input-actions { display: flex; gap: 6px; flex-wrap: nowrap; }
+.input-actions .btn { min-height: 32px; padding: 5px 8px; font-size: .75rem; gap: 4px; }
+.send-hint .draft-restore-btn { min-height: 28px; padding: 3px 6px; font-size: .7rem; }
+@media (max-width: 768px) {
+    .input-actions { display: grid; grid-template-columns: .85fr 1fr 1.15fr; gap: 4px; }
+    .input-actions .template-dropdown { min-width: 0; }
+    .input-actions .btn { min-height: 32px; padding: 5px 4px; font-size: .7rem; gap: 4px; }
+    .input-actions .btn span { white-space: normal; line-height: 1.2; }
+    .message-form textarea { font-size: 16px; }
 }

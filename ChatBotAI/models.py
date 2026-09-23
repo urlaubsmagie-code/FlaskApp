@@ -3,7 +3,11 @@ Database models for ChatBotAI
 Defines the schema for guests, conversations, messages, properties, and AI settings
 """
 
+import glob
+import os
+import re
 from datetime import datetime
+from flask import current_app, has_app_context
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from sqlalchemy import MetaData
@@ -20,6 +24,38 @@ convention = {
 
 metadata = MetaData(naming_convention=convention)
 db = SQLAlchemy(metadata=metadata)
+
+
+# WhatsApp media (photos, voice notes, ...) is stored as a file named after the
+# message's platform id; the message text is only a placeholder like "[Bild]".
+# ponytail: file lookup instead of a Message column — no migration. Add a column
+# if media ever comes from a second channel.
+MEDIA_PLACEHOLDER_RE = re.compile(r'^\[(Bild|Sprachnachricht|Audio|Video|Sticker|Dokument)(: [^\]\n]*)?\]$')
+MEDIA_KINDS = {
+    '.jpg': 'image', '.jpeg': 'image', '.png': 'image', '.webp': 'image', '.gif': 'image',
+    '.ogg': 'audio', '.oga': 'audio', '.opus': 'audio', '.mp3': 'audio', '.m4a': 'audio', '.aac': 'audio',
+    '.mp4': 'video', '.3gp': 'video', '.mov': 'video',
+}
+
+
+def is_media_placeholder(content):
+    """True for a media-only message. UMI can't see media, so those never feed
+    the AI prompt or memory extraction — they exist for the team only."""
+    return bool(MEDIA_PLACEHOLDER_RE.match((content or '').strip()))
+
+
+def media_dir():
+    return os.path.join(current_app.instance_path, 'whatsapp_media')
+
+
+def media_file_for(platform_message_id):
+    """Path of the stored media file for a `whatsapp-<id>` message, or None."""
+    pmid = platform_message_id or ''
+    if not pmid.startswith('whatsapp-') or not has_app_context():
+        return None
+    stem = re.sub(r'[^A-Za-z0-9_-]', '', pmid)
+    hits = glob.glob(os.path.join(media_dir(), stem + '.*')) if stem else []
+    return hits[0] if hits else None
 
 
 def street_from_address(address):
@@ -307,6 +343,8 @@ class Conversation(db.Model):
             'guest_id': self.guest_id,
             'platform': self.platform,
             'display_platform': self.display_platform,
+            'channel': self.channel,
+            'smoobu_account_id': self.smoobu_account_id,
             'platform_id': self.platform_id,
             'subject': self.subject,
             'status': self.status,
@@ -343,7 +381,11 @@ class Conversation(db.Model):
         """
         if hasattr(self, '_cached_last_message'):
             return self._cached_last_message
-        return self.messages.order_by(Message.sent_at.desc()).first()
+        # NOT self.messages.order_by(...): the dynamic relationship already carries
+        # order_by=Message.sent_at, and a dynamic query APPENDS — the result would be
+        # 'ORDER BY sent_at ASC, sent_at DESC', i.e. the oldest message.
+        return Message.query.filter_by(conversation_id=self.id).order_by(
+            Message.sent_at.desc()).first()
 
     @property
     def message_count(self):
@@ -378,6 +420,23 @@ class Conversation(db.Model):
             if channel and channel.detail_value:
                 return channel.detail_value
         return self.platform.capitalize()
+
+    @property
+    def channel(self):
+        """Booking channel as a slug: 'booking' | 'airbnb' | 'direct' | fallback.
+
+        The value the inbox channel filter matches on (data-channel). Derived from
+        display_platform, so it costs nothing extra after preload_display_platforms().
+        Order matters: "Direct booking" also contains "booking".
+        """
+        dp = (self.display_platform or '').lower()
+        if 'airbnb' in dp:
+            return 'airbnb'
+        if 'direct' in dp:
+            return 'direct'
+        if 'booking' in dp:
+            return 'booking'
+        return dp.replace(' ', '')
 
     def recompute_is_read(self):
         """Recompute is_read from the read cursor. Returns True if state changed."""
@@ -445,6 +504,15 @@ class Message(db.Model):
         return ('failed' if (self.platform_message_id or '').startswith(self.FAILED_PREFIX)
                 else 'sent')
 
+    @property
+    def media(self):
+        """{'url', 'kind'} for an attached WhatsApp photo/voice note/..., else None."""
+        path = media_file_for(self.platform_message_id)
+        if not path:
+            return None
+        kind = MEDIA_KINDS.get(os.path.splitext(path)[1].lower(), 'document')
+        return {'url': f'/chatbot/api/whatsapp/media/{self.id}', 'kind': kind}
+
     def to_dict(self):
         """Convert message to dictionary"""
         return {
@@ -452,6 +520,7 @@ class Message(db.Model):
             'conversation_id': self.conversation_id,
             'sender_type': self.sender_type,
             'content': self.content,
+            'media': self.media,
             'platform_message_id': self.platform_message_id,
             'delivery': self.delivery_state,
             'is_processed': self.is_processed,
@@ -499,8 +568,11 @@ class Property(db.Model):
     price_per_night = db.Column(db.Float)
 
     # Check-in/out
-    check_in_time = db.Column(db.String(20), default='3:00 PM')
-    check_out_time = db.Column(db.String(20), default='11:00 AM')
+    # 16:00 / 10:00 per the Notion knowledge base — the AI quotes these to guests,
+    # so a stale default here contradicts the Wissensdatenbank on the single
+    # most-asked question.
+    check_in_time = db.Column(db.String(20), default='4:00 PM')
+    check_out_time = db.Column(db.String(20), default='10:00 AM')
 
     # Rules
     house_rules = db.Column(db.Text)
@@ -694,6 +766,13 @@ class KnowledgeEntry(db.Model):
     # MessageRouter._match_escalation_topic. NULL/empty = topic never fires.
     trigger_words = db.Column(db.Text, nullable=True)
     street = db.Column(db.String(200), nullable=True, index=True)  # street-scope key
+    # Internal team note, never shown to a guest. The Wissensdatenbank holds both
+    # guest-facing facts and working instructions for the team (invoicing rules,
+    # office hours, how to phrase things). Since the whole KB goes into the rich
+    # prompt, internal rows would otherwise reach the model that writes to guests.
+    # Filtered out in load_for_conversation_context and again in context_filter.
+    is_internal = db.Column(db.Boolean, nullable=False, default=False,
+                            server_default='0')
     sort_order = db.Column(db.Integer, default=0)
     # Provenance: 'manual' (default), 'ai' (extracted), 'notion' (synced).
     source = db.Column(db.String(20), nullable=False, default='manual', server_default='manual')
@@ -725,6 +804,7 @@ class KnowledgeEntry(db.Model):
             'street': self.street,
             'value': self.value,
             'trigger_words': self.trigger_words,
+            'is_internal': self.is_internal,
             'sort_order': self.sort_order,
             'source': self.source,
             'notion_page_id': self.notion_page_id,
@@ -785,11 +865,36 @@ class KnowledgeEntry(db.Model):
     def load_for_conversation_context(cls, conversation):
         """Knowledge entries the AI may see for this conversation, scope-ordered:
         general (property_id NULL AND street NULL) + this room + this room's street.
-        Excludes corrections. Returns a list of to_dict() dicts."""
+        Excludes corrections and internal-only entries. Returns to_dict() dicts.
+
+        This is the ONLY loader feeding the guest-reply prompt (message_router
+        plus the three routes.py paths), so the is_internal gate lives here."""
         q = (cls.query
              .filter(cls.category != 'correction')
+             .filter(cls.is_internal.is_(False))
              .filter(cls._scope_filter(conversation)))
         return [e.to_dict() for e in q.order_by(cls.category, cls.sort_order).all()]
+
+    @classmethod
+    def load_corrections_for(cls, conversation):
+        """Corrections and team-saved reply examples for this conversation,
+        newest first. Room-scoped entries come first, then global ones.
+
+        Four prompt paths (auto-respond, suggest, per-message suggest, draft)
+        each used to inline this same query; they drifted apart and the limits
+        could only be raised in one place. Returns a list of to_dict() dicts —
+        AIService._format_corrections applies the real character budget.
+        """
+        newest = cls.created_at.desc()
+        base = cls.query.filter_by(category='correction')
+        if conversation.property_id:
+            scoped = (base.filter_by(property_id=conversation.property_id)
+                      .order_by(newest).limit(8).all())
+            glob = (cls.query.filter_by(category='correction', property_id=None)
+                    .order_by(newest).limit(24).all())
+            return [e.to_dict() for e in scoped + glob]
+        return [e.to_dict() for e in
+                base.filter_by(property_id=None).order_by(newest).limit(24).all()]
 
 
 class ProblemReport(db.Model):
@@ -902,6 +1007,52 @@ def preload_unread_counts(conversations):
 
     for c in conversations:
         c._cached_unread_count = counts.get(c.id, 0)
+
+
+def pending_guest_question(conversation, limit=5):
+    """(newest_guest_message, text_to_answer) for an AI reply.
+
+    `text_to_answer` is EVERY guest message since our last reply, joined oldest
+    first — not just the newest one. Guests routinely split a question over
+    several messages, or nudge with "???" when we are slow. Answering only the
+    newest message meant UMI replied to the nudge: the real question never
+    reached the prompt, and because the knowledge base is picked by keywords
+    from that same text, neither did the entry that answered it.
+
+    Falls back to the single newest guest message when nothing is pending (e.g.
+    the team already replied and someone hits "UMI-Vorschlag" anyway), so
+    callers always get something to work with. Returns (None, '') for a
+    conversation with no guest message at all.
+    """
+    approved = db.or_(Message.approval_status.is_(None),
+                      Message.approval_status == 'approved')
+    guest_q = Message.query.filter(
+        Message.conversation_id == conversation.id,
+        Message.sender_type == 'guest',
+        approved,
+    )
+    last_reply_at = db.session.query(db.func.max(Message.sent_at)).filter(
+        Message.conversation_id == conversation.id,
+        Message.sender_type.in_(('owner', 'ai')),
+        approved,
+    ).scalar()
+
+    q = guest_q.filter(Message.sent_at > last_reply_at) if last_reply_at else guest_q
+    # limit() needs the newest end, so sort desc and flip back to reading order.
+    # A photo or voice note is not a question UMI can read — skip those.
+    messages = [m for m in q.order_by(Message.sent_at.desc()).limit(limit).all()
+                if not is_media_placeholder(m.content)]
+    messages.reverse()
+    if not messages:
+        newest = next((m for m in guest_q.order_by(Message.sent_at.desc()).limit(20)
+                       if not is_media_placeholder(m.content)), None)
+        messages = [newest] if newest else []
+    if not messages:
+        return None, ''
+
+    text = '\n\n'.join(m.content.strip() for m in messages
+                        if m.content and m.content.strip())
+    return messages[-1], text
 
 
 def preload_display_platforms(conversations):

@@ -86,3 +86,26 @@ temp/
 
 # Worktrees
 .worktrees/
+
+# Superpowers SDD scratch workspace
+.superpowers/
+
+# Local test/browser artifacts and accidental shell output
+.pytest_cache/
+.playwright-mcp/
+/nul
+/=*
+/mode1-auto-insert.png
+/mode2-recover-button.png
+
+# Private operational exports, credentials, and reference screenshots
+/12.json
+/12 (1).json
+/NotionData/
+/Images for claude/
+/docs/bug-reports/mobile-keyboard-2026-09-14/*.png
+/Api Smoobu.txt
+/SmoobuWeebhook.txt
+
+# Retired WhatsApp login sessions
+whatsapp_bridge/auth_removed*/

@@ -129,6 +129,7 @@ function loadOlderMessages() {
                             <span class="sender-name">${name}</span>
                             <span class="message-time">${time}</span>
                         </div>
+                        ${mediaHtml(msg)}
                         <div class="message-text">${escapeHtml(msg.content || '')}</div>
                     </div>
                     ${msg.sender_type === 'guest' ? translateBtnHtml() : ''}
@@ -236,6 +237,7 @@ document.getElementById('messageInput').addEventListener('input', function() {
     autoResizeTextarea(this);
 
     const value = this.value;
+    updateSuggestionButton();
     const indicator = document.getElementById('draftIndicator');
     if (draftTimeout) clearTimeout(draftTimeout);
     draftTimeout = setTimeout(() => {
@@ -318,10 +320,7 @@ function insertTemplate(templateId) {
         .replace(/\{property_name\}/g, cfg.propertyName)
         .replace(/\{check_in_time\}/g, cfg.checkInTime);
 
-    input.value = content;
-    localStorage.setItem(draftKey, content);
-    input.focus();
-    autoResizeTextarea(input);
+    insertDraft(content);
 
     document.getElementById('templateMenu').style.display = 'none';
 }
@@ -340,217 +339,154 @@ loadPropertySelector();
 
 let sendInProgress = false;
 
-function sendMessage(e) {
-    e.preventDefault();
-    // Double-click guard: a ms-unique tempId is not enough on slow networks.
-    // Re-enabling the form happens in fetch().finally() in the per-platform
-    // sender, so we rely on this top-level flag to reject re-entry until
-    // the previous send fully resolves.
-    if (sendInProgress) {
-        return;
+function setSendStatus(text) {
+    document.getElementById('sendStatus').textContent = text;
+}
+
+function setBubbleSendState(bubble, state, label) {
+    if (!bubble) return;
+    let status = bubble.querySelector('.message-send-state');
+    if (!status) {
+        status = document.createElement('span');
+        status.setAttribute('role', 'status');
+        bubble.querySelector('.message-header').appendChild(status);
     }
+    status.className = 'message-send-state ' + state;
+    status.title = label;
+    status.setAttribute('aria-label', label);
+    const icon = document.createElement('i');
+    icon.className = 'fas ' + (state === 'pending' ? 'fa-spinner fa-spin'
+        : state === 'accepted' ? 'fa-check' : state === 'local' ? 'fa-save' : 'fa-triangle-exclamation');
+    icon.setAttribute('aria-hidden', 'true');
+    status.replaceChildren(icon);
+}
+
+async function sendMessage(e) {
+    e.preventDefault();
+    if (sendInProgress) return;
     const input = document.getElementById('messageInput');
     const content = input.value.trim();
-
-    if (!content) {
-        pendingCorrectionOriginal = null;
+    if (!content) return;
+    if (navigator.onLine === false) {
+        setSendStatus(i18n.t('ux.offline'));
         return;
     }
+    const external = ['email', 'smoobu', 'whatsapp'].includes(conversationPlatform);
+    const connected = {email: gmailConnected, smoobu: smoobuConnected, whatsapp: whatsappConnected};
+    if (external && !connected[conversationPlatform]) {
+        setSendStatus(i18n.t('ux.disconnected'));
+        return;
+    }
+    const attemptKey = draftKey + '_uncertain';
+    if (localStorage.getItem(attemptKey) && !confirm(i18n.t('ux.retryConfirm'))) return;
 
     sendInProgress = true;
-    // Safety release in case a downstream sender forgets to clear it.
-    // The actual release also happens in each sender's .finally().
-    setTimeout(() => { sendInProgress = false; }, 30000);
-
+    clearTimeout(draftTimeout);
+    const button = document.querySelector('#messageForm button[type="submit"]');
+    button.disabled = true;
+    setSendStatus('');
+    // Keep a recoverable draft and warning across reloads, including lost responses.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 90000);
+    let requestStarted = false;
+    let pendingBubble = null;
     const tempId = Date.now();
-    addMessageToUI({ id: tempId, content: content, sent_at: new Date().toISOString() }, 'owner');
-    knownMessageIds.add(tempId);
-    input.value = '';
-    input.style.height = 'auto';
-    localStorage.removeItem(draftKey);
-    scrollToBottom();
-
-    // Capture and clear correction tracking before dispatching
-    const correctionOriginal = pendingCorrectionOriginal;
-    pendingCorrectionOriginal = null;
-
-    if (conversationPlatform === 'email' && gmailConnected) {
-        sendViaGmail(content, tempId, correctionOriginal);
-    } else if (conversationPlatform === 'smoobu' && smoobuConnected) {
-        sendViaSmoobu(content, tempId, correctionOriginal);
-    } else if (conversationPlatform === 'whatsapp' && whatsappConnected) {
-        sendViaPlatform('whatsapp', content, tempId, correctionOriginal);
-    } else {
-        sendLocal(content, tempId, correctionOriginal);
+    const originalCorrection = pendingCorrectionOriginal;
+    try {
+        localStorage.setItem(draftKey, input.value);
+        localStorage.setItem(attemptKey, content);
+        pendingBubble = addMessageToUI({id: tempId, content, sent_at: new Date().toISOString()}, 'owner');
+        setBubbleSendState(pendingBubble, 'pending', i18n.t('ux.sending'));
+        input.value = '';
+        lastAiDraft = null;
+        enhancementSource = null;
+        pendingCorrectionOriginal = null;
+        updateSuggestionButton();
+        autoResizeTextarea(input);
+        scrollToBottom();
+        const platform = conversationPlatform === 'email' ? 'gmail' : conversationPlatform;
+        const url = external ? `/chatbot/api/${platform}/reply/${conversationId}`
+            : `/chatbot/api/conversations/${conversationId}/messages`;
+        requestStarted = true;
+        const response = await fetch(url, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({[external ? 'message' : 'content']: content,
+                ...(originalCorrection && {original_ai_content: originalCorrection})}),
+            signal: controller.signal
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || 'Send failed');
+        const id = data.message_id || data.id;
+        if (!id && !data.duplicate_skipped) throw new Error('Missing acknowledgement');
+        if (id) {
+            const existing = document.querySelector(`.message[data-message-id="${id}"]`);
+            if (existing && existing !== pendingBubble) {
+                pendingBubble.remove();
+                pendingBubble = existing;
+            }
+            pendingBubble.dataset.messageId = id;
+            knownMessageIds.add(id);
+            setBubbleSendState(pendingBubble, external ? 'accepted' : 'local',
+                i18n.t(external ? 'ux.accepted' : 'ux.localOnly'));
+        } else {
+            pendingBubble.remove();
+        }
+        // A new draft may already be in progress; never clear it on acknowledgement.
+        clearTimeout(draftTimeout);
+        if (input.value) localStorage.setItem(draftKey, input.value);
+        else localStorage.removeItem(draftKey);
+        localStorage.removeItem(attemptKey);
+        if (data.duplicate_skipped) setSendStatus(i18n.t('ux.duplicate'));
+        if (data.correction_saved) showNotification(i18n.t('knowledge.corrections.autoSaved'), 'info');
+    } catch (err) {
+        // A lost response does not prove non-delivery. Never fall back or retry automatically.
+        setBubbleSendState(pendingBubble, 'uncertain', i18n.t('ux.uncertain'));
+        if (!input.value) {
+            input.value = content;
+            pendingCorrectionOriginal = originalCorrection;
+            autoResizeTextarea(input);
+            updateSuggestionButton();
+        }
+        setSendStatus(i18n.t(requestStarted ? 'ux.uncertain' : 'ux.storageFailed'));
+        console.error('Send acknowledgement failed:', err);
+    } finally {
+        clearTimeout(timeout);
+        sendInProgress = false;
+        button.disabled = false;
+        input.readOnly = false;
     }
 }
 
-function sendLocal(content, tempId, correctionOriginal, deliveryFailed) {
-    fetch(`/chatbot/api/conversations/${conversationId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            content: content,
-            // Set only when a platform send just failed, so the stored message is
-            // marked "not delivered" instead of masquerading as sent.
-            ...(deliveryFailed && { delivery_failed: true }),
-            ...(correctionOriginal && { original_ai_content: correctionOriginal })
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.duplicate_skipped) {
-            // Server refused a repeat: this exact text was just sent. Drop the
-            // optimistic bubble so it isn't shown twice.
-            const el = document.querySelector(`[data-message-id="${tempId}"]`);
-            if (el) el.remove();
-            knownMessageIds.delete(tempId);
-            showNotification('Diese Nachricht wurde gerade eben schon gesendet – sie wurde nicht erneut verschickt.', 'info', 6000);
-            return;
-        }
-        if (data.id) {
-            knownMessageIds.delete(tempId);
-            knownMessageIds.add(data.id);
-            const el = document.querySelector(`[data-message-id="${tempId}"]`);
-            if (el) el.dataset.messageId = data.id;
-        }
-        if (data.correction_saved) {
-            showNotification(i18n.t('knowledge.corrections.autoSaved'), 'info', 3000);
-        }
-    })
-    .catch(err => {
-        console.error('Failed to send message:', err);
-        showNotification(i18n.t('conversation.sendFailed'), 'error');
-    })
-    .finally(() => { sendInProgress = false; });
+let lastAiDraft = null;
+let enhancementSource = null;
+let suggestionLoading = false;
+
+function suggestionMode() {
+    const text = document.getElementById('messageInput').value;
+    if (!text.trim()) return 'suggest';
+    return text === lastAiDraft ? 'variant' : 'enhance';
 }
 
-function sendViaGmail(content, tempId, correctionOriginal) {
-    fetch(`/chatbot/api/gmail/reply/${conversationId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content, ...(correctionOriginal && { original_ai_content: correctionOriginal }) })
-    })
-    .then(async response => {
-        if (response.status === 401) {
-            // require_login answers 401 too when the session lapsed. That is not a
-            // Gmail problem, and a local-send retry would fail exactly the same way.
-            const body = await response.json().catch(() => ({}));
-            if (body.session_expired) throw new Error(body.error);
-            console.warn('Gmail disconnected, falling back to local send');
-            sendLocal(content, tempId, correctionOriginal, true);
-            return null;
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (!data) return;
-        if (data.error) {
-            console.warn('Gmail send failed, falling back to local:', data.error);
-            sendLocal(content, tempId, correctionOriginal, true);
-            return;
-        }
-        if (data.message_id) {
-            knownMessageIds.delete(tempId);
-            knownMessageIds.add(data.message_id);
-            const el = document.querySelector(`[data-message-id="${tempId}"]`);
-            if (el) el.dataset.messageId = data.message_id;
-        }
-        showNotification(i18n.t('conversation.gmail.sent') || 'Email sent via Gmail', 'success');
-        if (correctionOriginal) {
-            showNotification(i18n.t('knowledge.corrections.autoSaved'), 'info', 3000);
-        }
-    })
-    .catch(err => {
-        console.error('Gmail send error, falling back to local:', err);
-        sendLocal(content, tempId, correctionOriginal, true);
-    })
-    .finally(() => { sendInProgress = false; });
+function updateSuggestionButton() {
+    if (suggestionLoading) return;
+    const mode = suggestionMode();
+    const key = mode === 'variant' ? 'conversation.ai.regenerate' : mode === 'enhance' ? 'conversation.ai.enhance' : 'conversation.ai.suggest';
+    const btn = document.getElementById('suggestAiBtn');
+    btn.innerHTML = `<i class="fas ${mode === 'variant' ? 'fa-rotate-right' : mode === 'enhance' ? 'fa-wand-magic-sparkles' : 'fa-lightbulb'}"></i> <span data-i18n="${key}">${i18n.t(key)}</span>`;
 }
 
-// Generic platform sender. sendViaSmoobu predates it and stays as-is (its
-// wording and tests are pinned); new channels route through here.
-function sendViaPlatform(platform, content, tempId, correctionOriginal) {
-    fetch(`/chatbot/api/${platform}/reply/${conversationId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content, ...(correctionOriginal && { original_ai_content: correctionOriginal }) })
-    })
-    .then(response => response.json().then(data => {
-        if (!response.ok) throw new Error(data.error || 'Send failed');
-        return data;
-    }))
-    .then(data => {
-        if (data.duplicate_skipped) {
-            const el = document.querySelector(`[data-message-id="${tempId}"]`);
-            if (el) el.remove();
-            knownMessageIds.delete(tempId);
-            showNotification('Diese Nachricht wurde gerade eben schon gesendet – sie wurde nicht erneut verschickt.', 'info', 6000);
-            return;
-        }
-        if (data.message_id) {
-            knownMessageIds.delete(tempId);
-            knownMessageIds.add(data.message_id);
-            const el = document.querySelector(`[data-message-id="${tempId}"]`);
-            if (el) el.dataset.messageId = data.message_id;
-        }
-        showNotification(`Gesendet über ${platform}`, 'success');
-        if (correctionOriginal) {
-            showNotification(i18n.t('knowledge.corrections.autoSaved'), 'info', 3000);
-        }
-    })
-    .catch(err => {
-        console.error(`${platform} send error, falling back to local:`, err);
-        showNotification('Unsicherer Sendestatus – die Nachricht wurde möglicherweise schon zugestellt. Bitte prüfe den Chat, bevor du sie erneut sendest.', 'info', 7000);
-        sendLocal(content, tempId, correctionOriginal, true);
-    })
-    .finally(() => { sendInProgress = false; });
-}
-
-function sendViaSmoobu(content, tempId, correctionOriginal) {
-    fetch(`/chatbot/api/smoobu/reply/${conversationId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content, ...(correctionOriginal && { original_ai_content: correctionOriginal }) })
-    })
-    .then(response => {
-        if (!response.ok && response.status !== 200) {
-            return response.json().then(data => { throw new Error(data.error || 'Send failed'); });
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.duplicate_skipped) {
-            // Server refused a repeat send: this exact text just went to the guest.
-            const el = document.querySelector(`[data-message-id="${tempId}"]`);
-            if (el) el.remove();
-            knownMessageIds.delete(tempId);
-            showNotification('Diese Nachricht wurde gerade eben schon gesendet – sie wurde nicht erneut verschickt.', 'info', 6000);
-            return;
-        }
-        if (data.error) {
-            console.warn('Smoobu send failed, falling back to local:', data.error);
-            showNotification('Unsicherer Sendestatus – die Nachricht wurde möglicherweise schon zugestellt. Bitte prüfe den Chat, bevor du sie erneut sendest.', 'info', 7000);
-            sendLocal(content, tempId, correctionOriginal, true);
-            return;
-        }
-        if (data.message_id) {
-            knownMessageIds.delete(tempId);
-            knownMessageIds.add(data.message_id);
-            const el = document.querySelector(`[data-message-id="${tempId}"]`);
-            if (el) el.dataset.messageId = data.message_id;
-        }
-        showNotification('Message sent via Smoobu', 'success');
-        if (correctionOriginal) {
-            showNotification(i18n.t('knowledge.corrections.autoSaved'), 'info', 3000);
-        }
-    })
-    .catch(err => {
-        console.error('Smoobu send error, falling back to local:', err);
-        showNotification('Unsicherer Sendestatus – die Nachricht wurde möglicherweise schon zugestellt. Bitte prüfe den Chat, bevor du sie erneut sendest.', 'info', 7000);
-        sendLocal(content, tempId, correctionOriginal, true);
-    })
-    .finally(() => { sendInProgress = false; });
+function insertDraft(content, correction = null, aiDraft = false) {
+    if (sendInProgress || typeof content !== 'string' || !content.trim()) return;
+    const input = document.getElementById('messageInput');
+    input.value = content;
+    pendingCorrectionOriginal = correction;
+    lastAiDraft = aiDraft ? content : null;
+    if (!aiDraft) enhancementSource = null;
+    updateSuggestionButton();
+    clearTimeout(draftTimeout);
+    localStorage.setItem(draftKey, content);
+    input.focus();
+    autoResizeTextarea(input);
 }
 
 // Active AbortControllers for AI requests
@@ -613,6 +549,7 @@ function generateAIResponse() {
     fetch(`/chatbot/api/conversations/${conversationId}/ai-response`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({draft_only: true}),
         signal: signal
     })
     .then(response => response.json())
@@ -655,7 +592,11 @@ function generateAIResponse() {
 }
 
 function suggestAIResponse() {
-    pendingCorrectionOriginal = null;
+    if (suggestionLoading || sendInProgress) return;
+    const mode = suggestionMode();
+    const startingText = document.getElementById('messageInput').value;
+    const sourceDraft = mode === 'enhance' ? startingText : mode === 'variant' ? enhancementSource : null;
+    suggestionLoading = true;
     const btn = document.getElementById('suggestAiBtn');
     const generateBtn = document.getElementById('generateAiBtn');
     const input = document.getElementById('messageInput');
@@ -667,10 +608,10 @@ function suggestAIResponse() {
     activeAiController = new AbortController();
     const signal = activeAiController.signal;
 
-    fetch(`/chatbot/api/conversations/${conversationId}/ai-suggest`, {
+    return fetch(`/chatbot/api/conversations/${conversationId}/ai-suggest`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ debug: true }),
+        body: JSON.stringify({ debug: true, ...(sourceDraft !== null && {enhance_draft: sourceDraft}) }),
         signal: signal
     })
     .then(response => response.json())
@@ -685,16 +626,20 @@ function suggestAIResponse() {
                 console.log('AI Skipped:', data.debug_context);
             }
         } else {
-            input.value = data.suggestion;
-            localStorage.setItem(draftKey, data.suggestion);
-            input.focus();
-            autoResizeTextarea(input);
+            if (input.value !== startingText || sendInProgress) {
+                showNotification(i18n.t('conversation.ai.draftChanged'), 'info');
+                return;
+            }
+            if (typeof data.suggestion === 'string' && data.suggestion.trim()) {
+                enhancementSource = sourceDraft;
+                insertDraft(data.suggestion, null, true);
+            }
 
             if (data.debug_context) {
                 const ctx = data.debug_context;
                 console.log('AI Context:', ctx);
                 const contextInfo = `AI read: "${ctx.latest_guest_message?.substring(0, 50) || '?'}..." | ${ctx.messages_count} msgs | Profile: ${ctx.guest_profile?.name || 'none'} | Property: ${ctx.property || 'none'} | Reservation: ${ctx.reservation ? 'yes' : 'no'}`;
-                showNotification(contextInfo, 'info', 8000);
+                console.debug(contextInfo);
             }
         }
     })
@@ -707,7 +652,8 @@ function suggestAIResponse() {
         activeAiController = null;
         btn.disabled = !aiEnabled;
         generateBtn.disabled = !aiEnabled;
-        btn.innerHTML = `<i class="fas fa-lightbulb"></i> <span data-i18n="conversation.ai.suggest">${i18n.t('conversation.ai.suggest')}</span>`;
+        suggestionLoading = false;
+        updateSuggestionButton();
     });
 }
 
@@ -744,10 +690,7 @@ function suggestForMessage(messageId) {
         if (data.error) {
             showAiError(data.error);
         } else {
-            input.value = data.suggestion;
-            localStorage.setItem(draftKey, data.suggestion);
-            input.focus();
-            autoResizeTextarea(input);
+            insertDraft(data.suggestion);
             // Scroll to the input area so the host sees the draft
             input.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
@@ -1276,6 +1219,7 @@ function addMessageToUI(message, senderType) {
                 <span class="sender-name">${name}</span>
                 <span class="message-time">${time}</span>
             </div>
+            ${mediaHtml(message)}
             <div class="message-text">${escapeHtml(message.content || '')}</div>
             ${emailTag}
             ${failedTag}
@@ -1330,6 +1274,7 @@ function addMessageToUI(message, senderType) {
 
     // Rebuild date dividers from the now-correctly-ordered message list.
     insertInitialDateDividers();
+    return messageDiv;
 }
 
 // Optimistic bubbles carry a Date.now() temp id; real message ids are small
@@ -1342,7 +1287,7 @@ const TEMP_ID_FLOOR = 1e12;
  * handled. Returns the element, or null when nothing matched.
  */
 function adoptPendingOwnBubble(msg) {
-    if (msg.sender_type !== 'owner' && msg.sender_type !== 'ai') return null;
+    if (msg.sender_type !== 'owner') return null;
     const wanted = (msg.content || '').trim();
     if (!wanted) return null;
     const bubbles = document.querySelectorAll('.message[data-message-id]');
@@ -1494,7 +1439,7 @@ function initSmoobuSync() {
 }
 
 // Track master AI switch state globally
-let masterAiEnabled = true;
+let masterAiEnabled = null;
 
 function checkMasterAiSwitch() {
     fetch('/chatbot/api/settings')
@@ -1532,14 +1477,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
     insertInitialDateDividers();
 
+    if (localStorage.getItem(draftKey + '_uncertain')) setSendStatus(i18n.t('ux.uncertain'));
+
+    document.addEventListener('languageChanged', updateSuggestionButton);
     // Restore draft from localStorage
     const savedDraft = localStorage.getItem(draftKey);
+    const uncertainDraft = localStorage.getItem(draftKey + '_uncertain');
+    if (uncertainDraft && uncertainDraft !== savedDraft) {
+        const recoveryBubble = addMessageToUI({content: uncertainDraft}, 'owner');
+        setBubbleSendState(recoveryBubble, 'uncertain', i18n.t('ux.uncertain'));
+    }
     if (savedDraft) {
         const input = document.getElementById('messageInput');
         input.value = savedDraft;
         autoResizeTextarea(input);
     }
 
+    updateSuggestionButton();
     scrollToBottom();
     messagePoller.start();
 
@@ -1919,6 +1873,17 @@ function retrySend(messageId) {
 // =========================================================================
 // Message translation (per-message, on demand)
 // =========================================================================
+
+// WhatsApp photo / voice note / video / document. UMI's AI never sees these.
+function mediaHtml(msg) {
+    const m = msg.media;
+    if (!m) return '';
+    const url = escapeHtml(m.url);
+    if (m.kind === 'image') return `<a class="message-media" href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="" loading="lazy"></a>`;
+    if (m.kind === 'audio') return `<audio class="message-media" controls preload="none" src="${url}"></audio>`;
+    if (m.kind === 'video') return `<video class="message-media" controls preload="metadata" src="${url}"></video>`;
+    return `<a class="message-media message-media-file" href="${url}" target="_blank" rel="noopener"><i class="fas fa-file"></i> Datei öffnen</a>`;
+}
 
 function translateBtnHtml() {
     return `<button class="btn-translate" title="${i18n.t('conversation.translate')}" hidden>

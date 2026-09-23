@@ -1,0 +1,41 @@
+<!-- Template Modal -->
+<dialog class="settings-modal" id="templateModal">
+    <div class="modal-header">
+        <h2>Add Template</h2>
+        <button class="btn-close" onclick="document.getElementById('templateModal').close()">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    <form id="templateForm" onsubmit="event.preventDefault(); saveTemplate();">
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="tplName" data-i18n="settings.templates.name">Name *</label>
+                <input type="text" id="tplName" required placeholder="z.B. WiFi-Info, Check-in Anleitung">
+            </div>
+            <div class="form-group">
+                <label for="tplCategory" data-i18n="settings.templates.category">Kategorie</label>
+                <select id="tplCategory">
+                    <option value="general">Allgemein</option>
+                    <option value="check_in">Check-in</option>
+                    <option value="check_out">Check-out</option>
+                    <option value="house_rules">Hausregeln</option>
+                    <option value="directions">Wegbeschreibung</option>
+                    <option value="wifi">WiFi</option>
+                    <option value="amenities">Ausstattung</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="tplContent" data-i18n="settings.templates.content">Inhalt *</label>
+                <textarea id="tplContent" rows="6" required placeholder="Hallo {guest_name}, ...&#10;&#10;Variablen: {guest_name}, {property_name}, {check_in_time}"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('templateModal').close()">
+                <span data-i18n="common.cancel">Abbrechen</span>
+            </button>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save"></i> <span data-i18n="common.save">Speichern</span>
+            </button>
+        </div>
+    </form>
+</dialog>

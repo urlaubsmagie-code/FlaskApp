@@ -1,0 +1,276 @@
+================================================================================
+                    DEVELOPMENT AI PROMPT - CHATBOT AI PROJECT
+================================================================================
+
+You are tasked with building a unified messaging system with AI-powered
+auto-responses and persistent guest memory. Read this prompt carefully before
+starting any work.
+
+================================================================================
+                         INSTRUCTIONS DOCUMENT
+================================================================================
+
+IMPORTANT: Before writing any code, you MUST read the detailed coding
+instructions located at:
+
+    C:\Users\admin\Desktop\ChatBotAI_Coding_Instructions.txt
+
+This file contains:
+- Complete folder structure to create
+- All database models with full SQLAlchemy code
+- AI service implementation code
+- Memory service implementation code
+- API endpoints to create
+- Step-by-step implementation order
+- Testing scenarios
+
+READ THAT FILE FIRST. It is your primary reference.
+
+================================================================================
+                         PROJECT SUMMARY
+================================================================================
+
+WHAT YOU ARE BUILDING:
+A Flask web application module that aggregates guest messages from multiple
+platforms (Email, WhatsApp, Airbnb, Booking) into a single inbox, with an AI
+assistant that:
+
+1. Auto-responds to guests when the owner is unavailable
+2. REMEMBERS every guest permanently (names, family, pets, preferences)
+3. Personalizes responses based on stored guest history
+4. Learns from ALL conversations, even when owner is chatting manually
+
+BUSINESS CONTEXT:
+- Client is an Airbnb host with multiple apartments
+- Guests contact via Email, WhatsApp, Airbnb chat, Booking chat
+- Need unified view + AI assistance + guest memory
+
+================================================================================
+                         TECHNICAL ENVIRONMENT
+================================================================================
+
+OPERATING SYSTEM: Windows 10/11
+
+PROJECT LOCATIONS:
+- Parent Flask app: C:\Users\admin\Documents\FlaskApp
+- This module: C:\Users\admin\Documents\FlaskApp\ChatBotAI
+
+LOCAL AI SERVER (ALREADY CONFIGURED):
+- Software: Ollama
+- Status: Running and tested
+- Endpoint: http://localhost:11434/api/generate
+- Model: mistral:7b-instruct
+- Request format:
+  ```
+  POST http://localhost:11434/api/generate
+  {
+      "model": "mistral:7b-instruct",
+      "prompt": "your prompt here",
+      "stream": false
+  }
+  ```
+- Response format:
+  ```
+  {
+      "response": "AI generated text",
+      "done": true
+  }
+  ```
+
+TECH STACK:
+- Python 3.11+
+- Flask (web framework)
+- Flask-SQLAlchemy (ORM)
+- SQLite (database, for development)
+- Requests (for Ollama API calls)
+- Gmail API (for email integration)
+
+================================================================================
+                         CRITICAL FEATURE: GUEST MEMORY
+================================================================================
+
+The most important feature is PERSISTENT GUEST MEMORY. The system must:
+
+1. EXTRACT information from every message automatically using the AI:
+   - Guest names
+   - Family members (names, relations)
+   - Pets (names, types)
+   - Preferences (room type, check-in time, dietary needs)
+   - Special requests
+   - Complaints and feedback
+
+2. STORE all extracted information in the GuestDetail table permanently
+
+3. RETRIEVE guest profile when generating AI responses
+
+4. INJECT profile into AI prompts for personalized responses
+
+EXAMPLE FLOW:
+```
+[First Contact]
+Guest Maria: "Hi, I'm traveling with my son Lucas and our dog Max"
+System: Extracts {family: "Lucas (son)", pet: "Max (dog)"} → Stores in DB
+
+[6 Months Later - Maria Returns]
+Guest Maria: "Hello, I'd like to book again"
+System: Retrieves Maria's profile → Injects into AI prompt
+AI Response: "Welcome back Maria! Will Lucas and Max be joining you?
+             We have a pet-friendly ground floor apartment perfect for dogs!"
+```
+
+DUAL-MODE OPERATION:
+- AUTO MODE: AI responds AND extracts info
+- MANUAL MODE: Owner responds, AI STILL extracts info silently
+
+The AI learns from 100% of conversations, not just automated ones.
+
+================================================================================
+                         DATABASE MODELS OVERVIEW
+================================================================================
+
+You will create these models (full code in ChatBotAI_Coding_Instructions.txt):
+
+1. Guest - Core guest information (name, email, phone, platform IDs)
+2. GuestDetail - Memory storage (family, pets, preferences) - CRITICAL TABLE
+3. Conversation - Chat threads linked to guests
+4. Message - Individual messages with sender type (guest/owner/ai)
+5. Property - Rental property information
+6. AISettings - Configuration for AI behavior
+
+================================================================================
+                         SERVICES TO IMPLEMENT
+================================================================================
+
+1. ai_service.py
+   - generate_response(prompt) - Call Ollama API
+   - extract_guest_info(message) - Extract structured data from text
+   - generate_guest_response(profile, history, message, property) - Contextual reply
+
+2. memory_service.py
+   - process_message_for_memory(message) - Extract and store guest details
+   - store_detail(guest_id, type, key, value) - Save to GuestDetail table
+   - get_guest_profile(guest_id) - Build complete profile from stored details
+
+3. gmail_service.py
+   - fetch_emails() - Get new emails from Gmail
+   - send_email(to, subject, body) - Send email response
+   - Setup OAuth2 authentication
+
+4. message_router.py
+   - Central hub connecting all services
+   - Routes incoming messages through the pipeline
+
+================================================================================
+                         IMPLEMENTATION ORDER
+================================================================================
+
+Follow this sequence:
+
+PHASE 1: Foundation
+- Create folder structure
+- Set up Flask blueprint
+- Create database models
+- Initialize SQLite database
+
+PHASE 2: AI Integration
+- Implement ai_service.py
+- Test Ollama connection
+- Test info extraction
+
+PHASE 3: Memory System
+- Implement memory_service.py
+- Test storing/retrieving guest details
+- Verify memory persistence
+
+PHASE 4: Basic UI
+- Create inbox template
+- Create conversation view
+- Create guest profile view
+
+PHASE 5: Message Flow
+- Implement message_router.py
+- Connect services together
+- Test end-to-end flow
+
+PHASE 6: Gmail Integration
+- Set up Google Cloud credentials
+- Implement gmail_service.py
+- Test email receiving/sending
+
+PHASE 7: Polish
+- Complete dashboard UI
+- Add AI toggle controls
+- Testing and refinement
+
+================================================================================
+                         CODING STANDARDS
+================================================================================
+
+- Use Python type hints
+- Add docstrings to all functions
+- Handle exceptions gracefully (especially Ollama unavailability)
+- Use Flask blueprints for modularity
+- Keep templates in templates/chatbot/ subdirectory
+- Follow PEP 8 style guidelines
+- Commit logical chunks of work
+
+================================================================================
+                         WHAT NOT TO DO
+================================================================================
+
+- Do NOT use external AI services (OpenAI, etc.) - use LOCAL Ollama only
+- Do NOT delete guest details ever - memory is permanent
+- Do NOT skip memory extraction for any message type
+- Do NOT hardcode API keys - use environment variables
+- Do NOT create overly complex UI - keep it functional first
+
+================================================================================
+                         FILES TO READ BEFORE STARTING
+================================================================================
+
+1. C:\Users\admin\Desktop\ChatBotAI_Coding_Instructions.txt
+   - Contains ALL implementation details and code snippets
+   - This is your primary reference document
+
+2. C:\Users\admin\Documents\FlaskApp\ (explore existing structure)
+   - Understand how the parent Flask app is organized
+   - Follow existing patterns for consistency
+
+================================================================================
+                         SUCCESS CRITERIA
+================================================================================
+
+The project is complete when:
+
+[ ] Folder structure created as specified
+[ ] All database models implemented and working
+[ ] Ollama integration working (can generate responses)
+[ ] Memory extraction working (AI extracts info from messages)
+[ ] Memory storage working (details saved to GuestDetail table)
+[ ] Memory retrieval working (profiles loaded for AI prompts)
+[ ] Basic inbox UI showing conversations
+[ ] Conversation view showing messages
+[ ] Guest profile view showing stored details
+[ ] AI responses include guest context (personalized)
+[ ] Gmail integration receiving emails
+[ ] Gmail integration sending emails
+[ ] Full message flow working end-to-end
+[ ] Returning guest scenario tested and working
+
+================================================================================
+                         BEGIN WORK
+================================================================================
+
+Start by:
+1. Reading C:\Users\admin\Desktop\ChatBotAI_Coding_Instructions.txt completely
+2. Exploring C:\Users\admin\Documents\FlaskApp to understand existing structure
+3. Creating the ChatBotAI folder and initial structure
+4. Implementing Phase 1 (Foundation)
+
+Ask clarifying questions if anything is unclear before proceeding.
+
+Good luck!
+
+================================================================================
+                              END OF PROMPT
+================================================================================

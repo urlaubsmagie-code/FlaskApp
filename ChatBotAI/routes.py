@@ -402,8 +402,8 @@ def conversation_view(conversation_id):
             pass
     elif conversation.platform == 'smoobu':
         try:
-            from .services.smoobu_service import get_smoobu_service
-            smoobu = get_smoobu_service()
+            from .services.smoobu_service import get_smoobu_service_for
+            smoobu = get_smoobu_service_for(conversation)
             smoobu_connected = smoobu is not None and smoobu.is_configured()
         except Exception:
             pass
@@ -1531,6 +1531,12 @@ def _ai_timing_log(line: str):
 @chatbot_bp.route('/api/conversations/<int:conversation_id>/ai-suggest', methods=['POST'])
 def api_suggest_ai_response(conversation_id):
     """Generate an AI response suggestion without saving it"""
+    request_data = request.get_json(silent=True) or {}
+    if not isinstance(request_data, dict):
+        return jsonify({'error': 'Invalid request'}), 400
+    enhance_draft = request_data.get('enhance_draft')
+    if 'enhance_draft' in request_data and (not isinstance(enhance_draft, str) or not enhance_draft.strip() or len(enhance_draft) > 10000):
+        return jsonify({'error': 'Draft must contain 1–10000 characters'}), 400
     conversation = Conversation.query.get_or_404(conversation_id)
 
     if not conversation.ai_enabled:
@@ -1563,20 +1569,21 @@ def api_suggest_ai_response(conversation_id):
         ).order_by(Message.sent_at.desc()).limit(max_history).all()
         messages.reverse()
 
-        if not messages:
+        if not messages and not enhance_draft:
             return jsonify({'error': 'No messages in conversation'}), 400
 
         # Query latest guest message directly (bypass relationship default ordering)
         latest_guest_message, question_text = pending_guest_question(conversation)
+        question_text = question_text or ''
         logger.info(f"[AI SUGGEST] answering everything since our last reply: newest_id={latest_guest_message.id if latest_guest_message else None}, chars={len(question_text)}, text='{question_text[:80]}...'")
 
-        if not latest_guest_message:
+        if not latest_guest_message and not enhance_draft:
             return jsonify({'error': 'No guest message to respond to'}), 400
 
         # Check if the latest guest message is a pure acknowledgment (Ok, Gut, etc.)
         # Checked against the full pending text, not just the newest message: an
         # "Ok" after an unanswered question must not skip the question.
-        if ai_service.is_acknowledgment(question_text):
+        if not enhance_draft and ai_service.is_acknowledgment(question_text):
             logger.info(f"[AI SKIP] Acknowledgment detected: '{question_text[:50]}' — no response needed")
             result = {'suggestion': None, 'skipped': True, 'reason': 'acknowledgment'}
             if include_debug:
@@ -1618,7 +1625,7 @@ def api_suggest_ai_response(conversation_id):
         # Apply context filter
         from .services.context_filter import ContextFilter
         filtered = ContextFilter.filter(
-            latest_message=question_text,
+            latest_message=(question_text or '') + ('\nStaff draft: ' + enhance_draft if enhance_draft else ''),
             conversation_history=[m.to_dict() for m in messages],
             knowledge_entries=knowledge_entries,
             guest_profile=profile,
@@ -1633,18 +1640,19 @@ def api_suggest_ai_response(conversation_id):
         ai_response = ai_service.generate_guest_response(
             guest_profile=filtered.guest_profile,
             conversation_history=[m.to_dict() for m in messages],
-            latest_message=question_text,
+            latest_message=question_text or '',
             property_info=filtered.property_info,
             tone=tone,
             host_instructions=host_instructions,
             conversation_subject=conversation.subject,
             max_history=max_history,
             reservation_info=filtered.reservation_info,
-            knowledge_entries=filtered.knowledge_entries,
+            knowledge_entries=knowledge_entries if enhance_draft else filtered.knowledge_entries,
             conversation_summary=conversation_summary,
             corrections=filtered.corrections,
             resolved_topics=filtered.resolved_topics,
-            is_closing=filtered.is_closing,
+            is_closing=False if enhance_draft else filtered.is_closing,
+            **({'enhancement_draft': enhance_draft} if enhance_draft else {}),
         )
         _t_model_done = time.monotonic()
         if ai_response:
@@ -2261,6 +2269,9 @@ def api_notion_sync():
     except Exception:
         logger.exception("notion-sync route failed")
         return jsonify({'error': 'Sync failed; see server logs'}), 500
+    if stats.get('errors'):
+        return jsonify({'success': False, 'stats': stats,
+                        'error': 'Notion-Synchronisierung fehlgeschlagen. Es wurden keine Änderungen übernommen.'}), 502
     return jsonify({'success': True, 'stats': stats})
 
 
@@ -2468,16 +2479,14 @@ def api_escalate_conversation(conversation_id):
 
 @lru_cache(maxsize=512)
 def _translate_cached(text: str, target: str) -> str:
-    """Translate a message body. See services/translate.py for why not deep-translator.
+    """Chat-only UMI translation; successful results cached until server restart.
 
-    Cached because the team re-opens the same chat repeatedly; the same message
-    must not cost a round-trip every time. Failures raise and are never cached,
-    so a transient Google hiccup doesn't poison the entry.
-    ponytail: in-process LRU, not a DB column. Persist it only if translations
-    ever need to be searchable.
+    The review presentation continues using services.translate.translate_text.
     """
-    from .services.translate import translate_text
-    return translate_text(text, target)
+    ai = get_ai_service()
+    if ai is None:
+        raise RuntimeError('AI translation unavailable')
+    return ai.translate_message(text, target)
 
 
 @chatbot_bp.route('/api/translate', methods=['POST'])
@@ -2485,11 +2494,16 @@ def _translate_cached(text: str, target: str) -> str:
 def api_translate_message():
     """Translate a single message body on demand (per-message button)."""
     data = request.get_json(silent=True) or {}
-    text = (data.get('text') or '').strip()
+    text = data.get('text') or ''
+    if not isinstance(text, str):
+        return jsonify({'error': 'invalid_text'}), 400
+    text = text.strip()
     # Target follows the UI language; anything else falls back to German.
     target = 'en' if (data.get('target') or 'de').lower().startswith('en') else 'de'
     if not text:
         return jsonify({'error': 'no text'}), 400
+    if len(text) > 20000:
+        return jsonify({'error': 'text_too_long'}), 400
     try:
         translated = _translate_cached(text, target)
     except Exception as e:
@@ -3218,6 +3232,16 @@ def webhook_whatsapp():
     if not jid or not text:
         return jsonify({'error': 'jid and text are required'}), 400
 
+    # Photo / voice note / video / document: saved as a file named after the
+    # message id, so the chat can show it. The text is a "[Bild]"-style
+    # placeholder (or the caption), which UMI's AI and memory skip.
+    media = data.get('media') or {}
+    if media.get('data') and data.get('message_id'):
+        try:
+            _save_whatsapp_media(f"whatsapp-{data['message_id']}", media)
+        except Exception:
+            logger.exception("WhatsApp media save failed for %s", jid)
+
     sent_at = None
     if data.get('timestamp'):
         try:
@@ -3270,6 +3294,52 @@ def webhook_whatsapp():
     return jsonify({'status': 'received', 'conversation_id': result.get('conversation_id')}), 200
 
 
+WHATSAPP_MEDIA_EXT = {
+    'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif',
+    'audio/ogg': '.ogg', 'audio/mpeg': '.mp3', 'audio/mp4': '.m4a', 'audio/aac': '.aac',
+    'video/mp4': '.mp4', 'video/3gpp': '.3gp', 'video/quicktime': '.mov',
+    'application/pdf': '.pdf',
+}
+WHATSAPP_MEDIA_MAX_BYTES = 200 * 1024 * 1024   # same cap as whatsapp_bridge/index.js
+
+
+def _save_whatsapp_media(platform_message_id, media):
+    import base64
+    import mimetypes
+    import re
+    from .models import media_dir
+    raw = base64.b64decode(media['data'], validate=True)
+    if len(raw) > WHATSAPP_MEDIA_MAX_BYTES:
+        raise ValueError(f'media too large: {len(raw)} bytes')
+    mime = (media.get('mimetype') or '').split(';')[0].strip().lower()
+    ext = WHATSAPP_MEDIA_EXT.get(mime) or mimetypes.guess_extension(mime) or '.bin'
+    # Executable/markup types must never be served back from our origin.
+    if ext in ('.html', '.htm', '.svg', '.js', '.xml', '.xhtml'):
+        ext = '.bin'
+    stem = re.sub(r'[^A-Za-z0-9_-]', '', platform_message_id)
+    os.makedirs(media_dir(), exist_ok=True)
+    with open(os.path.join(media_dir(), stem + ext), 'wb') as f:
+        f.write(raw)
+
+
+@chatbot_bp.route('/api/whatsapp/media/<int:message_id>', methods=['GET'])
+@login_required
+def api_whatsapp_media(message_id):
+    """The photo / voice note attached to a WhatsApp message."""
+    from flask import send_file, abort
+    from .models import media_file_for
+    message = Message.query.get_or_404(message_id)
+    path = media_file_for(message.platform_message_id)
+    if not path:
+        abort(404)
+    ext = os.path.splitext(path)[1].lower()
+    mimetype = next((m for m, e in WHATSAPP_MEDIA_EXT.items() if e == ext), 'application/octet-stream')
+    inline = mimetype.split('/')[0] in ('image', 'audio', 'video') or ext == '.pdf'
+    resp = send_file(path, mimetype=mimetype, as_attachment=not inline, max_age=86400)
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    return resp
+
+
 @chatbot_bp.route('/api/whatsapp/status', methods=['GET'])
 @login_required
 def api_whatsapp_status():
@@ -3310,6 +3380,15 @@ def api_whatsapp_start():
     if pid is None:
         return jsonify({'started': False, 'starting': True})
     return jsonify({'started': True, 'pid': pid})
+
+
+@chatbot_bp.route('/api/whatsapp/reconnect', methods=['POST'])
+@admin_required
+def api_whatsapp_reconnect():
+    """Reconnect now instead of waiting out the bridge's 20-minute cooldown."""
+    from .services.whatsapp_service import get_whatsapp_service
+    status, body = get_whatsapp_service().reconnect()
+    return jsonify(body), status
 
 
 @chatbot_bp.route('/api/whatsapp/reply/<int:conversation_id>', methods=['POST'])

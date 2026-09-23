@@ -56,6 +56,26 @@ def _read_conv_with_guest_msg():
     return conv.id
 
 
+def test_conversation_uses_its_smoobu_account_and_renders_safe_composer(client, app, monkeypatch):
+    from types import SimpleNamespace
+    from ChatBotAI.services import smoobu_service
+    conv_id = _read_conv_with_guest_msg()
+    checked = []
+
+    def account_service(conversation):
+        checked.append(conversation.id)
+        return SimpleNamespace(is_configured=lambda: True)
+
+    monkeypatch.setattr(smoobu_service, 'get_smoobu_service_for', account_service)
+    response = client.get(f'/chatbot/conversation/{conv_id}')
+    assert response.status_code == 200
+    assert checked == [conv_id]
+    html = response.get_data(as_text=True)
+    assert 'smoobuConnected: true' in html
+    assert '<dialog id="draftPreview"' not in html
+    assert 'id="sendStatus"' in html
+
+
 def test_mark_unread_sets_unread(client, app):
     cid = _read_conv_with_guest_msg()
     resp = client.post(f'/chatbot/api/conversations/{cid}/unread')
@@ -80,3 +100,51 @@ def test_inbox_renders_card_menu_button(client, app):
     assert b'openCardMenu' in body
     assert b'data-last-sender' in body
     assert b'data-auto-respond' in body
+
+
+def test_mark_read_after_unread_sticks(client, app):
+    """Marking read again after mark-unread must stick.
+
+    The /read fallback used conversation.messages.order_by(...) — a dynamic
+    relationship that APPENDS to its own order_by=Message.sent_at, so it handed
+    back the OLDEST message. The cursor landed on message #1 and the chat
+    bounced straight back to unread; only "Alle gelesen" worked.
+    """
+    from datetime import timedelta
+    guest = Guest(name='G', email='g2@x.com')
+    db.session.add(guest)
+    db.session.flush()
+    conv = Conversation(guest_id=guest.id, platform='smoobu', platform_id='r2',
+                        status='active', ai_enabled=True, is_read=False,
+                        last_message_at=datetime.utcnow())
+    db.session.add(conv)
+    db.session.flush()
+    now = datetime.utcnow()
+    for n, when in (('old', now - timedelta(days=2)), ('new', now)):
+        db.session.add(Message(conversation_id=conv.id, sender_type='guest',
+                               content=n, sent_at=when))
+    db.session.commit()
+    cid = conv.id
+
+    resp = client.patch(f'/chatbot/api/conversations/{cid}/read', json={})
+    assert resp.status_code == 200
+    assert resp.get_json()['is_read'] is True
+    assert db.session.get(Conversation, cid).is_read is True
+
+
+def test_last_message_is_the_newest(client, app):
+    """Conversation.last_message must not be poisoned by the same append bug."""
+    from datetime import timedelta
+    guest = Guest(name='G', email='g3@x.com')
+    db.session.add(guest)
+    db.session.flush()
+    conv = Conversation(guest_id=guest.id, platform='smoobu', platform_id='r3',
+                        status='active', last_message_at=datetime.utcnow())
+    db.session.add(conv)
+    db.session.flush()
+    now = datetime.utcnow()
+    for n, when in (('old', now - timedelta(days=2)), ('newest', now)):
+        db.session.add(Message(conversation_id=conv.id, sender_type='guest',
+                               content=n, sent_at=when))
+    db.session.commit()
+    assert conv.last_message.content == 'newest'

@@ -22,118 +22,14 @@ chatbot_bp = Blueprint(
 
 
 def init_chatbot(app):
-    """Initialize ChatBotAI with the Flask app
-
-    This is called when ChatBotAI is used as a blueprint in another Flask app.
-    Skip initialization if db is already registered (e.g., when using app.py factory).
-    """
-    from .models import db, _populate_default_settings
-    from .services.ai_service import init_ai_service
-    from .services.memory_service import init_memory_service
-    from .services.push_service import init_push_service
-    from .services.smoobu_service import init_smoobu_service
-
-    # Initialize Flask-Login if not already done
-    if 'login' not in app.extensions:
-        from flask_login import LoginManager
-        login_manager = LoginManager()
-        login_manager.login_view = 'chatbot.login'
-        login_manager.login_message = None
-        login_manager.init_app(app)
-
-        @login_manager.user_loader
-        def load_user(user_id):
-            from .models import User
-            return User.query.get(int(user_id))
-
-    # Install file logger so daemon/webhook activity lands on disk in production
-    # (create_app() handles this for the dev server; blueprint path needs it too).
-    from .app import _install_file_logger
-    _install_file_logger(app)
-
-    # Only init if not already done - check for sqlalchemy extension
-    if 'sqlalchemy' not in app.extensions:
-        db.init_app(app)
-
-        with app.app_context():
-            # Auto-apply migrations and repair schema drift
-            from .app import _auto_upgrade_schema
-            _auto_upgrade_schema(app)
-
-            # Create tables if they don't exist
-            db.create_all()
-            # Populate default settings
-            _populate_default_settings()
-
-            # Initialize services
-            ai_service = init_ai_service(app)
-            init_memory_service()
-            init_push_service(app)
-            init_smoobu_service(app)
-
-            # Load saved model preference from database
-            from .models import AISettings
-            saved_model = AISettings.get('ollama_model')
-            if saved_model and ai_service and saved_model != ai_service.model:
-                ai_service.change_model(saved_model)
-                import logging
-                logging.getLogger(__name__).info(f"Loaded saved model preference: {saved_model}")
-
-    # Start the background Smoobu sync daemon AND expose app.smoobu_trigger_sync.
-    # Without this, the /api/smoobu/sync route falls back to running the sync
-    # synchronously (which Cloudflare kills at 100s) and no periodic sync runs.
-    # Previously this only ran in the standalone ChatBotAI/app.py:create_app()
-    # path, leaving production (FlaskApp/app.py + Waitress) without either.
-    import os as _os
-    is_reloader_child = _os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
-    is_production = not app.config.get('DEBUG')
-    print(f"[ChatBotAI] init_chatbot daemon guard: reloader_child={is_reloader_child}, production={is_production}", flush=True)
-    if is_reloader_child or is_production:
-        # All three daemons must start here, not only the Smoobu sync. Production
-        # registers the blueprint directly (FlaskApp/app.py) and never calls
-        # ChatBotAI/app.py::create_app(), so anything started only there does not
-        # exist in production. Email reconcile was split out of the 10-minute
-        # Smoobu cycle into its own 2-minute daemon and silently stopped running
-        # in prod that day — Booking messages only appeared when a human opened
-        # the chat (the per-chat live fetch) and never on their own.
-        from .app import _start_background_sync, _start_email_reconcile, _start_keepalive
-        for name, start in (('background sync', _start_background_sync),
-                            ('email reconcile', _start_email_reconcile),
-                            ('keepalive', _start_keepalive)):
-            try:
-                start(app)
-                print(f"[ChatBotAI] {name} daemon started", flush=True)
-            except Exception as e:
-                # One daemon failing to start must not take the others down.
-                print(f"[ChatBotAI] ERROR starting {name}: {e!r}", flush=True)
-    else:
-        print("[ChatBotAI] Background sync NOT started (debug + not reloader child)", flush=True)
+    """Use the same initialization path in the portal and standalone app."""
+    from .startup import initialize_app
+    initialize_app(app)
 
 
 @chatbot_bp.record_once
 def on_register(state):
-    """Called when blueprint is registered with an app"""
-    app = state.app
-
-    # Ensure instance directory exists
-    instance_dir = CHATBOT_DIR / 'instance'
-    instance_dir.mkdir(exist_ok=True)
-
-    # Database path for ChatBotAI
-    db_path = instance_dir / 'chatbot.db'
-
-    # Set config values for ChatBotAI
-    if not app.config.get('SECRET_KEY'):
-        app.config['SECRET_KEY'] = 'dev-secret-key-change-in-production'
-    app.config.setdefault('SQLALCHEMY_DATABASE_URI', f'sqlite:///{db_path}')
-    app.config.setdefault('SQLALCHEMY_TRACK_MODIFICATIONS', False)
-    app.config.setdefault('OLLAMA_URL', 'http://localhost:11434')
-    app.config.setdefault('OLLAMA_MODEL', 'mistral:7b-instruct')
-    # Thinking cloud models need 20-40s; stay under Cloudflare's ~100s cut.
-    app.config.setdefault('OLLAMA_TIMEOUT', 90)
-
-    # Initialize ChatBotAI
-    init_chatbot(app)
+    init_chatbot(state.app)
 
 
 @chatbot_bp.context_processor

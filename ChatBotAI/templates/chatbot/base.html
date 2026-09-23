@@ -24,7 +24,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('chatbot.static', filename='css/style.css') }}?v=77">
+    <link rel="stylesheet" href="{{ url_for('chatbot.static', filename='css/style.css') }}?v=84">
 
     {% block extra_css %}{% endblock %}
 </head>
@@ -147,7 +147,7 @@
                 <div class="theme-toggle">
                     <button id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()">
                         <i class="fas fa-moon"></i>
-                        <span>Dark Mode</span>
+                        <span data-i18n="account.darkMode">Dunkelmodus</span>
                     </button>
                 </div>
 
@@ -161,7 +161,7 @@
 
                 <div class="ai-status" id="aiStatus">
                     <span class="status-dot"></span>
-                    <span class="status-text">AI Status: Checking...</span>
+                    <span class="status-text">UMI: Verbindung wird geprüft …</span>
                 </div>
 
                 {% if whatsapp_enabled %}
@@ -234,7 +234,7 @@
     </script>
 
     <!-- Scripts -->
-    <script src="{{ url_for('chatbot.static', filename='js/i18n.js') }}?v=57"></script>
+    <script src="{{ url_for('chatbot.static', filename='js/i18n.js') }}?v=63"></script>
     <script src="{{ url_for('chatbot.static', filename='js/app.js') }}?v=16"></script>
     <script src="{{ url_for('chatbot.static', filename='js/pwa-install.js') }}?v=1"></script>
     {% block extra_js %}{% endblock %}

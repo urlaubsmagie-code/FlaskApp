@@ -61,7 +61,7 @@ CORRECTIONS = [{'label': 'Parken', 'value': 'FALSCH: kostenlos\nRICHTIG: 10€ p
 
 def test_rich_restores_corrections():
     out = _prompt('gpt-oss:120b-cloud', corrections=CORRECTIONS)
-    assert 'Past corrections' in out
+    assert 'never repeat a mistake' in out
     assert 'Parken' in out
 
 

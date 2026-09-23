@@ -71,3 +71,21 @@ def test_scope_street_requires_property_street(app, client):
     msg = _make_conv(street=None)
     r = client.post(f'/chatbot/api/messages/{msg.id}/extract-knowledge', json={'scope': 'street'})
     assert r.status_code == 400
+
+
+def test_extract_can_mark_entries_internal(app, client):
+    """The 💡 button must be able to file a fact as team-only — the message it
+    reads from can just as easily describe an internal procedure."""
+    msg = _make_conv()
+    r = client.post(f'/chatbot/api/messages/{msg.id}/extract-knowledge',
+                    json={'scope': 'general', 'is_internal': True})
+    assert r.status_code == 201
+    assert KnowledgeEntry.query.filter_by(label='Müll').first().is_internal is True
+
+
+def test_extract_defaults_to_guest_facing(app, client):
+    msg = _make_conv()
+    r = client.post(f'/chatbot/api/messages/{msg.id}/extract-knowledge',
+                    json={'scope': 'general'})
+    assert r.status_code == 201
+    assert KnowledgeEntry.query.filter_by(label='Müll').first().is_internal is False

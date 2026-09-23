@@ -1,0 +1,100 @@
+ChatBotAI — AI Enhancement Plan
+=================================
+Created: 2026-03-23
+Status: Idea gathering phase
+
+Goal: Make the AI reliable enough for full autopilot — handle guest
+conversations without host supervision, with safety nets for edge cases.
+
+
+1. APPROVAL QUEUE
+-----------------
+- AI saves responses as "pending" instead of sending immediately
+- Conversation view shows draft with Approve / Edit / Reject buttons
+- Per-conversation "Auto-approve" toggle for trusted chats
+- Inbox badge showing number of pending responses
+- Existing "Recommended Answer" (fills text field) stays as-is
+
+2. ESCALATION SYSTEM
+---------------------
+- AI detects when it can't properly answer a question
+- Responds with: "I'll check with my colleague and get back to you shortly"
+- Pauses auto-respond on that conversation
+- Marks conversation as "needs attention" in inbox
+- Push notification to alert the host
+- Host steps in, handles it, AI resumes when host re-enables
+
+3. RESTRICTED TOPICS (via Wissendatenbank)
+-------------------------------------------
+- New "Eskalation" category in the existing Knowledge Base
+- Host defines topics the AI must never handle:
+  * Refunds (Rückerstattung)
+  * Cancellations (Stornierung)
+  * Price changes (Preisänderung)
+  * Complaints (Beschwerden)
+  * Damages (Schäden)
+  * Custom entries as needed
+- Per-property support (different rules per property)
+- When triggered: same escalation flow as #2
+
+4. RESPONSE QUALITY GUARDS
+----------------------------
+- Strip model artifacts before sending ([INST], <|assistant|>, etc.)
+- Minimum response length check (reject empty/broken responses)
+- Maximum response length check (reject rambling)
+- Lower default temperature (0.5 -> 0.3) for more predictable answers
+- Baked into the pipeline, not a separate feature
+
+5. INBOX STATUS INDICATORS
+----------------------------
+- Visual indicator per conversation showing state:
+  * "AI is handling" — AI is auto-responding normally
+  * "Waiting for host" — AI escalated, needs human intervention
+  * "Pending approval" — AI draft waiting for review
+- At-a-glance overview of what needs attention
+
+
+6. CONVERSATION SUMMARY
+-------------------------
+- When conversations exceed ~15 messages, summarize older messages
+- AI generates a short summary: decisions, promises, questions answered, pending items
+- Stored in Conversation table (new column: ai_summary)
+- AI receives: summary + full recent messages (no context lost)
+- Summary updates when new messages push older ones out of the window
+- Works for ALL messages (guest, host, and AI)
+- Visible in the UI as a quick overview at the top of long conversations
+- Prevents AI from contradicting earlier promises made by the host
+- Useful for the host too: quick catch-up on long conversations
+
+7. LATEST MESSAGE FIX
+-----------------------
+- AI sometimes responds to older messages instead of the newest one
+- Root cause: consecutive guest messages get merged into one user turn
+- Possible solutions (pick one):
+  A. Move conversation history into system prompt as ordered log,
+     put ONLY the latest message as the final user turn
+  B. Number each message (#1, #2...) and instruct "respond to #N"
+  C. Better model with stronger instruction following (trying qwen3:8b)
+
+
+8. LEARN FROM CORRECTIONS
+---------------------------
+- When host edits or rejects an AI response, store both versions
+- New DB table: AICorrection (original_response, corrected_response, topic, date)
+- Before generating a response, load relevant corrections into the prompt
+- AI sees: "Regarding [topic], don't say X — correct answer is Y"
+- The more the host corrects, the better the AI gets over time
+- Different from Knowledge Base:
+  * Knowledge Base = facts you set up proactively (WiFi, rules, check-in times)
+  * Corrections = judgment and nuance learned reactively from real conversations
+  * Like an employee: KB is the handbook, corrections are on-the-job feedback
+- Eventually, frequent corrections could be promoted to KB entries
+
+
+MAYBE LATER
+-----------
+- Auto-response limit: max consecutive AI replies before auto-escalation
+  (e.g., after 3 AI replies in a row, something's probably off)
+- Configurable in Settings
+- Language verification: detect guest language, verify AI response matches,
+  regenerate if mismatch (lightweight library, no extra AI call needed)

@@ -12,14 +12,14 @@ BASE_DIR = Path(__file__).resolve().parent
 class Config:
     """Base configuration"""
 
-    # Flask settings — dev-only fallback. ProductionConfig overrides and
-    # enforces that the env var is set (no fallback).
+    # Shared startup rejects this development fallback in production.
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
     # Session cookie hardening. HTTPONLY blocks document.cookie reads from
     # XSS. SECURE forces HTTPS-only cookie (safe behind the Cloudflare tunnel,
     # which is always HTTPS at the edge). SAMESITE=Lax blocks cross-site POST
-    # CSRF while still allowing normal top-level navigation.
+    # requests while still allowing normal top-level navigation. This is
+    # defense in depth, not a replacement for explicit CSRF protection.
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
     # SECURE is overridden in DevelopmentConfig because local http:// needs it off.
@@ -39,7 +39,14 @@ class Config:
     # Ollama AI settings
     OLLAMA_URL = os.environ.get('OLLAMA_URL', 'http://localhost:11434')
     OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'gemma2:9b')
-    OLLAMA_TIMEOUT = int(os.environ.get('OLLAMA_TIMEOUT', '120'))
+    OLLAMA_TIMEOUT = int(os.environ.get('OLLAMA_TIMEOUT', '90'))
+
+    # Both integrated and standalone startup honor these controls.
+    CHATBOT_BACKGROUND_TASKS_ENABLED = True
+    CHATBOT_STARTUP_CHECKS_ENABLED = True
+    CHATBOT_AUTO_MIGRATE = True
+    CHATBOT_FILE_LOGGING = True
+    CHATBOT_TRUST_PROXY_HEADERS = os.environ.get('CHATBOT_TRUST_PROXY_HEADERS', 'false').lower() == 'true'
 
     # Prompt template settings
     PROMPT_DEV_AUTO_RELOAD = os.environ.get('PROMPT_DEV_AUTO_RELOAD', 'false').lower() == 'true'
@@ -132,15 +139,22 @@ class ProductionConfig(Config):
         'DATABASE_URL',
         Config.SQLALCHEMY_DATABASE_URI
     )
-    # SECRET_KEY enforcement happens in create_app() — it inspects the loaded
-    # config and refuses to start production with the dev fallback. We can't
-    # raise from class-body because Flask uses from_object(cls) (no __init__).
+    # startup.configure_app validates the key in both entrypoints.
 
 
 class TestingConfig(Config):
     """Testing configuration"""
     TESTING = True
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    SECRET_KEY = 'testing-only-session-key'
+    SESSION_COOKIE_SECURE = False
+    REMEMBER_COOKIE_SECURE = False
+    CHATBOT_BACKGROUND_TASKS_ENABLED = False
+    CHATBOT_STARTUP_CHECKS_ENABLED = False
+    CHATBOT_AUTO_MIGRATE = False
+    CHATBOT_FILE_LOGGING = False
+    CHATBOT_TRUST_PROXY_HEADERS = False
+    SMOOBU_API_KEY = ''
 
 
 # Configuration dictionary

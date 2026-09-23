@@ -44,26 +44,26 @@
     <!-- Every tile IS its filter button (tap again to clear). Always visible: a
          standing "0" tells the team nothing is pending, and the row keeps its shape. -->
     <div class="stats-card" id="statsCard">
-        <div class="stat-item stat-filter" data-stat-filter="unread" onclick="toggleUnreadFilter()" title="Alle ungelesenen anzeigen">
+        <button type="button" class="stat-item stat-filter" data-stat-filter="unread" onclick="toggleUnreadFilter()" title="Alle ungelesenen anzeigen">
             <span class="stat-value" id="statUnread">-</span>
             <span class="stat-label" data-i18n="inbox.stats.unread">Ungelesen</span>
-        </div>
-        <div class="stat-item stat-filter" data-stat-filter="escalated" id="statEscalatedItem" onclick="toggleStatusFilter('escalated')" title="Alle eskalierten Chats anzeigen">
+        </button>
+        <button type="button" class="stat-item stat-filter" data-stat-filter="escalated" id="statEscalatedItem" onclick="toggleStatusFilter('escalated')" title="Alle eskalierten Chats anzeigen">
             <span class="stat-value" id="statEscalated">-</span>
             <span class="stat-label" data-i18n="inbox.stats.escalated">Eskaliert</span>
-        </div>
-        <div class="stat-item stat-filter" data-stat-filter="pending_approval" id="statApprovalItem" onclick="toggleStatusFilter('pending_approval')" title="UMI-Antworten, die auf Freigabe warten">
+        </button>
+        <button type="button" class="stat-item stat-filter" data-stat-filter="pending_approval" id="statApprovalItem" onclick="toggleStatusFilter('pending_approval')" title="UMI-Antworten, die auf Freigabe warten">
             <span class="stat-value" id="statApproval">-</span>
             <span class="stat-label" data-i18n="inbox.filter.pendingApproval">UMI-Freigabe</span>
-        </div>
+        </button>
     </div>
 
     <!-- Filters -->
     <div class="filter-bar">
         <div class="search-box">
             <i class="fas fa-search"></i>
-            <input type="text" data-i18n-placeholder="inbox.search" placeholder="Konversationen durchsuchen..." id="searchInput">
-            <button class="search-clear-btn" id="searchClearBtn" type="button" aria-label="Clear search">
+            <input type="text" data-i18n-placeholder="inbox.search" placeholder="Konversationen durchsuchen..." id="searchInput" aria-label="Konversationen durchsuchen">
+            <button class="search-clear-btn" id="searchClearBtn" type="button" aria-label="Suche löschen">
                 <i class="fas fa-times"></i>
             </button>
         </div>
@@ -136,15 +136,15 @@
                 </div>
                 <div class="conversation-info">
                     <div class="conversation-header">
-                        <span class="guest-name">{{ conv.guest.name or conv.guest.email or 'Unknown Guest' }}</span>
+                        <span class="guest-name">{{ conv.guest.name or conv.guest.email or 'Unbekannter Gast' }}</span>
                         <span class="conversation-time" data-timestamp="{{ conv.last_message_at.isoformat() ~ 'Z' if conv.last_message_at else '' }}" title="{{ conv.last_message_at|to_local if conv.last_message_at else '' }}">{{ conv.last_message_at|to_local_short if conv.last_message_at else '' }}</span>
                     </div>
-                    <div class="conversation-subject">{{ conv.property.name if conv.property else conv.subject or 'No subject' }}{% if conv.check_in and conv.check_out %} <span class="stay-dates">{{ conv.check_in.strftime('%d.%m') }} – {{ conv.check_out.strftime('%d.%m') }} ({{ (conv.check_out - conv.check_in).days }}n)</span>{% endif %}</div>
+                    <div class="conversation-subject">{{ conv.property.name if conv.property else conv.subject or 'Ohne Betreff' }}{% if conv.check_in and conv.check_out %} <span class="stay-dates">{{ conv.check_in.strftime('%d.%m') }} – {{ conv.check_out.strftime('%d.%m') }} ({{ (conv.check_out - conv.check_in).days }}n)</span>{% endif %}</div>
                     <div class="conversation-preview">
                         {% if conv.last_message %}
                             {% if conv.last_message.sender_type == 'owner' %}{{ conv.last_message.sender_user.display_name if conv.last_message.sender_user else 'Team' }}: {% elif conv.last_message.sender_type == 'ai' %}UMI: {% endif %}{{ conv.last_message.content[:80] }}{% if conv.last_message.content|length > 80 %}...{% endif %}
                         {% else %}
-                            No messages yet
+                            Noch keine Nachrichten
                         {% endif %}
                     </div>
                 </div>
@@ -202,8 +202,8 @@
         instantSend: {{ 'true' if inbox_instant_send else 'false' }}
     };
 </script>
-<script src="{{ url_for('chatbot.static', filename='js/polling.js') }}?v=8"></script>
-<script src="{{ url_for('chatbot.static', filename='js/filter-state.js') }}?v=17"></script>
+<script src="{{ url_for('chatbot.static', filename='js/polling.js') }}?v=9"></script>
+<script src="{{ url_for('chatbot.static', filename='js/filter-state.js') }}?v=18"></script>
 <script src="{{ url_for('chatbot.static', filename='js/guided-tour.js') }}?v=1"></script>
-<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=43"></script>
+<script src="{{ url_for('chatbot.static', filename='js/inbox.js') }}?v=44"></script>
 {% endblock %}
